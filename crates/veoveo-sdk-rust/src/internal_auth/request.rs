@@ -78,10 +78,13 @@ impl GatewayRequestContext {
 
 impl GatewayRequestContext {
     /// Derive audit attribution only after checking the signed invocation relationship.
+    /// The record's actor is the principal the call acts for, in its tenant and Work
+    /// Context; `via` names the server that made the call for it, if another did.
     pub fn audit_context(
         &self,
         actor: &Principal,
         authority: &InvocationAuthority,
+        via: Option<veoveo_audit_contract::AuditVia>,
     ) -> Result<veoveo_audit_contract::AuditContext, InternalTokenError> {
         use veoveo_audit_contract::*;
         self.validate_for(actor, authority)?;
@@ -93,26 +96,56 @@ impl GatewayRequestContext {
                     PrincipalKind::Service => AuditPrincipalKind::Service,
                 },
                 tenant: actor.tenant.clone(),
-                oauth_client: Some(self.access_token.oauth_client_id.clone()),
-                delegating_principal: (self.principal.id != actor.id)
-                    .then(|| self.principal.id.clone()),
-            },
-            authority: AuditAuthority {
                 work_context: Some(authority.work_context.clone()),
-                policy_revision: Some(authority.policy_revision.clone()),
-                scopes: actor.scopes.clone(),
-                data_labels: actor.data_labels.clone(),
             },
+            via,
             request: self.audit.clone(),
+        })
+    }
+
+    /// The invocation facts a record's detail carries beside the envelope: the OAuth
+    /// client, the principal that delegated to the actor, the policy revision, and the
+    /// actor's scopes and data labels.
+    pub fn audit_invocation(
+        &self,
+        actor: &Principal,
+        authority: &InvocationAuthority,
+    ) -> Result<crate::audit::AuditInvocation, InternalTokenError> {
+        self.validate_for(actor, authority)?;
+        Ok(crate::audit::AuditInvocation {
+            oauth_client: self.access_token.oauth_client_id.clone(),
+            delegating_principal: (self.principal.id != actor.id)
+                .then(|| self.principal.id.clone()),
+            policy_revision: authority.policy_revision.clone(),
+            scopes: actor.scopes.clone(),
+            data_labels: actor.data_labels.clone(),
         })
     }
 }
 
 impl GatewayInternalIdentity {
+    /// The audit attribution of this identity's request: its actor, the acting server
+    /// and Task when another server made the call, and the request.
     pub fn audit_context(&self) -> Result<veoveo_audit_contract::AuditContext, InternalTokenError> {
+        let via = self
+            .acting_server()
+            .map(|server| veoveo_audit_contract::AuditVia {
+                server: server.clone(),
+                task: self
+                    .acting_task()
+                    .and_then(|task| veoveo_types::TaskId::parse(task.as_str()).ok()),
+            });
         self.request_context
             .as_ref()
             .ok_or(InternalTokenError::InvalidRequestContext)?
-            .audit_context(&self.actor, &self.authority)
+            .audit_context(&self.actor, &self.authority, via)
+    }
+
+    /// The invocation facts of this identity's request, for a record's detail.
+    pub fn audit_invocation(&self) -> Result<crate::audit::AuditInvocation, InternalTokenError> {
+        self.request_context
+            .as_ref()
+            .ok_or(InternalTokenError::InvalidRequestContext)?
+            .audit_invocation(&self.actor, &self.authority)
     }
 }

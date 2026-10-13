@@ -93,6 +93,7 @@ mod ledger {
                     work_context: authority.work_context.clone(),
                 },
                 task: task.task_id,
+                created_at: task.created_at,
             }
         }
 
@@ -132,6 +133,7 @@ mod ledger {
         store: UsageStore,
         actor: UsageActor,
         task: TaskId,
+        created_at: chrono::DateTime<chrono::Utc>,
     }
 
     impl TaskUsageRecorder {
@@ -215,7 +217,9 @@ mod ledger {
             self
         }
 
-        /// When the usage happened; now by default.
+        /// When the usage happened. It defaults to the Task's creation, so a record a
+        /// replayed run writes again is identical; pass the provider's reported time for
+        /// actual usage.
         pub fn period(mut self, period: ChargePeriod) -> Self {
             self.period = Some(period);
             self
@@ -248,7 +252,7 @@ mod ledger {
             };
             let period = self
                 .period
-                .unwrap_or_else(|| ChargePeriod::at(chrono::Utc::now()));
+                .unwrap_or_else(|| ChargePeriod::at(self.recorder.created_at));
             let mut builder = UsageDraft::builder(
                 self.kind.clone(),
                 self.phase,

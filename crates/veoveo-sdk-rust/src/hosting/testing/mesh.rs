@@ -43,7 +43,7 @@ use super::{
 use crate::{
     ActingServer, DelegatedCaller, ExchangeGrant, ExchangedTokenVerifier, ForwardedRequest,
     GatewayInternalTokenIssuer, GatewayInternalTokenVerifier, GatewayProfileId,
-    GatewayRequestContext, OAuthClientId as ClientId, TokenIssuer,
+    GatewayRequestContext, OAuthClientId as ClientId, OpaqueTaskId, TokenIssuer,
     calls::{
         ACCESS_TOKEN_TOKEN_TYPE, TASK_TOKEN_TYPE, TOKEN_EXCHANGE_GRANT_TYPE, TokenErrorCode,
         TokenErrorResponse, TokenExchangeResponse,
@@ -355,13 +355,21 @@ fn user_caller() -> DelegatedCaller {
     }
 }
 
+/// A call another server made: the server, the permissions its exchanged token carries
+/// and the Task it called from.
+struct Delegation<'a> {
+    acting: &'a ActingServer,
+    permissions: &'a BTreeSet<PermissionName>,
+    task: Option<&'a OpaqueTaskId>,
+}
+
 /// Sends one JSON-RPC request to `server` for `caller`, with the permissions the user
-/// holds in its namespace, narrowed to `delegated` for a call another server made.
+/// holds in its namespace, narrowed to the delegation's for a call another server made.
 async fn forward(
     shared: &Shared,
     server: &ServerSlug,
     caller: &DelegatedCaller,
-    delegation: Option<(&ActingServer, &BTreeSet<PermissionName>)>,
+    delegation: Option<Delegation<'_>>,
     method: &str,
     name: Option<&str>,
     body: serde_json::Value,
@@ -382,7 +390,9 @@ async fn forward(
         .iter()
         .filter(|permission| permission.is_owned_by(server))
         .filter(|permission| {
-            delegation.is_none_or(|(_, delegated)| delegated.contains(*permission))
+            delegation
+                .as_ref()
+                .is_none_or(|delegation| delegation.permissions.contains(*permission))
         })
         .cloned()
         .collect();
@@ -397,7 +407,12 @@ async fn forward(
             authority: caller.authority.clone(),
             permissions,
             request_context: Some(caller.request_context.clone()),
-            acting_server: delegation.map(|(acting, _)| acting.clone()),
+            acting_server: delegation
+                .as_ref()
+                .map(|delegation| delegation.acting.clone()),
+            acting_task: delegation
+                .as_ref()
+                .and_then(|delegation| delegation.task.cloned()),
             expires_at: Utc::now() + TimeDelta::seconds(60),
         })
         .expect("the mesh signs forwarded tokens")
@@ -575,17 +590,19 @@ async fn token(State(shared): State<Arc<Shared>>, Form(form): Form<ExchangeForm>
             (caller, None, identity.expires_at)
         }
         (Some(task), Some(TASK_TOKEN_TYPE)) => {
-            let Some(route) = live_route(&shared, server, task).await else {
+            let Ok(task) = OpaqueTaskId::parse(task) else {
+                return refused(
+                    TokenErrorCode::InvalidGrant,
+                    "the Task identifier is invalid",
+                );
+            };
+            let Some(route) = live_route(&shared, server, task.as_str()).await else {
                 return refused(
                     TokenErrorCode::InvalidGrant,
                     "the Task has ended or is not this server's",
                 );
             };
-            (
-                route.caller,
-                Some(task.to_owned()),
-                Utc::now() + TASK_DELEGATION,
-            )
+            (route.caller, Some(task), Utc::now() + TASK_DELEGATION)
         }
         _ => {
             return refused(
@@ -715,7 +732,7 @@ async fn mcp(
     let identity = match identity {
         Some(identity) => match &identity.task {
             Some(task)
-                if live_route(&shared, &identity.acting_server.server, task)
+                if live_route(&shared, &identity.acting_server.server, task.as_str())
                     .await
                     .is_none() =>
             {
@@ -791,7 +808,11 @@ async fn mcp(
         &shared,
         &provider,
         &identity.caller,
-        Some((&identity.acting_server, &identity.permissions)),
+        Some(Delegation {
+            acting: &identity.acting_server,
+            permissions: &identity.permissions,
+            task: identity.task.as_ref(),
+        }),
         &method,
         name.as_deref(),
         message,

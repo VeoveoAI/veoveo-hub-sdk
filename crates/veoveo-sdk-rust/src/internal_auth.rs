@@ -37,7 +37,9 @@ use crate::registration::{
     AccessTokenTrust, Ed25519Jwk, Ed25519JwkSet, PermissionsDetail, ResourceIndicator,
     ServerPublicKey, issuer_url, statement::ServerKeyPair,
 };
-use crate::{GatewayProfileId, JwtId, OAuthClientId, Principal, ServerSlug, TokenIssuer};
+use crate::{
+    GatewayProfileId, JwtId, OAuthClientId, OpaqueTaskId, Principal, ServerSlug, TokenIssuer,
+};
 use veoveo_types::{
     GroupId, IdentifierError, InvocationAuthority, PermissionName, PrincipalId, RoleId,
 };
@@ -229,6 +231,10 @@ pub struct GatewayInternalIdentity {
     /// absent when the caller called directly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acting_server: Option<ActingServer>,
+    /// The acting server's Task the call came from, when that server called from one of
+    /// its Tasks: the Task's identifier as the acting server issued it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_task: Option<OpaqueTaskId>,
     pub jwt_id: JwtId,
     pub issued_at: DateTime<Utc>,
     pub not_before: DateTime<Utc>,
@@ -244,6 +250,12 @@ impl GatewayInternalIdentity {
     /// The server that called for the caller, when another server made this call.
     pub fn acting_server(&self) -> Option<&ServerSlug> {
         self.acting_server.as_ref().map(|acting| &acting.server)
+    }
+
+    /// The acting server's Task the call came from, when that server called from one of
+    /// its Tasks.
+    pub fn acting_task(&self) -> Option<&OpaqueTaskId> {
+        self.acting_task.as_ref()
     }
 }
 
@@ -343,9 +355,14 @@ impl GatewayInternalTokenIssuer {
             permissions,
             request_context,
             acting_server,
+            acting_task,
             expires_at,
         } = request;
         ensure_jwt_crypto_provider();
+        // Only a call another server made comes from that server's Task.
+        if acting_task.is_some() && acting_server.is_none() {
+            return Err(InternalTokenError::InconsistentClaims);
+        }
         let now = Utc::now();
         let expires_at = if let Some(context) = &request_context {
             context.validate_for(&actor, &authority)?;
@@ -376,6 +393,7 @@ impl GatewayInternalTokenIssuer {
             permissions,
             request_context,
             acting_server,
+            acting_task,
             jwt_id: fresh_jwt_id()?,
             issued_at: now,
             not_before: now,
@@ -402,6 +420,9 @@ pub struct ForwardedRequest {
     /// The registered server that made the call for the caller, for a call that
     /// arrived with an exchanged token.
     pub acting_server: Option<ActingServer>,
+    /// The acting server's Task the exchanged token was issued for, when its subject was
+    /// one of that server's Tasks. It requires `acting_server`.
+    pub acting_task: Option<OpaqueTaskId>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -517,6 +538,9 @@ impl GatewayInternalTokenVerifier {
             }),
             _ => return Err(InternalTokenError::InconsistentClaims),
         };
+        if invocation.acting_task.is_some() && acting_server.is_none() {
+            return Err(InternalTokenError::InconsistentClaims);
+        }
         if let Some(context) = &invocation.request_context {
             context.validate_for(&invocation.actor, &invocation.authority)?;
             if (acting_server.is_none()
@@ -537,6 +561,7 @@ impl GatewayInternalTokenVerifier {
             permissions,
             request_context: invocation.request_context,
             acting_server,
+            acting_task: invocation.acting_task,
             jwt_id: claims.standard.jti,
             issued_at: timestamp_to_datetime(claims.standard.iat, "iat")?,
             not_before: timestamp_to_datetime(claims.standard.nbf, "nbf")?,
@@ -726,6 +751,9 @@ struct Invocation {
     /// The calling server's slug, present exactly when `act` names a prior actor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     acting_server: Option<ServerSlug>,
+    /// The calling server's Task the call came from, only beside `acting_server`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    acting_task: Option<OpaqueTaskId>,
 }
 
 impl AccessTokenClaims {
@@ -756,6 +784,7 @@ impl AccessTokenClaims {
                     .acting_server
                     .as_ref()
                     .map(|acting| acting.server.clone()),
+                acting_task: identity.acting_task.clone(),
             },
         }
     }
@@ -930,6 +959,7 @@ pub(crate) mod tests {
                 .collect(),
             request_context: None,
             acting_server: None,
+            acting_task: None,
             expires_at: Utc::now() + TimeDelta::minutes(5),
         }
     }
@@ -1098,6 +1128,65 @@ pub(crate) mod tests {
         let mut chained = claims;
         chained["act"]["act"]["act"] = serde_json::json!({"sub": "agent"});
         assert!(verifier("time").verify(&sign(&chained)).is_err());
+    }
+
+    #[test]
+    fn delegated_calls_from_a_task_name_the_acting_task() {
+        let acting = ActingServer {
+            server: ServerSlug::parse("media").unwrap(),
+            client: OAuthClientId::parse("media-0123456789abcd").unwrap(),
+        };
+        let task = OpaqueTaskId::parse("0199d4a1-7c00-7b3e-9f2a-6c1d2e3f4a5b").unwrap();
+        let mut request = forwarded("time", &["time.read"]);
+        request.acting_server = Some(acting.clone());
+        request.acting_task = Some(task.clone());
+        let issued = issuer().issue(request).unwrap();
+        let identity = verifier("time").verify(&issued.bearer_token).unwrap();
+        assert_eq!(identity.acting_task(), Some(&task));
+        assert_eq!(identity.acting_task, issued.identity.acting_task);
+        let claims: serde_json::Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(issued.bearer_token.split('.').nth(1).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(claims[INVOCATION_CLAIM]["acting_task"], task.as_str());
+
+        // A Task without an acting server is no delegated call.
+        let mut direct = forwarded("time", &["time.read"]);
+        direct.acting_task = Some(task.clone());
+        assert!(matches!(
+            issuer().issue(direct),
+            Err(InternalTokenError::InconsistentClaims)
+        ));
+        let mut header = Header::new(Algorithm::EdDSA);
+        header.typ = Some(ACCESS_TOKEN_TYPE.to_owned());
+        header.kid = Some(signing_key().key_id().to_owned());
+        let mut orphaned = claims;
+        orphaned["act"] = serde_json::json!({"sub": TEST_ISSUER});
+        orphaned[INVOCATION_CLAIM]
+            .as_object_mut()
+            .unwrap()
+            .remove("acting_server");
+        let token = encode(
+            &header,
+            &orphaned,
+            &EncodingKey::from_ed_der(&signing_key().private_key_der),
+        )
+        .unwrap();
+        assert!(matches!(
+            verifier("time").verify(&token),
+            Err(InternalTokenError::InconsistentClaims)
+        ));
+        // An undelegated call names no Task.
+        let plain = issuer().issue(forwarded("time", &["time.read"])).unwrap();
+        assert_eq!(
+            verifier("time")
+                .verify(&plain.bearer_token)
+                .unwrap()
+                .acting_task(),
+            None
+        );
     }
 
     #[test]

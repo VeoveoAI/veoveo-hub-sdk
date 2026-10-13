@@ -9,7 +9,7 @@ use veoveo_audit_contract::{
 };
 use veoveo_types::{ResourceTemplateUri, ServerSlug, Sha256Digest};
 
-use crate::identity::{CanonicalTaskId, LocalToolName, PromptName};
+use crate::identity::{CanonicalTaskId, LocalToolName, OpaqueTaskId, PromptName};
 
 /// The catalog a discovery request listed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, veoveo_types::Vocabulary)]
@@ -55,12 +55,15 @@ impl AuditDetailType for Discovery {
 
 /// A tool call was admitted or refused before it reached its server: class
 /// `mcp.tool_admission`. `acting_server` names the server that made the call for the
-/// caller, when another server made it.
+/// caller, when another server made it, and `acting_task` that server's Task, when it
+/// called from one.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ToolAdmission {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acting_server: Option<ServerSlug>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_task: Option<OpaqueTaskId>,
 }
 impl AuditDetailType for ToolAdmission {
     const CLASS: &'static str = "mcp.tool_admission";
@@ -75,6 +78,8 @@ pub struct ToolCompletion {
     pub error_code: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acting_server: Option<ServerSlug>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_task: Option<OpaqueTaskId>,
 }
 impl AuditDetailType for ToolCompletion {
     const CLASS: &'static str = "mcp.tool_completion";
@@ -422,15 +427,23 @@ mod tests {
                 duration_ms: 12,
                 error_code: None,
                 acting_server: None,
+                acting_task: None,
             })
             .unwrap();
         assert_eq!(detail.class().as_str(), "mcp.tool_completion");
-        // A call another server made names that server.
-        let delegated = registry
-            .detail(&ToolAdmission {
-                acting_server: Some(ServerSlug::parse("media").unwrap()),
+        // A call another server made from one of its Tasks names the server and the Task.
+        let delegated = ToolAdmission {
+            acting_server: Some(ServerSlug::parse("media").unwrap()),
+            acting_task: Some(OpaqueTaskId::parse("0199d4a1-7c00-7b3e-9f2a-6c1d2e3f4a5b").unwrap()),
+        };
+        assert_eq!(
+            serde_json::to_value(&delegated).unwrap(),
+            serde_json::json!({
+                "acting_server": "media",
+                "acting_task": "0199d4a1-7c00-7b3e-9f2a-6c1d2e3f4a5b"
             })
-            .unwrap();
+        );
+        let delegated = registry.detail(&delegated).unwrap();
         assert_eq!(delegated.class().as_str(), "mcp.tool_admission");
     }
 

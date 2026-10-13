@@ -1,6 +1,7 @@
 //! Relay, the consumer of the calls fixture: its tools call Ledger through the Gateway
 //! for Relay's own caller, inline with `ctx.client()` and from a durable Task with
-//! `ServerCalls::for_task`. It declares the Ledger permissions it uses.
+//! `ServerCalls::for_task`. It declares the Ledger permissions it uses, and reports the
+//! identity calls reach it with.
 use std::{collections::BTreeSet, sync::LazyLock};
 
 use futures::StreamExt;
@@ -100,6 +101,7 @@ pub fn authorization() -> Result<AuthorizationDeclaration, DeclarationError> {
         .tool(tool("relay_seal"), RelayPermission::CallsMake)
         .tool(tool("relay_tally"), RelayPermission::CallsMake)
         .tool(tool("relay_later"), RelayPermission::CallsMake)
+        .tool(tool("relay_whoami"), RelayPermission::CallsMake)
         .uses(LedgerPermission::EntriesRead)
         .uses(LedgerPermission::SealsRead)
         .build(&RelayContract::slug(), &RelayContract::scheme())
@@ -177,6 +179,15 @@ impl RelayDomain {
         }
         .await;
         relayed(outcome)
+    }
+
+    #[tool(description = "Report the identity this call reached Relay with.")]
+    async fn relay_whoami(
+        &self,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let identity = require(&context, RelayPermission::CallsMake)?;
+        structured_result("inspected", &crate::calls_support::inspection(&identity))
     }
 
     #[tool(description = "Ask Ledger whom this call is for, later, from a Task.")]

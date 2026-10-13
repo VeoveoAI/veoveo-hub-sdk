@@ -88,16 +88,7 @@ pub fn authorization() -> Result<AuthorizationDeclaration, DeclarationError> {
 
 /// What Ledger reports about the call that reached it.
 pub fn inspection(identity: &GatewayInternalIdentity) -> Inspection {
-    Inspection {
-        caller: identity.actor.id.to_string(),
-        client: identity.client.to_string(),
-        acting_server: identity.acting_server().map(ToString::to_string),
-        permissions: identity
-            .permissions
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
-    }
+    crate::calls_support::inspection(identity)
 }
 
 fn structured<T: Serialize>(text: &str, value: &T) -> Result<CallToolResult, ErrorData> {

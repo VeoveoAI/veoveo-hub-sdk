@@ -177,8 +177,15 @@ async fn a_task_calls_for_its_caller_while_it_runs() {
     let task_id = TaskId::parse(task.clone()).unwrap();
     let profile = veoveo_sdk_rust::GatewayProfileId::parse(MESH_PROFILE).unwrap();
 
-    // Relay answers the Task's call; its own call to Ledger is refused.
+    // Relay sees Ledger as the acting server and the Task it called from.
     let from_task = ledger_calls.for_task_id(task_id, &profile);
+    let seen: Inspection = from_task.call(RelayWhoami {}).await.unwrap();
+    assert_eq!(seen.caller, testing::principal().id.to_string());
+    assert_eq!(seen.acting_server.as_deref(), Some("ledger"));
+    assert_eq!(seen.acting_task.as_deref(), Some(task.as_str()));
+    assert_eq!(seen.permissions, ["relay.calls.make"]);
+
+    // Relay answers the Task's call; its own call to Ledger is refused.
     let relayed_back: Result<Inspection, CallError> = from_task.call(RelayInspect {}).await;
     match relayed_back {
         Err(CallError::Tool { message }) => {
@@ -214,6 +221,16 @@ async fn a_task_calls_for_its_caller_while_it_runs() {
 /// Relay's `relay_inspect` as a typed call, for a server that uses Relay.
 #[derive(serde::Serialize)]
 struct RelayInspect {}
+
+/// Relay's `relay_whoami`: the identity a call reached Relay with.
+#[derive(serde::Serialize)]
+struct RelayWhoami {}
+
+impl veoveo_sdk_rust::calls::ToolCall for RelayWhoami {
+    type Provider = Relay;
+    type Output = Inspection;
+    const TOOL: &'static str = "relay_whoami";
+}
 
 struct Relay;
 impl veoveo_sdk_rust::calls::ProviderContract for Relay {

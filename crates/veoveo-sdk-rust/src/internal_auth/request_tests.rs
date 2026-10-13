@@ -24,6 +24,7 @@ fn forwarded_with(
         permissions: Default::default(),
         request_context: Some(context),
         acting_server: None,
+        acting_task: None,
         expires_at: Utc::now() + TimeDelta::seconds(60),
     }
 }

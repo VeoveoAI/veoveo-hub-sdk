@@ -143,6 +143,21 @@ pub(crate) fn contract_config(name: &str, capabilities: ServerCapabilities) -> S
     config
 }
 
+/// What a calls fixture server reports about the call that reached it.
+pub(crate) fn inspection(identity: &GatewayInternalIdentity) -> crate::calls::Inspection {
+    crate::calls::Inspection {
+        caller: identity.actor.id.to_string(),
+        client: identity.client.to_string(),
+        acting_server: identity.acting_server().map(ToString::to_string),
+        acting_task: identity.acting_task().map(ToString::to_string),
+        permissions: identity
+            .permissions
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    }
+}
+
 /// The forwarded identity of this request, when the Gateway granted `permission`.
 pub(crate) fn require<P: Vocabulary>(
     context: &RequestContext<RoleServer>,

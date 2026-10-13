@@ -53,7 +53,7 @@ pub struct ExchangeGrant {
     pub permissions: BTreeSet<PermissionName>,
     /// The calling server's Task this delegation lasts as long as, when the subject was a
     /// Task. The Gateway checks on every use that the Task is still running.
-    pub task: Option<String>,
+    pub task: Option<OpaqueTaskId>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -66,7 +66,7 @@ pub struct ExchangedIdentity {
     pub caller: DelegatedCaller,
     pub acting_server: ActingServer,
     pub permissions: BTreeSet<PermissionName>,
-    pub task: Option<String>,
+    pub task: Option<OpaqueTaskId>,
     pub jwt_id: JwtId,
     pub issued_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -111,7 +111,7 @@ struct ExchangedInvocation {
     acting_server: ServerSlug,
     caller: DelegatedCaller,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    task: Option<String>,
+    task: Option<OpaqueTaskId>,
 }
 
 impl GatewayInternalTokenIssuer {

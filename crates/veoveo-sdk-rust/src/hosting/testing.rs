@@ -210,6 +210,7 @@ impl TestGateway {
                 permissions: permissions.into_iter().collect(),
                 request_context: None,
                 acting_server: None,
+                acting_task: None,
                 expires_at: Utc::now() + TimeDelta::minutes(5),
             })
             .unwrap()

@@ -3,7 +3,7 @@
 //! each tool.
 //!
 //! Ledger reports the forwarded identity each call reached it with, so a test sees
-//! whom a call between servers acts for and which server made it.
+//! whom a call between servers acts for, which server made it and from which Task.
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use veoveo_sdk_rust::{
@@ -79,7 +79,10 @@ pub struct Inspection {
     pub client: String,
     /// The server that called for the caller, when another server called.
     pub acting_server: Option<String>,
-    /// The permissions the call carried in Ledger's namespace.
+    /// That server's Task, when it called from one.
+    #[serde(default)]
+    pub acting_task: Option<String>,
+    /// The permissions the call carried in the called server's namespace.
     pub permissions: Vec<String>,
 }
 

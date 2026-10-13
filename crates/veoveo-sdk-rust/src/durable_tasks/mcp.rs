@@ -8,7 +8,10 @@ use serde_json::{Value, json};
 
 use veoveo_task_runtime::{TaskError, TaskRuntime, TaskSnapshot, TaskStatus};
 
-/// Projects durable metadata into the seed returned by `CreateTaskResult`.
+/// Projects durable metadata into the seed returned by `CreateTaskResult`. A waiting
+/// Task is working in the seed: it asks for input only while it holds outstanding input
+/// requests, which [`project_snapshot`] reads, and otherwise it is parked on an
+/// operation or between steps.
 pub fn task_seed(snapshot: &TaskSnapshot) -> Task {
     let mut task = Task::new(
         snapshot.task_id.to_string(),
@@ -27,7 +30,7 @@ pub async fn project_snapshot(
     runtime: &TaskRuntime,
     snapshot: TaskSnapshot,
 ) -> Result<DetailedTask, TaskError> {
-    let task = task_seed(&snapshot);
+    let mut task = task_seed(&snapshot);
     let payload = match snapshot.status {
         TaskStatus::Queued | TaskStatus::Running | TaskStatus::CancelRequested => {
             TaskPayload::Working
@@ -54,6 +57,7 @@ pub async fn project_snapshot(
                         Ok((key, request))
                     })
                     .collect::<Result<_, TaskError>>()?;
+                task.status = McpTaskStatus::InputRequired;
                 TaskPayload::InputRequired { input_requests }
             }
         }
@@ -94,10 +98,10 @@ pub async fn project_snapshot(
 
 fn task_status(status: TaskStatus) -> McpTaskStatus {
     match status {
-        TaskStatus::Queued | TaskStatus::Running | TaskStatus::CancelRequested => {
-            McpTaskStatus::Working
-        }
-        TaskStatus::Waiting => McpTaskStatus::InputRequired,
+        TaskStatus::Queued
+        | TaskStatus::Running
+        | TaskStatus::Waiting
+        | TaskStatus::CancelRequested => McpTaskStatus::Working,
         TaskStatus::Succeeded => McpTaskStatus::Completed,
         TaskStatus::Failed => McpTaskStatus::Failed,
         TaskStatus::Cancelled => McpTaskStatus::Cancelled,

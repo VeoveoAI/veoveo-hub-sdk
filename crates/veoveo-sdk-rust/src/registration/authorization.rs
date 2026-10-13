@@ -1,5 +1,6 @@
-//! `ai.veoveo/authorization`: the permissions a server declares and the permission
-//! each of its tools, resources, resource templates and prompts requires.
+//! `ai.veoveo/authorization`: the permissions a server declares, the permission each of
+//! its tools, resources, resource templates and prompts requires, and the permissions it
+//! uses on other servers.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::identity::{LocalToolName, PromptName};
@@ -41,6 +42,11 @@ pub struct Requirements {
 pub struct AuthorizationDeclaration {
     pub permissions: Vec<PermissionDeclaration>,
     pub requirements: Requirements,
+    /// Permissions of other servers this server calls with, each in its provider's
+    /// namespace. A call between servers carries at most these, narrowed to what the
+    /// caller holds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uses: Vec<PermissionName>,
 }
 
 /// [`AuthorizationDeclaration`] as the `veoveo_authorization` registration member
@@ -51,6 +57,8 @@ pub struct AuthorizationDeclaration {
 pub(crate) struct AuthorizationDocument {
     permissions: Vec<PermissionDeclaration>,
     requirements: RequirementsDocument,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    uses: Vec<PermissionName>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -77,6 +85,7 @@ impl From<AuthorizationDocument> for AuthorizationDeclaration {
                 resource_templates: requirements.resource_templates,
                 prompts: requirements.prompts,
             },
+            uses: document.uses,
         }
     }
 }
@@ -91,6 +100,7 @@ impl From<AuthorizationDeclaration> for AuthorizationDocument {
                 resource_templates: requirements.resource_templates,
                 prompts: requirements.prompts,
             },
+            uses: declaration.uses,
         }
     }
 }
@@ -172,7 +182,30 @@ impl AuthorizationDeclaration {
                 });
             }
         }
+        let mut used = BTreeSet::new();
+        for permission in &self.uses {
+            if permission.is_owned_by(server) {
+                return Err(DeclarationError::UseInsideNamespace {
+                    permission: permission.clone(),
+                });
+            }
+            if !used.insert(permission) {
+                return Err(DeclarationError::DuplicateUse {
+                    permission: permission.clone(),
+                });
+            }
+        }
         Ok(())
+    }
+
+    /// The declared uses in `provider`'s namespace.
+    pub fn uses_of<'a>(
+        &'a self,
+        provider: &'a ServerSlug,
+    ) -> impl Iterator<Item = &'a PermissionName> + 'a {
+        self.uses
+            .iter()
+            .filter(move |permission| permission.is_owned_by(provider))
     }
 
     pub fn permission(&self, name: &PermissionName) -> Option<&PermissionDeclaration> {
@@ -237,6 +270,7 @@ pub struct AuthorizationBuilder<P: PermissionDefinition> {
     resources: BTreeMap<ResourceUri, P>,
     resource_templates: BTreeMap<ResourceTemplateUri, P>,
     prompts: BTreeMap<PromptName, P>,
+    uses: BTreeSet<&'static str>,
     conflict: Option<String>,
 }
 
@@ -247,6 +281,7 @@ impl<P: PermissionDefinition> Default for AuthorizationBuilder<P> {
             resources: BTreeMap::new(),
             resource_templates: BTreeMap::new(),
             prompts: BTreeMap::new(),
+            uses: BTreeSet::new(),
             conflict: None,
         }
     }
@@ -316,6 +351,13 @@ impl<P: PermissionDefinition> AuthorizationBuilder<P> {
         self
     }
 
+    /// Declare that this server calls another server with `permission`, a variant of
+    /// that provider's permission vocabulary, such as one from its `contract` feature.
+    pub fn uses<U: PermissionDefinition>(mut self, permission: U) -> Self {
+        self.uses.insert(permission.as_str());
+        self
+    }
+
     /// Declare every permission in `P` and check the result against the server's
     /// namespace, exactly as the Gateway will.
     pub fn build(
@@ -348,6 +390,15 @@ impl<P: PermissionDefinition> AuthorizationBuilder<P> {
                 resource_templates: permission_names(self.resource_templates)?,
                 prompts: permission_names(self.prompts)?,
             },
+            uses: self
+                .uses
+                .into_iter()
+                .map(|permission| {
+                    PermissionName::parse(permission).map_err(|_| {
+                        DeclarationError::invalid("uses", "invalid permission spelling")
+                    })
+                })
+                .collect::<Result<_, _>>()?,
         };
         declaration.check(server, uri_scheme)?;
         Ok(declaration)

@@ -272,6 +272,7 @@ fn client(endpoint: &url::Url, key: ServerKeyPair, secret: &str) -> Registration
         AuthorizationDeclaration {
             permissions: Vec::new(),
             requirements: Requirements::default(),
+            uses: Vec::new(),
         },
     )
     .unwrap();

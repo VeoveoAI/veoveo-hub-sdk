@@ -206,6 +206,80 @@ fn wire_admission_rejects_unknown_vocabulary() {
     assert!(serde_json::from_value::<AuthorizationDeclaration>(wire).is_err());
 }
 
+/// A provider's permission vocabulary, as its `contract` feature exports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]
+enum MapPermission {
+    #[vocabulary(rename = "map.layers.read")]
+    LayersRead,
+    #[vocabulary(rename = "map.layers.write")]
+    LayersWrite,
+}
+
+impl PermissionDefinition for MapPermission {
+    fn resource(self) -> &'static str {
+        "map.layer"
+    }
+    fn access(self) -> Access {
+        match self {
+            Self::LayersRead => Access::Read,
+            Self::LayersWrite => Access::Write,
+        }
+    }
+}
+
+#[test]
+fn uses_name_other_servers_permissions() {
+    let declaration = AuthorizationBuilder::<ClockPermission>::new()
+        .tool(tool("resolve_time"), ClockPermission::Read)
+        .uses(MapPermission::LayersWrite)
+        .uses(MapPermission::LayersRead)
+        .uses(MapPermission::LayersRead)
+        .build(&slug(), &scheme())
+        .unwrap();
+    let wire = serde_json::to_value(&declaration).unwrap();
+    assert_eq!(wire["uses"], json!(["map.layers.read", "map.layers.write"]));
+    let map = ServerSlug::parse("map").unwrap();
+    assert_eq!(
+        declaration
+            .uses_of(&map)
+            .map(PermissionName::as_str)
+            .collect::<Vec<_>>(),
+        ["map.layers.read", "map.layers.write"]
+    );
+    assert_eq!(
+        declaration
+            .uses_of(&ServerSlug::parse("time").unwrap())
+            .count(),
+        0
+    );
+    // A declaration without uses omits the member, so existing documents stay as
+    // they are.
+    assert!(
+        serde_json::to_value(authorization())
+            .unwrap()
+            .get("uses")
+            .is_none()
+    );
+
+    let mut own = wire.clone();
+    own["uses"] = json!(["clock.read"]);
+    let own: AuthorizationDeclaration = serde_json::from_value(own).unwrap();
+    assert!(matches!(
+        own.check(&slug(), &scheme()),
+        Err(DeclarationError::UseInsideNamespace { .. })
+    ));
+    let mut repeated = wire.clone();
+    repeated["uses"] = json!(["map.layers.read", "map.layers.read"]);
+    let repeated: AuthorizationDeclaration = serde_json::from_value(repeated).unwrap();
+    assert!(matches!(
+        repeated.check(&slug(), &scheme()),
+        Err(DeclarationError::DuplicateUse { .. })
+    ));
+    let mut malformed = wire;
+    malformed["uses"] = json!(["map"]);
+    assert!(serde_json::from_value::<AuthorizationDeclaration>(malformed).is_err());
+}
+
 #[test]
 fn builder_rejects_conflicting_requirements() {
     let result = AuthorizationBuilder::<ClockPermission>::new()

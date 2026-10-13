@@ -25,6 +25,10 @@ pub enum DeclarationError {
     DestructiveToolWithoutRisk { tool: LocalToolName },
     #[error("prompt {prompt} requires a write permission")]
     PromptRequiresWrite { prompt: PromptName },
+    #[error("use of {permission} names the server's own namespace; declare it as a permission")]
+    UseInsideNamespace { permission: PermissionName },
+    #[error("use of {permission} is declared more than once")]
+    DuplicateUse { permission: PermissionName },
     #[error("invalid {field}: {reason}")]
     Invalid {
         field: &'static str,

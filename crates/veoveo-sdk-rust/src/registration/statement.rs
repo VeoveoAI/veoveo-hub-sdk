@@ -222,6 +222,7 @@ mod tests {
             AuthorizationDeclaration {
                 permissions: Vec::new(),
                 requirements: Requirements::default(),
+                uses: Vec::new(),
             },
         )
         .unwrap()

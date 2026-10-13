@@ -72,8 +72,9 @@ credentials, query or fragment.
 
 ### Authorization
 
-The server's permissions and the permission each tool, resource, resource template and
-prompt requires. The registration member `veoveo_authorization` spells it in snake_case:
+The server's permissions, the permission each tool, resource, resource template and
+prompt requires, and the permissions it uses on other servers. The registration member
+`veoveo_authorization` spells it in snake_case:
 
 ```json
 {
@@ -86,7 +87,8 @@ prompt requires. The registration member `veoveo_authorization` spells it in sna
     "tools": { "resolve_time": "time.read", "create_temporal_event": "time.events.write" },
     "resource_templates": { "time://events/{event}": "time.read" },
     "prompts": { "plan_window": "time.read" }
-  }
+  },
+  "uses": ["artifact.artifacts.read"]
 }
 ```
 
@@ -99,6 +101,13 @@ A server builds the declaration from a closed Rust enum that implements
 `PermissionDefinition`, and `AuthorizationBuilder` derives every entry from that enum.
 The same requirement table drives the server's own handler checks.
 
+`uses` lists the permissions of other servers that this server calls with. A call to
+another server carries at most these permissions. `AuthorizationBuilder::uses`
+takes a variant of the provider's own permission enum, which the provider's `contract`
+feature exports, so a consumer names no permission as text. The member is omitted when
+the server calls no other server. A provider need not be registered when the consumer
+registers.
+
 The Gateway rejects a declaration when any of these hold:
 
 - a permission or resource type does not start with the server's slug and a dot;
@@ -108,7 +117,9 @@ The Gateway rejects a declaration when any of these hold:
   match concrete URIs;
 - a prompt requires a `write` permission;
 - a tool annotated `readOnlyHint` requires a `write` permission, or a tool annotated
-  `destructiveHint` requires a permission without the `destructive` risk.
+  `destructiveHint` requires a permission without the `destructive` risk;
+- a use names a permission in the server's own namespace, or names one permission
+  twice.
 
 A target the declaration omits is denied. An exact resource entry takes precedence
 over templates, and a URI matched by templates that require different permissions

@@ -1,4 +1,3 @@
-use crate::identity::ProtectedResourceId;
 mod forwarded;
 mod request;
 pub use forwarded::{
@@ -44,8 +43,6 @@ pub const ACCESS_TOKEN_TYPE: &str = "at+jwt";
 /// Public claim, under a collision-resistant URI name (RFC 7519 §4.2), carrying the
 /// profile, actor, authority and request context.
 pub const INVOCATION_CLAIM: &str = "https://veoveo.ai/claims/invocation";
-/// Public claim of HTTP resource tokens.
-pub const RESOURCE_INVOCATION_CLAIM: &str = "https://veoveo.ai/claims/resource-invocation";
 
 /// Error text for a hosted-server request that arrived without the gateway's
 /// internal identity, forwarded bearer, or authenticated HTTP context.
@@ -354,40 +351,6 @@ impl GatewayInternalTokenIssuer {
             expires_at,
         })
     }
-
-    pub fn issue_resource(
-        &self,
-        protected_resource: ProtectedResourceId,
-        server: ServerSlug,
-        client: OAuthClientId,
-        actor: Principal,
-        authority: InvocationAuthority,
-        expires_at: DateTime<Utc>,
-    ) -> Result<IssuedGatewayInternalResourceToken, InternalTokenError> {
-        ensure_jwt_crypto_provider();
-        let now = Utc::now();
-        if expires_at <= now {
-            return Err(InternalTokenError::ExpiredDelegation);
-        }
-        let jwt_id = fresh_jwt_id()?;
-        let identity = GatewayInternalResourceIdentity {
-            issuer: self.issuer.clone(),
-            protected_resource,
-            server,
-            client,
-            actor,
-            authority,
-            jwt_id,
-            issued_at: now,
-            not_before: now,
-            expires_at,
-        };
-        let bearer_token = self.sign(&ResourceAccessTokenClaims::from_identity(&identity))?;
-        Ok(IssuedGatewayInternalResourceToken {
-            bearer_token,
-            identity,
-        })
-    }
 }
 
 /// What the Gateway forwards for one admitted request.
@@ -406,96 +369,6 @@ pub struct ForwardedRequest {
     pub permissions: BTreeSet<PermissionName>,
     pub request_context: Option<GatewayRequestContext>,
     pub expires_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct GatewayInternalResourceIdentity {
-    pub issuer: TokenIssuer,
-    pub protected_resource: ProtectedResourceId,
-    pub server: ServerSlug,
-    /// The OAuth client the caller used to reach the Gateway.
-    pub client: OAuthClientId,
-    pub actor: Principal,
-    pub authority: InvocationAuthority,
-    pub jwt_id: JwtId,
-    pub issued_at: DateTime<Utc>,
-    pub not_before: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub struct IssuedGatewayInternalResourceToken {
-    pub bearer_token: String,
-    pub identity: GatewayInternalResourceIdentity,
-}
-
-impl fmt::Debug for IssuedGatewayInternalResourceToken {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("IssuedGatewayInternalResourceToken")
-            .field("bearer_token", &"<redacted>")
-            .field("identity", &self.identity)
-            .finish()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct GatewayInternalResourceTokenVerifier {
-    issuer: TokenIssuer,
-    protected_resource: ProtectedResourceId,
-    server: ServerSlug,
-    trust_bundle: GatewayInternalTrustBundle,
-}
-
-impl GatewayInternalResourceTokenVerifier {
-    /// Verify tokens whose `aud` is `protected_resource`, addressed to `server`.
-    pub fn new(
-        issuer: TokenIssuer,
-        protected_resource: ProtectedResourceId,
-        server: ServerSlug,
-        trust_bundle: GatewayInternalTrustBundle,
-    ) -> Self {
-        Self {
-            issuer,
-            protected_resource,
-            server,
-            trust_bundle,
-        }
-    }
-
-    pub fn verify(
-        &self,
-        bearer_token: &str,
-    ) -> Result<GatewayInternalResourceIdentity, InternalTokenError> {
-        let claims: ResourceAccessTokenClaims = decode_access_token(
-            bearer_token,
-            &self.issuer,
-            self.protected_resource.as_str(),
-            &self.trust_bundle,
-        )?;
-        let invocation = claims.invocation;
-        if invocation.server != self.server
-            || invocation.protected_resource.as_str() != claims.standard.aud
-        {
-            return Err(InternalTokenError::AudienceMismatch {
-                expected: self.server.clone(),
-                actual: invocation.server,
-            });
-        }
-        claims.standard.check_actor(&invocation.actor)?;
-        Ok(GatewayInternalResourceIdentity {
-            issuer: claims.standard.iss,
-            protected_resource: invocation.protected_resource,
-            server: invocation.server,
-            client: claims.standard.client_id,
-            actor: invocation.actor,
-            authority: invocation.authority,
-            jwt_id: claims.standard.jti,
-            issued_at: timestamp_to_datetime(claims.standard.iat, "iat")?,
-            not_before: timestamp_to_datetime(claims.standard.nbf, "nbf")?,
-            expires_at: timestamp_to_datetime(claims.standard.exp, "exp")?,
-        })
-    }
 }
 
 /// One server a verifier admits tokens for, and the resource URL its tokens name.
@@ -821,47 +694,6 @@ impl AccessTokenClaims {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct ResourceAccessTokenClaims {
-    #[serde(flatten)]
-    standard: StandardClaims,
-    #[serde(rename = "https://veoveo.ai/claims/resource-invocation")]
-    invocation: ResourceInvocation,
-}
-
-/// The [`RESOURCE_INVOCATION_CLAIM`] of an HTTP resource token.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ResourceInvocation {
-    protected_resource: ProtectedResourceId,
-    server: ServerSlug,
-    actor: Principal,
-    authority: InvocationAuthority,
-}
-
-impl ResourceAccessTokenClaims {
-    fn from_identity(identity: &GatewayInternalResourceIdentity) -> Self {
-        Self {
-            standard: StandardClaims::new(
-                &identity.issuer,
-                &identity.client,
-                &identity.actor,
-                identity.protected_resource.as_str(),
-                &identity.jwt_id,
-                identity.issued_at,
-                identity.not_before,
-                identity.expires_at,
-            ),
-            invocation: ResourceInvocation {
-                protected_resource: identity.protected_resource.clone(),
-                server: identity.server.clone(),
-                actor: identity.actor.clone(),
-                authority: identity.authority.clone(),
-            },
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum InternalTokenError {
     EmptyPrivateKey,
@@ -1158,38 +990,6 @@ pub(crate) mod tests {
                 Err(InternalTokenError::InvalidIssuer)
             ));
         }
-    }
-
-    #[test]
-    fn internal_resource_token_round_trips_without_a_synthetic_profile() {
-        let recordings =
-            ProtectedResourceId::parse("https://veoveo.example/ingest/recordings").unwrap();
-        let issued = issuer()
-            .issue_resource(
-                recordings.clone(),
-                ServerSlug::parse("recording-hub").unwrap(),
-                OAuthClientId::parse(TEST_CLIENT).unwrap(),
-                principal(),
-                authority(),
-                Utc::now() + TimeDelta::minutes(5),
-            )
-            .unwrap();
-        assert!(!format!("{issued:?}").contains(&issued.bearer_token));
-        let verifier = |server: &str| {
-            GatewayInternalResourceTokenVerifier::new(
-                TokenIssuer::parse(TEST_ISSUER).unwrap(),
-                recordings.clone(),
-                ServerSlug::parse(server).unwrap(),
-                trust_bundle(),
-            )
-        };
-        let verified = verifier("recording-hub")
-            .verify(&issued.bearer_token)
-            .unwrap();
-        assert_eq!(verified.protected_resource, recordings);
-        assert_eq!(verified.server.as_str(), "recording-hub");
-        assert_eq!(verified.client.as_str(), TEST_CLIENT);
-        assert!(verifier("media").verify(&issued.bearer_token).is_err());
     }
 
     #[test]

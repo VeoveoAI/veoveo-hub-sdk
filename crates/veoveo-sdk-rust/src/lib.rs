@@ -3,9 +3,11 @@
 //! The `contract` feature holds the declarations and wire types a server and its
 //! consumers share: the forwarded identity, registration and authorization declarations,
 //! the Gateway's client-visible metadata, the embedded document contract and the MCP
-//! audit vocabulary. The default `server` feature adds hosting over rmcp, the
-//! Streamable HTTP transport profile, forwarded-token verification, the registration
-//! client, MCP Apps and the MCP Tasks adapter over core's durable Task runtime.
+//! audit vocabulary. The `client` feature sends typed calls to servers through a Gateway
+//! profile. The default `server` feature adds hosting over rmcp, the Streamable HTTP
+//! transport profile, forwarded-token verification, the registration client, MCP Apps,
+//! the MCP Tasks adapter over core's durable Task runtime and calls to other servers for
+//! the current caller.
 
 /// The Veoveo hosted MCP server contract identifier.
 pub const HOSTED_MCP_CONTRACT: &str = "https://veoveo.ai/contracts/hosted-mcp";
@@ -17,6 +19,9 @@ pub mod gateway;
 pub mod identity;
 pub mod jsonrpc_codes;
 pub mod registration;
+
+#[cfg(feature = "client")]
+pub mod client;
 
 #[cfg(feature = "server")]
 pub mod apps;

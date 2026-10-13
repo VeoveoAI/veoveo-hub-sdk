@@ -470,7 +470,7 @@ impl GatewayInternalResourceTokenVerifier {
         let claims: ResourceAccessTokenClaims = decode_access_token(
             bearer_token,
             &self.issuer,
-            &[self.protected_resource.as_str()],
+            self.protected_resource.as_str(),
             &self.trust_bundle,
         )?;
         let invocation = claims.invocation;
@@ -508,12 +508,12 @@ pub struct TokenAudience {
 #[derive(Debug, Clone)]
 pub struct GatewayInternalTokenVerifier {
     issuer: TokenIssuer,
-    audiences: Vec<TokenAudience>,
+    audience: TokenAudience,
     trust_bundle: GatewayInternalTrustBundle,
 }
 
 impl GatewayInternalTokenVerifier {
-    /// Verify tokens addressed to exactly one server (the common upstream case).
+    /// Verify tokens addressed to one server, at its resource URL.
     pub fn new(
         issuer: TokenIssuer,
         audience: TokenAudience,
@@ -521,7 +521,7 @@ impl GatewayInternalTokenVerifier {
     ) -> Self {
         Self {
             issuer,
-            audiences: vec![audience],
+            audience,
             trust_bundle,
         }
     }
@@ -542,25 +542,6 @@ impl GatewayInternalTokenVerifier {
         ))
     }
 
-    /// Verify tokens addressed to any of `audiences`.
-    ///
-    /// The shared artifact plane uses this: a domain server forwards the
-    /// gateway token it received (addressed to *that* server) on the principal's
-    /// behalf, so the plane must accept the set of known upstream servers rather
-    /// than a single audience. The gateway remains the only minter, so trust is
-    /// unchanged; only which forwarded audiences are honored widens.
-    pub fn new_for_audiences(
-        issuer: TokenIssuer,
-        audiences: Vec<TokenAudience>,
-        trust_bundle: GatewayInternalTrustBundle,
-    ) -> Self {
-        Self {
-            issuer,
-            audiences,
-            trust_bundle,
-        }
-    }
-
     pub fn verify(
         &self,
         bearer_token: &str,
@@ -569,11 +550,11 @@ impl GatewayInternalTokenVerifier {
         self.identity_from_claims(claims)
     }
 
-    /// The same issuer and audiences with other keys.
+    /// The same issuer and audience with other keys.
     pub(crate) fn with_trust_bundle(&self, trust_bundle: GatewayInternalTrustBundle) -> Self {
         Self {
             issuer: self.issuer.clone(),
-            audiences: self.audiences.clone(),
+            audience: self.audience.clone(),
             trust_bundle,
         }
     }
@@ -582,12 +563,12 @@ impl GatewayInternalTokenVerifier {
         &self,
         bearer_token: &str,
     ) -> Result<T, InternalTokenError> {
-        let audiences: Vec<&str> = self
-            .audiences
-            .iter()
-            .map(|audience| audience.resource.as_str())
-            .collect();
-        decode_access_token(bearer_token, &self.issuer, &audiences, &self.trust_bundle)
+        decode_access_token(
+            bearer_token,
+            &self.issuer,
+            self.audience.resource.as_str(),
+            &self.trust_bundle,
+        )
     }
 
     fn identity_from_claims(
@@ -595,18 +576,14 @@ impl GatewayInternalTokenVerifier {
         claims: AccessTokenClaims,
     ) -> Result<GatewayInternalIdentity, InternalTokenError> {
         let server = claims.invocation.server.clone();
-        let Some(audience) = self.audiences.iter().find(|audience| {
-            audience.server == server && audience.resource.as_str() == claims.standard.aud
-        }) else {
+        if self.audience.server != server || self.audience.resource.as_str() != claims.standard.aud
+        {
             return Err(InternalTokenError::AudienceMismatch {
-                expected: self
-                    .audiences
-                    .first()
-                    .map_or_else(|| server.clone(), |audience| audience.server.clone()),
+                expected: self.audience.server.clone(),
                 actual: server,
             });
-        };
-        let audience = audience.resource.clone();
+        }
+        let audience = self.audience.resource.clone();
         let invocation = claims.invocation;
         claims.standard.check_actor(&invocation.actor)?;
         let permissions = match claims.authorization_details.as_slice() {
@@ -655,7 +632,7 @@ impl GatewayInternalTokenVerifier {
 fn decode_access_token<T: serde::de::DeserializeOwned>(
     bearer_token: &str,
     issuer: &TokenIssuer,
-    audiences: &[&str],
+    audience: &str,
     trust_bundle: &GatewayInternalTrustBundle,
 ) -> Result<T, InternalTokenError> {
     ensure_jwt_crypto_provider();
@@ -681,7 +658,7 @@ fn decode_access_token<T: serde::de::DeserializeOwned>(
     validation.validate_nbf = true;
     validation.leeway = 0;
     validation.set_issuer(&[issuer.as_str()]);
-    validation.set_audience(audiences);
+    validation.set_audience(&[audience]);
     validation.set_required_spec_claims(&["exp", "iat", "iss", "aud", "sub", "nbf"]);
     Ok(decode::<T>(bearer_token, &decoding_key, &validation)
         .map_err(InternalTokenError::Jwt)?

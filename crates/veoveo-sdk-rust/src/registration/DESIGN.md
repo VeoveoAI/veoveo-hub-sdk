@@ -40,7 +40,7 @@ Every Veoveo addition uses the extension point of the standard it extends:
 | RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization` |
 | RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_access_tokens`, `veoveo_database` |
 | RFC 9396 authorization details type | `https://veoveo.ai/oauth/permissions` |
-| JWT public claims, RFC 7519 §4.2 collision-resistant names | `https://veoveo.ai/claims/invocation`, `https://veoveo.ai/claims/resource-invocation`, `https://veoveo.ai/claims/artifact-upload` |
+| JWT public claims, RFC 7519 §4.2 collision-resistant names | `https://veoveo.ai/claims/invocation` |
 | MCP `capabilities.extensions` | `ai.veoveo/registration`, `ai.veoveo/authorization` |
 
 Following RFC 7591, a receiver ignores client metadata it does not understand. Each

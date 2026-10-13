@@ -123,7 +123,7 @@ A successful terminal task that creates an addressable product returns one
 top-level `resultUri` in `structuredContent`. The value is the canonical URI
 owned by the producing domain. The adjacent human-readable content is a short,
 identity-free status and contains one resource link for that result. Typed
-provenance and artifact metadata remain in structured content. A task that does
+provenance and product metadata remain in structured content. A task that does
 not create an addressable product omits `resultUri` and does not invent a
 resource identity.
 
@@ -155,7 +155,7 @@ schema-valid domain rejection remains an ordinary tool result with `isError: tru
 Compatibility helpers are allowed only when they are explicit product features
 for clients that cannot use the richer MCP surfaces well. They must be
 additive projections over the canonical protocol behavior and must reuse the
-same typed models, policy checks, audit paths, task state, artifact
+same typed models, policy checks, audit paths, task state, product
 identities, and resource URIs. Hidden fallbacks, alternate completion paths,
 unaudited content URLs, and second sources of truth are prohibited.
 
@@ -231,8 +231,8 @@ also carries the platform audit contract's checked request, trace and span IDs a
 optional source IP address. Reusing a transport
 never supplies another browser family's request context.
 
-Bootstrap fixtures, reconstructed Task owners and upload tokens may omit this field. Omission grants no durable or renewable request authority. A consumer
-that admits renewable Computer access or stores current-policy execution authority
+Bootstrap fixtures and reconstructed Task owners may omit this field. Omission grants no durable or renewable request authority. A consumer
+that admits renewable access or stores current-policy execution authority
 must require this context and perform its own current policy/grant checks. It must
 not infer client identity or family membership from an old Task owner. Accepted
 background work can outlive admission tokens only under its explicit durable

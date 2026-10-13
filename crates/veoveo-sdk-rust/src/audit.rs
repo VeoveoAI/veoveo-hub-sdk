@@ -54,10 +54,14 @@ impl AuditDetailType for Discovery {
 }
 
 /// A tool call was admitted or refused before it reached its server: class
-/// `mcp.tool_admission`.
+/// `mcp.tool_admission`. `acting_server` names the server that made the call for the
+/// caller, when another server made it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct ToolAdmission {}
+pub struct ToolAdmission {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_server: Option<ServerSlug>,
+}
 impl AuditDetailType for ToolAdmission {
     const CLASS: &'static str = "mcp.tool_admission";
 }
@@ -69,6 +73,8 @@ pub struct ToolCompletion {
     pub result: ToolResultKind,
     pub duration_ms: u64,
     pub error_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_server: Option<ServerSlug>,
 }
 impl AuditDetailType for ToolCompletion {
     const CLASS: &'static str = "mcp.tool_completion";
@@ -415,9 +421,17 @@ mod tests {
                 result: ToolResultKind::Complete,
                 duration_ms: 12,
                 error_code: None,
+                acting_server: None,
             })
             .unwrap();
         assert_eq!(detail.class().as_str(), "mcp.tool_completion");
+        // A call another server made names that server.
+        let delegated = registry
+            .detail(&ToolAdmission {
+                acting_server: Some(ServerSlug::parse("media").unwrap()),
+            })
+            .unwrap();
+        assert_eq!(delegated.class().as_str(), "mcp.tool_admission");
     }
 
     #[test]

@@ -1,36 +1,26 @@
 # Agent Instructions
 
-These rules apply to this repository and to component repositories created from it.
+These rules apply to veoveo-sdk-rust.
 
-- Use upstream runtimes such as OpenShell and PostgreSQL unmodified. Adapt through
-  supported configuration.
+- Use upstream runtimes and libraries unmodified and adapt through supported
+  configuration. The rmcp fork pin in `Cargo.toml` records why it exists and when it
+  goes.
+- Every name, identifier, format, wire field and protocol element follows a published
+  standard, [veoveo-core's conventions](https://github.com/VeoveoAI/veoveo-core/blob/7a6c210ff1f9ee9f5150c0a5d101afeb98d659da/docs/CONVENTIONS.md) or this repository's
+  [MCP conventions](docs/CONVENTIONS.md). Extend a standard only through its own
+  extension mechanism.
 - Prefer strong types: typed structs, enums and domain identifiers over raw strings and
   JSON wherever the shape is known.
-- The server owns one PostgreSQL schema named after its slug and applies the crate's
-  `migrations/` there at startup. Never edit an applied migration; add a new one.
-- Every SQL statement is a `.sql` file beside the code that runs it, run through sqlx's
-  checked `query_file*!` macros. Builds read the committed `.sqlx` metadata, because
-  `.cargo/config.toml` sets `SQLX_OFFLINE`. After changing a query or a migration,
-  regenerate the metadata from an empty target directory.
-- Statements and tables follow the server schema rules of veoveo-core's
-  [database design](https://github.com/VeoveoAI/veoveo-core/blob/435fc1a90d5761f6dca2af05f4cadde324b72428/docs/DATABASE.md),
-  which `tests/database_conformance.rs` checks. A statement binds its tenant, bounds its
-  rows and reaches them through an index in a generic plan. A table has a primary key,
-  an index whose leading columns are each foreign key's, and a
-  `COMMENT ON TABLE … IS 'Retention: …'`. A statement that cannot comply carries a
-  `-- veoveo:` marker that states its reason.
-- Page a listing with core's `PageSize` and a `KeysetCursor` from a `CursorScope`
-  bound to the listing and the tenant, with one statement for the first page and one
-  for the pages after a cursor. Do not write a `$cursor IS NULL OR …` predicate, which
-  loses the index seek in a cached generic plan.
+- The SDK names no specific server or domain. Server-owned scopes, resources, Tasks,
+  audit classes and tests belong in the server's repository.
+- The `contract` feature carries declarations and wire types only.
+  `tests/contract_boundary.rs` fails when it pulls in rmcp, tokio, axum, reqwest or sqlx;
+  gate the dependencies themselves, not only the modules.
+- `crates/veoveo-sdk-rust/src/hosting` and `crates/veoveo-sdk-rust/src/durable_tasks` are
+  protected: changes to them need the repository owner's review.
 - Keep test logic in Rust and tool behavior in each tool's own configuration. Do not add
   a task runner or shell scripts that hold test logic.
-- Pin exact versions and image digests. When changing a pin, verify the latest stable
-  release at its source.
+- Pin exact versions. When changing a pin, verify the latest stable release at its
+  source. veoveo-core is pinned to one revision for every core crate.
 - Run `docker build --target check .` on macOS and on Linux before pushing.
-- Names, identifiers and formats follow the
-  [naming and format conventions](https://github.com/VeoveoAI/veoveo-core/blob/main/docs/CONVENTIONS.md).
-  Where a standard governs a name or format, follow it; extend a standard only through
-  its own extension mechanism. URIs, paths and identifiers carry no version segment such
-  as `/v1`; releases carry versions.
 - Commit small, coherent changes. Commits carry no AI or tool attribution.

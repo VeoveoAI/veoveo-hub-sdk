@@ -466,17 +466,108 @@ mod product_results {
                 .header("authorization", "Bearer synthetic-trace-header-token")
                 .header("cookie", "fixture=synthetic-trace-cookie")
                 .body(axum::body::Body::empty()).unwrap();
-            let expected_path = request.uri().path().to_owned();
+            let expected_route = request.uri().path().to_owned();
             let (status, body) = gateway.send(request).with_subscriber(subscriber).await;
             assert_eq!(status.as_u16(), 200);
             assert_eq!(body, query, "the route must receive the original query");
             let trace = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
             assert!(trace.contains("method=GET"), "missing request method");
-            assert!(trace.contains(&expected_path), "missing request path");
+            assert!(trace.contains(&format!("http.route={expected_route}")), "missing the matched route");
             assert!(trace.contains("version=HTTP/1.1"), "missing request version");
             let forbidden = ["veoveo_trace_query_sentinel", "veoveo_trace_query_value", "access_token", "synthetic-trace-query-token", "synthetic-trace-signature", "synthetic-trace-header-token", "synthetic-trace-cookie"]
                 .into_iter().filter(|value| trace.contains(value)).collect::<Vec<_>>();
             assert!(forbidden.is_empty(), "Request trace contains synthetic query/credential sentinels: {forbidden:?}");
         }).await.expect("Gateway trace query control exceeded twenty seconds");
+    }
+
+    /// A route whose path carries a secret, such as a share link's token, records its
+    /// template, never the segment; a request that matches no route records neither its
+    /// path nor its query.
+    #[tokio::test]
+    async fn request_spans_record_the_route_template_never_a_secret_path_segment() {
+        use std::{
+            io::Write,
+            sync::{Arc, Mutex},
+        };
+        use tracing::instrument::WithSubscriber;
+        struct TraceWriter(Arc<Mutex<Vec<u8>>>);
+        impl Write for TraceWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .without_time()
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+            .with_writer(move || TraceWriter(writer.clone()))
+            .finish();
+        let gateway = TestGateway::new(
+            testing::for_domain::<ProductDomain>()
+                .handler(|| {
+                    Hosted::new(ProductDomain {
+                        router: ProductDomain::tool_router(),
+                    })
+                })
+                .public_routes(
+                    axum::Router::new()
+                        .route("/shares/{token}", axum::routing::get(|| async { "shared" })),
+                )
+                .build(),
+        );
+        let secret = "synthetic-share-token-sentinel";
+        let shared = gateway
+            .request(&format!(
+                "/shares/{secret}?signature=synthetic-share-query-sentinel"
+            ))
+            .method("GET")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let template = format!(
+            "{}/shares/{{token}}",
+            shared
+                .uri()
+                .path()
+                .trim_end_matches(&format!("/shares/{secret}"))
+        );
+        let unmatched = gateway
+            .request("/no-such-route/synthetic-unmatched-sentinel?q=synthetic-unmatched-query")
+            .method("GET")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let (status, body) = async {
+            let shared = gateway.send(shared).await;
+            assert_eq!(gateway.send(unmatched).await.0.as_u16(), 404);
+            shared
+        }
+        .with_subscriber(subscriber)
+        .await;
+        assert_eq!((status.as_u16(), body.as_str()), (200, "shared"));
+        let trace = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+        assert!(
+            trace.contains(&format!("http.route={template}")),
+            "the span lacks the route template {template}: {trace}"
+        );
+        assert!(trace.contains("http.route=unmatched"), "{trace}");
+        let leaked: Vec<&str> = [
+            secret,
+            "synthetic-share-query-sentinel",
+            "synthetic-unmatched-sentinel",
+            "synthetic-unmatched-query",
+        ]
+        .into_iter()
+        .filter(|sentinel| trace.contains(sentinel))
+        .collect();
+        assert!(
+            leaked.is_empty(),
+            "request spans recorded {leaked:?}: {trace}"
+        );
     }
 }

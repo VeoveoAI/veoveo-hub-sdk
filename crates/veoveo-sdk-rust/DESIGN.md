@@ -326,6 +326,11 @@ the blocking client explicitly. Cargo feature unification must not switch that
 client to one requiring an ambient Tokio reactor. Standard per-signal and global
 OTLP timeouts remain in milliseconds, with the upstream ten-second default.
 
+Each request's span records its method, protocol version and `http.route`, the route
+template the request matched, such as `/artifact/shares/{token}`, or `unmatched`. The
+request's path and query never enter spans, logs or OpenTelemetry attributes, because a
+path segment or a query parameter can be a secret, such as a share link's token.
+
 A hosted server owns its domain models and declared schemas and consumes the
 shared mechanics of `veoveo-sdk-rust` rather than reimplementing them: the
 task runtime adapter, resource subscriptions, URI conventions, Work Context

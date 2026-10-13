@@ -81,7 +81,7 @@ use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 use crate::registration::AccessTokenTrust;
 use axum::{
     Router,
-    extract::{Request, State},
+    extract::{MatchedPath, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -528,16 +528,7 @@ where
                 },
                 host::validate_host,
             ))
-            .layer(
-                TraceLayer::new_for_http().make_span_with(|request: &Request| {
-                    tracing::info_span!(
-                        "request",
-                        method = %request.method(),
-                        path = request.uri().path(),
-                        version = ?request.version(),
-                    )
-                }),
-            );
+            .layer(TraceLayer::new_for_http().make_span_with(request_span));
         HostedServer {
             router,
             slug,
@@ -545,6 +536,28 @@ where
             cancel,
         }
     }
+}
+
+/// The route a request that matched none records.
+const UNMATCHED_ROUTE: &str = "unmatched";
+
+/// The span of one request: its method, protocol version and the route template it
+/// matched, such as `/artifact/shares/{token}`. The request's path and query never enter
+/// the span, its events or its OpenTelemetry attributes, because a path segment or a
+/// query parameter can be a secret, such as a share link's token. `Router::layer` runs
+/// after routing, so the template is known; a request that matched no route records
+/// [`UNMATCHED_ROUTE`].
+fn request_span(request: &Request) -> tracing::Span {
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map_or(UNMATCHED_ROUTE, MatchedPath::as_str);
+    tracing::info_span!(
+        "request",
+        method = %request.method(),
+        http.route = %route,
+        version = ?request.version(),
+    )
 }
 
 /// Answers 504 when the response has not started within `timeout`.

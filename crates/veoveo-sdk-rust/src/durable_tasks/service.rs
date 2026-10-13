@@ -178,10 +178,19 @@ pub async fn get_durable_task(
     request: GetTaskParams,
 ) -> Result<GetTaskResult, McpError> {
     let snapshot = authorized_snapshot(query, &request.task_id).await?;
-    project_snapshot(runtime, snapshot)
+    let usage = crate::usage::task_usage_meta(runtime, &snapshot)
+        .await
+        .map_err(task_error)?;
+    let mut result = project_snapshot(runtime, snapshot)
         .await
         .map(GetTaskResult::new)
-        .map_err(task_error)
+        .map_err(task_error)?;
+    if let Some(usage) = usage {
+        let mut meta = rmcp::model::MetaObject::new();
+        meta.insert(crate::usage::TASK_USAGE_META_KEY.to_owned(), usage);
+        result.meta = Some(meta);
+    }
+    Ok(result)
 }
 
 pub async fn update_durable_task(

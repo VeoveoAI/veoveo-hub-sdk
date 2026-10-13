@@ -31,6 +31,11 @@ pub async fn project_snapshot(
     snapshot: TaskSnapshot,
 ) -> Result<DetailedTask, TaskError> {
     let mut task = task_seed(&snapshot);
+    // A completed result carries the Task's cost in its `_meta`.
+    let usage = match snapshot.status {
+        TaskStatus::Succeeded => crate::usage::task_usage_meta(runtime, &snapshot).await?,
+        _ => None,
+    };
     let payload = match snapshot.status {
         TaskStatus::Queued | TaskStatus::Running | TaskStatus::CancelRequested => {
             TaskPayload::Working
@@ -71,6 +76,15 @@ pub async fn project_snapshot(
                     ));
                 }
             };
+            let mut result = result;
+            if let Some(usage) = usage {
+                let meta = result
+                    .entry("_meta")
+                    .or_insert_with(|| Value::Object(JsonObject::new()));
+                if let Value::Object(meta) = meta {
+                    meta.insert(crate::usage::TASK_USAGE_META_KEY.to_owned(), usage);
+                }
+            }
             TaskPayload::Completed { result }
         }
         TaskStatus::Failed => {

@@ -3,7 +3,8 @@
 //!
 //! The context runs durable steps (`ctx.step`), records and dispatches operations that
 //! hand work to a provider (`ctx.operation(..).dispatch(..)`), waits for their outcomes
-//! (`ctx.wait`) and calls other servers for the Task's caller (`ctx.client()`). A Task that waits on an operation parks: the wait
+//! (`ctx.wait`), calls other servers for the Task's caller (`ctx.client()`) and records
+//! the Task's usage (`ctx.usage()`). A Task that waits on an operation parks: the wait
 //! fails with [`TaskError::Parked`], the handler propagates it, and the worker releases
 //! the Task without settling it. A provider event, a due status check or the deadline
 //! queues the Task again, and the handler runs from its start: finished steps and
@@ -23,6 +24,7 @@ use veoveo_types::{ServerSlug, TaskId};
 use crate::{
     client::{CallError, GatewayClient},
     hosting::ServerCalls,
+    usage::{TaskUsageRecorder, UsageLedger, UsageRecordError},
 };
 
 /// Where a hosted server's operation callbacks are reachable: its public base URL. A
@@ -130,17 +132,23 @@ struct ContextInner {
     snapshot: TaskSnapshot,
     calls: Option<ServerCalls>,
     callbacks: Option<CallbackUrls>,
+    usage: Option<TaskUsageRecorder>,
     cancellation: CancellationToken,
 }
 
 impl TaskContext {
     fn new(worker: &WorkerParts, snapshot: TaskSnapshot, cancellation: CancellationToken) -> Self {
+        let usage = worker
+            .usage
+            .as_ref()
+            .map(|ledger| ledger.for_task(&snapshot));
         Self {
             inner: Arc::new(ContextInner {
                 runtime: worker.runtime.clone(),
                 snapshot,
                 calls: worker.calls.clone(),
                 callbacks: worker.callbacks.clone(),
+                usage,
                 cancellation,
             }),
         }
@@ -211,6 +219,11 @@ impl TaskContext {
             .as_ref()
             .ok_or(TaskClientError::NoCalls)?
             .for_task(&self.inner.snapshot)?)
+    }
+
+    /// The Task's usage records, for the caller it runs for.
+    pub fn usage(&self) -> Result<&TaskUsageRecorder, UsageRecordError> {
+        self.inner.usage.as_ref().ok_or(UsageRecordError::NoLedger)
     }
 
     /// The audit request of work in this Task: a background request that names it.
@@ -300,6 +313,7 @@ struct WorkerParts {
     runtime: TaskRuntime,
     calls: Option<ServerCalls>,
     callbacks: Option<CallbackUrls>,
+    usage: Option<UsageLedger>,
 }
 
 /// Claims a server's Tasks and runs a handler for each.
@@ -314,6 +328,7 @@ impl TaskWorker {
                 runtime,
                 calls: None,
                 callbacks: None,
+                usage: None,
             },
         }
     }
@@ -327,6 +342,12 @@ impl TaskWorker {
     /// The server's public base, for the callback URLs of its operations.
     pub fn callbacks(mut self, callbacks: CallbackUrls) -> Self {
         self.parts.callbacks = Some(callbacks);
+        self
+    }
+
+    /// The usage ledger, for `ctx.usage()`.
+    pub fn usage(mut self, usage: UsageLedger) -> Self {
+        self.parts.usage = Some(usage);
         self
     }
 

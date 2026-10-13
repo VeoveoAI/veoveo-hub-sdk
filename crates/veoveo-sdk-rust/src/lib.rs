@@ -19,6 +19,7 @@ pub mod gateway;
 pub mod identity;
 pub mod jsonrpc_codes;
 pub mod registration;
+pub mod usage;
 
 #[cfg(feature = "client")]
 pub mod client;

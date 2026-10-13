@@ -31,6 +31,18 @@ The fixture has no external services, persistent data, or GPU work. Tests enforc
 conformance checks the advertised resource and template surfaces and their well-known
 documents. Domain cases check typed exact reads and rejected grants separately.
 
+## Calls Fixture
+
+Ledger and Relay are two more hosted servers for calls between servers. Ledger's
+`calls` contract, in the `contract` feature, publishes its permissions and the typed
+requests of `inspect`, `read_seal` and `tally`, a tool that runs as a Task kept in
+memory. Each tool answers with the forwarded identity it received: the caller, the
+OAuth client, the acting server and the permissions. Relay declares Ledger's two
+permissions in `uses` and calls Ledger through `ctx.client()`, inline and through
+Ledger's Task. With core's Task runtime it also runs `relay_later` as a durable Task
+whose worker calls Ledger for the Task's caller. The SDK's mesh tests and the Gateway's
+integration tests use both.
+
 The `tool_inputs` module needs only Serde. A server's tests load its own cases and
 check required members, defaults, open objects, typed dictionaries and rejected
 controls against the server's generated input schemas.

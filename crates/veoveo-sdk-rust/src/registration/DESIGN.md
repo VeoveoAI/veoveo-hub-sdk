@@ -8,27 +8,28 @@ checks them again. Neither the Gateway nor the installation configuration names 
 server, so every server enters the catalog through this protocol.
 
 The `registration` module of `veoveo-sdk-rust` holds the typed declarations, the OAuth
-request and response types, the software statement, the granted-permissions detail and
-the registration client that servers run. The `internal_auth` module issues and
-verifies the forwarded access token, described under
-[Forwarded Identity](#forwarded-identity).
+request and response types, the software statement, the client assertion, the
+granted-permissions detail and the registration client that servers run. The
+`internal_auth` module issues and verifies the forwarded access token, described under
+[Forwarded Identity](#forwarded-identity), and the token a server exchanges to call
+other servers, described under [Calls Between Servers](#calls-between-servers).
 
 ## Standards And Protocols
 
 | Standard | Profile |
 |---|---|
-| OAuth 2.0 Dynamic Client Registration, RFC 7591 | Registration request and response. The installation's registration secret is the initial access token. A server registers `jwks`, `token_endpoint_auth_method` `private_key_jwt`, empty `grant_types` and `response_types`, its slug as `software_id`, its build as `software_version`, a `software_statement` it signs itself, and Veoveo members for its declarations. Errors use the §3.2.2 codes. |
+| OAuth 2.0 Dynamic Client Registration, RFC 7591 | Registration request and response. The installation's registration secret is the initial access token. A server registers `jwks`, `token_endpoint_auth_method` `private_key_jwt`, `grant_types` holding only `urn:ietf:params:oauth:grant-type:token-exchange` when it declares uses and empty otherwise, empty `response_types`, its slug as `software_id`, its build as `software_version`, a `software_statement` it signs itself, and Veoveo members for its declarations. Errors use the §3.2.2 codes. |
 | OAuth 2.0 Dynamic Client Registration Management, RFC 7592 | Read (`GET`), update (`PUT`) and delete (`DELETE`) at `registration_client_uri` with the registration access token. An update replaces the registered metadata. |
 | OAuth 2.0, RFC 6749 §8.2 | Registration members without a standard equivalent take the `veoveo_` vendor prefix in snake_case. |
 | Bearer tokens, RFC 6750 | Initial access token, registration access token and forwarded access token travel in `Authorization: Bearer`. Every 401 carries `WWW-Authenticate: Bearer`, with `error="invalid_token"` once a token was sent. |
 | JWT, RFC 7519, with JWS, RFC 7515, and EdDSA over Ed25519, RFC 8037 | Software statements and forwarded access tokens. `alg` is `EdDSA`; no other algorithm verifies. Times in OAuth documents are NumericDate seconds. |
 | JWK and JWK Set, RFC 7517, and JWK Thumbprint, RFC 7638 | Ed25519 `OKP` keys with `kid`, `alg: EdDSA` and `use: sig`. Every `kid`, a server's or the Gateway's, is the key's RFC 7638 thumbprint. |
-| JWT assertions, RFC 7523 §3 | Claim rules for the software statement: `iss` and `sub` name the server, `aud` is the URL the request is sent to, `jti` is a UUIDv7, and the lifetime is at most 60 seconds. |
+| JWT assertions, RFC 7523 §3 | Claim rules for the software statement: `iss` and `sub` name the server, `aud` is the URL the request is sent to, `jti` is a UUIDv7, and the lifetime is at most 60 seconds. The client assertion of a token exchange (§2.2) follows the same rules with `iss` and `sub` naming the registration's client identifier and `aud` the token endpoint. |
 | JWT access tokens, RFC 9068 | The forwarded identity: `typ: at+jwt`, `iss` is the Gateway's HTTPS issuer URL, `aud` is the target server's resource URL, `client_id` names the OAuth client the caller used, `jti` is a UUIDv7, and `scope`, `groups` and `roles` restate the caller. A server, as resource server, takes the verification keys from the issuer's metadata `jwks_uri` as §4 describes. |
 | Resource indicators, RFC 8707 | A forwarded token's `aud` is an absolute URL: the target server's registered MCP endpoint. |
-| OAuth 2.0 Token Exchange, RFC 8693 §4.1 | The `act` claim of a forwarded token names the Gateway as the party acting for the caller. Nested actor chains are refused. |
-| Rich Authorization Requests, RFC 9396 | `authorization_details` carries one entry of type `https://veoveo.ai/oauth/permissions` whose `actions` are the granted permissions. |
-| Authorization server metadata, RFC 8414 | A server reads `issuer`, `registration_endpoint` and `jwks_uri` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`, and the JWK Set at `jwks_uri` holds the keys that verify them. |
+| OAuth 2.0 Token Exchange, RFC 8693 | A server calls other servers with the §2.1 grant, presenting the forwarded token it received or one of its Tasks as the subject, the profile's MCP endpoint as `resource` and its client assertion; `actor_token`, `audience`, `scope` and `requested_token_type` are not used. The `act` claim (§4.1) of a forwarded token names the Gateway as the party acting for the caller, with at most one prior actor: the calling server. |
+| Rich Authorization Requests, RFC 9396 | `authorization_details` carries one entry of type `https://veoveo.ai/oauth/permissions` whose `actions` are the granted permissions, in forwarded and exchanged tokens. A token exchange requests permissions in the same form (§6.2), and its response returns the granted entry (§7). |
+| Authorization server metadata, RFC 8414 | A server reads `issuer`, `registration_endpoint`, `token_endpoint` and `jwks_uri` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`, and the JWK Set at `jwks_uri` holds the keys that verify them. |
 | MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
 | JSON Schema 2020-12 | Schemas for every request, response and declaration are generated from the Rust types by Schemars 1.2. |
 | PostgreSQL connection URIs and role names | `veoveo_database` names the installation database as a `postgres://` URL and the server's login as an unquoted PostgreSQL role name. The [database design](https://github.com/VeoveoAI/veoveo-core/blob/f685fbfd3d28a477d35f77cee3feacc8787772ac/docs/DATABASE.md) describes the roles and schemas. |
@@ -40,6 +41,7 @@ Every Veoveo addition uses the extension point of the standard it extends:
 | RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization` |
 | RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_access_tokens`, `veoveo_database` |
 | RFC 9396 authorization details type | `https://veoveo.ai/oauth/permissions` |
+| RFC 8693 token type URI | `https://veoveo.ai/token-types/task` |
 | JWT public claims, RFC 7519 §4.2 collision-resistant names | `https://veoveo.ai/claims/invocation` |
 | MCP `capabilities.extensions` | `ai.veoveo/registration`, `ai.veoveo/authorization` |
 
@@ -412,6 +414,70 @@ defect, such as a known key with a bad signature, never causes a fetch. The Gate
 publishes a new key before it signs with it and keeps a retired key in the set until
 the tokens it signed expire.
 
+## Calls Between Servers
+
+A server calls another server's tools through the Gateway for its own caller. It
+declares the permissions it calls with in `uses`, exchanges a token for each call, and
+sends the call to the profile the caller reached it through.
+
+```text
+caller -> Gateway -> media            forwarded token, aud media
+media  -> Gateway /oauth/token        token exchange: subject, resource, permissions
+media  -> Gateway /mcp/{profile}      exchanged token, aud the profile
+Gateway -> artifact                   delegated forwarded token, act gateway, then media
+```
+
+The exchange is one RFC 8693 request to the Gateway's `token_endpoint`:
+
+| Parameter | Value |
+|---|---|
+| `grant_type` | `urn:ietf:params:oauth:grant-type:token-exchange` |
+| `client_id`, `client_assertion_type`, `client_assertion` | The registration's client identifier and an RFC 7523 assertion signed with the server's pinned key |
+| `subject_token`, `subject_token_type` | The forwarded token the server received for the current call, as `urn:ietf:params:oauth:token-type:access_token`; or the identifier of one of the server's own Tasks, as `https://veoveo.ai/token-types/task` |
+| `resource` | The profile's MCP endpoint, `{issuer}/mcp/{profile}`, of the profile the subject came through |
+| `authorization_details` | Optional: one `https://veoveo.ai/oauth/permissions` entry naming declared uses in one provider's namespace; without it the request names every declared use |
+
+A forwarded token is a subject only for the server it was addressed to, and only when
+no other server made that call: an exchanged identity is never exchanged again. A Task
+is a subject while it runs, if the call that created it came through the Gateway. The
+Gateway records each such Task when the call that created it returns, so a Task that
+calls another server at once may reach the Gateway first; the SDK repeats a Task's
+exchange that the Gateway refuses as an invalid grant for up to two seconds.
+
+The issued token is an RFC 9068 access token for the profile: `iss` is the Gateway's
+issuer, `aud` the profile's MCP endpoint, `sub` the caller, and `client_id` and `act`
+the calling server's registration. Its invocation claim holds the caller as the
+Gateway authenticated it, with the request context, the acting server's slug and, for
+a Task subject, the Task. It carries the requested permissions that the server
+declared and the caller holds when the Gateway issues it. It lives no longer than the
+subject token, and at most five minutes for a Task, whose delegation ends when the
+Task ends even if the token has not expired. The response is the RFC 8693 §2.2.1
+document with `issued_token_type` `urn:ietf:params:oauth:token-type:access_token`,
+`token_type` `Bearer`, `expires_in` and the granted `authorization_details`.
+
+| Refusal | `error` |
+|---|---|
+| A malformed request or a missing subject | `invalid_request` |
+| No registration, or an assertion that does not verify or is replayed | `invalid_client` |
+| A registration without the token exchange grant | `unauthorized_client` |
+| A subject that is another server's, delegated, expired or an ended Task | `invalid_grant` |
+| A `resource` that is not the subject's profile, or a permission no registered server provides, named in `error_description` | `invalid_target` |
+| A requested permission the server did not declare in `uses` | `invalid_authorization_details` |
+
+At the profile the Gateway admits the exchanged token itself, whatever authorization
+servers the profile names. The permissions of each call are the caller's role-granted
+permissions in the target's namespace narrowed to the token's, and the target receives
+the [delegated forwarded token](#forwarded-identity).
+
+`ServerCalls` holds what a server calls with: its client identifier, key, `uses` and
+the token endpoint, which `ServerCalls::discover` reads from the issuer's metadata.
+`HostedServerBuilder::calls` gives it to the handlers, where `ctx.client()` through
+`ClientContext` returns a `GatewayClient` bound to the request's caller, and
+`ServerCalls::for_task` returns one bound to a Task. A `GatewayClient` exchanges a token
+on its first call to a provider, caches it per binding and provider until five seconds
+before it expires, and replaces a token the Gateway stops admitting once. The client
+API is described in the [crate design](../../DESIGN.md#calls-to-other-servers).
+
 ## Registration Client
 
 The `client` feature provides the client every server runs:
@@ -444,15 +510,10 @@ rustls crypto provider before reaching the Gateway over HTTPS.
 
 ## Crate Features
 
-| Feature | Adds |
+| Feature of `veoveo-sdk-rust` | Adds to this module |
 |---|---|
-| none (`contract`) | Declarations, the OAuth request and response types, `PermissionsDetail`, JWK types and their schemas |
-| `signing` | `ServerKeyPair` and the software statement, on AWS-LC |
-| `client` | `KeyDirectory` and `RegistrationClient`, on reqwest |
-| `mcp` | Advertising and reading the declarations in MCP capabilities, and the tool annotation check |
-
-Defaults select `mcp`, `signing` and `client`. The workspace depends on the crate with
-default features disabled, and each consumer selects what it uses.
+| `contract` | Declarations, the OAuth request and response types, the token exchange wire types, `PermissionsDetail`, JWK types and their schemas |
+| `server` | `ServerKeyPair`, the software statement and client assertion on AWS-LC, `KeyDirectory` and `RegistrationClient` on reqwest, and advertising and reading the declarations in MCP capabilities with the tool annotation check |
 
 ## Qualification
 

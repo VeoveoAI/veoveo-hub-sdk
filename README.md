@@ -11,17 +11,18 @@ which holds the protocol-independent platform, and on rmcp, the official MCP Rus
 
 | Crate | Purpose |
 |---|---|
-| `veoveo-sdk-rust` | The library: the [hosted MCP server contract](crates/veoveo-sdk-rust/DESIGN.md), hosting, forwarded identity, [registration](crates/veoveo-sdk-rust/src/registration/DESIGN.md), [MCP Apps](crates/veoveo-sdk-rust/src/apps/DESIGN.md), the MCP Tasks adapter and the MCP audit vocabulary |
+| `veoveo-sdk-rust` | The library: the [hosted MCP server contract](crates/veoveo-sdk-rust/DESIGN.md), hosting, forwarded identity, [registration](crates/veoveo-sdk-rust/src/registration/DESIGN.md), [calls to other servers](crates/veoveo-sdk-rust/DESIGN.md#calls-to-other-servers), [MCP Apps](crates/veoveo-sdk-rust/src/apps/DESIGN.md), the MCP Tasks adapter and the MCP audit vocabulary |
 | `veoveo-sdk-rust-conformance` | The [conformance suite](crates/veoveo-sdk-rust-conformance/DESIGN.md) and its `conformance` and `certify` binaries, which certify a running server over MCP |
-| `veoveo-sdk-rust-fixture` | The [Observatory test server](crates/veoveo-sdk-rust-fixture/DESIGN.md) and the tool-input fixtures servers use in their tests |
+| `veoveo-sdk-rust-fixture` | The [Observatory test server](crates/veoveo-sdk-rust-fixture/DESIGN.md), Ledger and Relay for calls between servers, and the tool-input fixtures servers use in their tests |
 
 ## Features
 
 | Feature of `veoveo-sdk-rust` | Gives | Pulls in |
 |---|---|---|
-| `contract` | Declarations and wire types a server shares with its consumers: identity, registration and authorization declarations, Gateway metadata, document and compliance declarations, MCP audit details | veoveo-types, the audit envelope, Serde and Schemars |
-| `server` (default) | Everything a hosted server runs | rmcp, tokio, axum, reqwest and core's Task runtime |
-| `testing` | `server` plus an in-process Gateway for server tests | tower |
+| `contract` | Declarations and wire types a server shares with its consumers: identity, registration and authorization declarations, typed tool calls, the token exchange, Gateway metadata, document and compliance declarations, MCP audit details | veoveo-types, the audit envelope, Serde and Schemars |
+| `client` | Typed calls and Task handles through a Gateway profile | rmcp's client, tokio and reqwest |
+| `server` (default) | Everything a hosted server runs, including `ctx.client()` calls to other servers for the current caller | rmcp, tokio, axum, reqwest and core's Task runtime |
+| `testing` | `server` plus an in-process Gateway and a mesh of in-process servers for server tests | tower |
 
 A server's own `contract` feature depends on this crate's `contract` feature, so a
 consumer of the server's types never compiles the runtime.

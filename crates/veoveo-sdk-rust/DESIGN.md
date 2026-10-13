@@ -25,7 +25,8 @@ crate documents and in its contract resource.
 | RFC 6570 URI Templates | checked MCP setup uses the foundational ASCII-template profile and the iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
 | OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, update and remove themselves through the profile in [the server registration protocol](src/registration/DESIGN.md) |
-| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `iss` is the Gateway's issuer URL, `aud` the server's resource URL (RFC 8707), `client_id` the caller's OAuth client and `jti` a UUIDv7, with the Gateway in the RFC 8693 `act` claim, granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail, and the actor, authority and request context in the `https://veoveo.ai/claims/invocation` claim; a hosted server verifies it with its registration's keys and refreshes them from the issuer's RFC 8414 `jwks_uri` when a token names an unknown key; specified in [the server registration protocol](src/registration/DESIGN.md#forwarded-identity) |
+| JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `iss` is the Gateway's issuer URL, `aud` the server's resource URL (RFC 8707), `client_id` the caller's OAuth client and `jti` a UUIDv7, with the Gateway in the RFC 8693 `act` claim and the calling server as its prior actor when another server made the call, granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail, and the actor, authority and request context in the `https://veoveo.ai/claims/invocation` claim; a hosted server verifies it with its registration's keys and refreshes them from the issuer's RFC 8414 `jwks_uri` when a token names an unknown key; specified in [the server registration protocol](src/registration/DESIGN.md#forwarded-identity) |
+| OAuth 2.0 Token Exchange, RFC 8693 | calls from a server to other servers for its caller: the profile of [calls between servers](src/registration/DESIGN.md#calls-between-servers), sent by `GatewayClient` over MCP Streamable HTTP to the Gateway profile's endpoint |
 | Veoveo access-token `session_family` | signed UUIDv7 refresh-family binding for browser tokens; the Gateway enforces current family revocation, and absence supplies no renewable session authority |
 | Veoveo `request_context` | signed source principal, verified access-token metadata and required audit request correlation, including the OAuth client and optional session family; it contains no bearer value and grants no independent renewal permission |
 | MCP Apps, SEP-1865 | `ui://` App resources and tool links, specified in [MCP Apps](src/apps/DESIGN.md) |
@@ -92,12 +93,10 @@ declaration consistency; hosted conformance and domain tests establish behavior.
 
 | Feature | Contains | Excludes |
 |---|---|---|
-| `contract` | the forwarded identity types, registration and authorization declarations, the Gateway's client-visible metadata, the document and compliance declarations and the MCP audit vocabulary | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
-| `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, MCP Apps, telemetry and the MCP Tasks adapter over core's durable Task runtime | |
-| `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests | |
-
-The name `client` is reserved for the client that servers use to call each other
-through the Gateway.
+| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls a provider publishes, the token exchange wire types, the Gateway's client-visible metadata, the document and compliance declarations and the MCP audit vocabulary | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
+| `client` | `GatewayClient`: typed calls and Task handles through a Gateway profile over MCP Streamable HTTP | axum and core's Task runtime |
+| `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry and the MCP Tasks adapter over core's durable Task runtime | |
+| `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests and `TestMesh` for calls between servers | |
 
 The Gateway attaches discovery degradation and App dependency metadata to federated
 lists. Their DTOs live in the `gateway` module, and `GatewayDiscoveryMetadata`
@@ -420,7 +419,7 @@ after its response starts. Admin routes join the
 document routes under `{mount}/admin` behind gateway authentication, and a server
 layers any administrative scope check onto them. Public routes carry no gateway authentication, so they serve
 only endpoints that verify their own callers, such as a signed provider webhook.
-Inside a domain method, `gateway_identity`, `forwarded_bearer` and `plane_caller`
+Inside a domain method, `gateway_identity` and `forwarded_bearer`
 return the verified caller. `json_read`, `structured_result`, `product_result`,
 `completion` and `rank_completions` build the common results. `product_result`
 rejects output whose `resultUri` differs from its resource link (C02), and
@@ -450,7 +449,53 @@ dev-dependencies. `testing::for_domain` starts the builder on a fixed test deplo
 that trusts a published test key. `TestGateway` signs gateway access tokens for a test
 user, carrying the permissions `TestGateway::granting` sets, and sends MCP and HTTP
 requests through the complete router, so discovery, reads, tools and prompts are
-testable without a deployment.
+testable without a deployment. `HostedServerBuilder::calls` gives a server's handlers
+the [calls to other servers](#calls-to-other-servers) that `ctx.client()` makes.
+
+## Calls To Other Servers
+
+A provider publishes each tool's request in its `contract` feature. `ProviderContract`
+names its slug once, and each request type implements `ToolCall`: the tool's name on
+its server and its structured result type. A tool that runs as a Task also implements
+`TaskToolCall`. A consumer depends on the provider's `contract` feature by Git revision
+and declares the permissions it uses with `AuthorizationBuilder::uses`, taking the
+provider's permission enum.
+
+Calls are builders that run when awaited:
+
+```rust
+// In a tool handler: for this request's caller.
+let client = ctx.client()?;
+let inspection = client.call(Inspect {}).await?;
+let tally = client.start(Tally { entries: 3 }).await?;
+let tallied = tally.timeout(Duration::from_secs(60)).await?;
+
+// In a Task worker: for the caller that created the Task, while it runs.
+let client = calls.for_task(&snapshot)?;
+client.call(Inspect {}).await?;
+```
+
+`GatewayClient::call` resolves with the tool's structured result and, for a tool that
+started a Task, waits for that Task. `GatewayClient::start` resolves with a
+`TaskHandle` once the Task has started; the handle resolves when the Task completes,
+from the Task status subscription of the rmcp fork, which first delivers the Task's
+current status. `TaskHandle::state` reads it once, `cancel` requests cancellation, and
+`GatewayClient::task` restores a handle from a recorded Task identifier. `Call::timeout`
+and `TaskHandle::timeout` bound the wait.
+
+`CallError` separates the outcomes. `Refused` carries the token endpoint's OAuth error
+and description, such as `invalid_target` naming a permission no registered server
+provides. `Undeclared` names a provider the server declared no use of, refused before
+any request. `Rejected` carries a JSON-RPC error from the Gateway or the provider,
+`Tool` a tool's error result, `Task` a failed or cancelled Task, and `Decode`,
+`Timeout` and `Transport` the remaining failures. A request binding lasts as long as the
+forwarded token of that request, at most 60 seconds, so a wait longer than that belongs
+in a Task of the calling server.
+
+A program with its own access token for a profile builds `GatewayClient::new` with a
+`StaticBearer`. `hosting::testing::TestMesh` runs several hosted servers in process
+behind a loopback token endpoint and profile, with the Gateway's exchange and
+narrowing, so a server tests its calls to another without a Gateway.
 
 ## Deployment Identity
 

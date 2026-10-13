@@ -4,6 +4,7 @@
 mod hosting;
 mod mcp;
 mod service;
+mod work;
 
 pub use hosting::{DurableListener, DurableTasks, TasksOnly, WithResources};
 pub use mcp::{mcp_task_completion, project_snapshot, task_seed};
@@ -13,4 +14,8 @@ pub use service::{
     get_durable_task, listen_durable_subscriptions, restore_task_retention_meta, retention_pins,
     start_durable_tool_task, subscribe_authorized_snapshots, subscribe_durable_tasks,
     update_durable_task,
+};
+pub use work::{
+    CallbackUrlError, CallbackUrls, OperationDispatch, OperationStep, TaskClientError, TaskContext,
+    TaskWorkError, TaskWorker,
 };

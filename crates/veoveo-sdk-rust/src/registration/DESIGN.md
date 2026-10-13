@@ -7,10 +7,11 @@ instance on the database login the registration grants. The Gateway forwards eac
 checks them again. Neither the Gateway nor the installation configuration names a
 server, so every server enters the catalog through this protocol.
 
-The crate `veoveo-mcp-ext-registration` holds the typed declarations, the OAuth
+The `registration` module of `veoveo-sdk-rust` holds the typed declarations, the OAuth
 request and response types, the software statement, the granted-permissions detail and
-the registration client that servers run. The forwarded access token is issued and
-verified by `veoveo-mcp-contract`, described under [Forwarded Identity](#forwarded-identity).
+the registration client that servers run. The `internal_auth` module issues and
+verifies the forwarded access token, described under
+[Forwarded Identity](#forwarded-identity).
 
 ## Standards And Protocols
 
@@ -66,7 +67,7 @@ its MCP endpoint as `veoveo_mcp_endpoint`. MCP Discover advertises the same valu
 
 The version holds 1 to 64 ASCII letters, digits, dots, underscores, plus signs or
 hyphens. The endpoint uses `https`, or `http` on a local host as the
-[conventions](../../docs/CONVENTIONS.md#http-paths) allow, names a host and carries no
+[conventions](https://github.com/VeoveoAI/veoveo-core/blob/7a6c210ff1f9ee9f5150c0a5d101afeb98d659da/docs/CONVENTIONS.md#http-paths) allow, names a host and carries no
 credentials, query or fragment.
 
 ### Authorization
@@ -256,7 +257,7 @@ token, and the client adopts the returned one. An update never extends a registr
 
 A registration lasts until the server deletes it or its process ends. The server
 connects with the login its registration granted and holds a kernel instance on that
-login while it serves, as the [database design](../../docs/DATABASE.md#process-instances)
+login while it serves, as the [database design](https://github.com/VeoveoAI/veoveo-core/blob/7a6c210ff1f9ee9f5150c0a5d101afeb98d659da/docs/DATABASE.md#process-instances)
 describes. The Gateway removes a registration whose login has held no live instance for
 the installation's grace period, 60 seconds by default, and drops the login. It then
 answers the registration access token with HTTP 401.
@@ -281,7 +282,7 @@ reason and names declared identifiers only, never request contents or secrets.
 ## Forwarded Identity
 
 The Gateway authorizes each request with installation roles over the target server's
-declared permissions, as the [policy evaluator](../../platform/policy/DESIGN.md#registered-server-decisions)
+declared permissions, as the policy evaluator in `veoveo-service-gateway`
 describes. It then forwards the request with a fresh RFC 9068 access token signed by
 one of the keys in `veoveo_access_tokens`:
 
@@ -348,7 +349,7 @@ Both end no later than the caller's own access token.
 
 The server checks the required permission again with
 `GatewayInternalIdentity::grants`. Per-object rules, such as an owner-only event,
-stay with the server. `veoveo-mcp-contract` issues these tokens with
+stay with the server. `veoveo-sdk-rust` issues these tokens with
 `GatewayInternalTokenIssuer::issue` from a `ForwardedRequest`.
 `ForwardedTokenVerifier::new` verifies them against the issuer, keys and resource in
 `veoveo_access_tokens` and refreshes the keys through the HTTP client it is given. The
@@ -430,7 +431,7 @@ the registration client against an in-process endpoint that applies the admissio
 steps above: registration, read, update with token rotation, an update of a removed
 registration, removal at shutdown, the pinned key and the initial access token. The software statement
 tests cover the pinned key, metadata, audience and lifetime. The forwarded token
-tests in `veoveo-mcp-contract` cover the token type, issuer, audience, actor, `jti`,
+tests in `veoveo-sdk-rust` cover the token type, issuer, audience, actor, `jti`,
 the single authorization detail, the namespace of granted permissions and agreement
 between standard and Veoveo claims. Its key refresh tests run an issuer on a loopback
 port: a rotated key, one fetch for concurrent requests, the 30-second interval, a set

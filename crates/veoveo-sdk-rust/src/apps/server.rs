@@ -1,8 +1,7 @@
 use rmcp::model::{MetaObject, Resource, ResourceContents, ServerCapabilities, Tool};
 
 use crate::apps::models::{
-    AGENT_MESSAGE_TARGETS_META_KEY, APP_MIME_TYPE, AgentMessageTargets, EXTENSION_ID,
-    ResourceUiMeta, ToolUiMeta, UI_META_KEY, UiVisibility,
+    APP_MIME_TYPE, EXTENSION_ID, ResourceUiMeta, ToolUiMeta, UI_META_KEY, UiVisibility,
 };
 
 /// Declares the apps extension in advertised server capabilities so hosts
@@ -28,20 +27,6 @@ pub fn app_resource_with_meta(uri: &str, name: &str, metadata: ResourceUiMeta) -
     Resource::new(uri, name)
         .with_mime_type(APP_MIME_TYPE)
         .with_meta(ui_meta(&metadata))
-}
-
-/// Declare the exact generic agent targets an App may message. Malformed or
-/// empty declarations fail closed rather than widening the host bridge.
-pub fn with_agent_message_targets(
-    mut resource: Resource,
-    targets: impl IntoIterator<Item = String>,
-) -> Option<Resource> {
-    let targets = AgentMessageTargets::new(targets)?;
-    resource.meta.get_or_insert_with(MetaObject::new).insert(
-        AGENT_MESSAGE_TARGETS_META_KEY.to_owned(),
-        serde_json::to_value(targets).expect("agent message targets serialize"),
-    );
-    Some(resource)
 }
 
 /// The readable contents of an app view: a self-contained HTML document.
@@ -134,19 +119,6 @@ mod tests {
                 "resourceUri": "ui://timeseries/forecast.html",
                 "visibility": ["model", "app"],
             })
-        );
-    }
-
-    #[test]
-    fn agent_message_targets_are_explicit_resource_metadata() {
-        let resource = with_agent_message_targets(
-            app_resource("ui://workflow/control.html", "control"),
-            ["workflow-coordinator".to_owned()],
-        )
-        .expect("valid declaration");
-        assert_eq!(
-            resource.meta.unwrap().0.get(AGENT_MESSAGE_TARGETS_META_KEY),
-            Some(&serde_json::json!(["workflow-coordinator"]))
         );
     }
 }

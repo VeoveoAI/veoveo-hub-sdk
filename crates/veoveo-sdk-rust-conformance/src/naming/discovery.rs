@@ -154,14 +154,6 @@ pub(crate) fn inspect_discovery_since(
                     "resources/appDependencies",
                 )?;
             }
-            if let Some(value) = meta.get(veoveo_sdk_rust::apps::AGENT_MESSAGE_TARGETS_META_KEY) {
-                let targets: Vec<String> = serde_json::from_value(value.clone())?;
-                ensure!(
-                    veoveo_sdk_rust::apps::AgentMessageTargets::new(targets).is_some(),
-                    "invalid adopted agent-message targets"
-                );
-                inspection.charge(value)?;
-            }
         }
     }
     let mut addresses = BTreeSet::new();

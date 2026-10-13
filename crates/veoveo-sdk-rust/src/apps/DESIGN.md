@@ -2,12 +2,8 @@
 
 This document is the canonical contract for how domain MCP servers ship
 user-facing views and administrative surfaces to Veoveo hosts (the Console
-today, any MCP Apps host tomorrow). The crate `veoveo-mcp-ext-apps`
+today, any MCP Apps host tomorrow). The `apps` module of `veoveo-sdk-rust`
 owns the pinned protocol constants and helpers; this document owns the rules.
-
-## Status
-
-Implemented in this workspace.
 
 ## Standards And Protocols
 
@@ -17,7 +13,6 @@ Implemented in this workspace.
 | MCP Apps SEP-1865 / `ext-apps` | Version `2026-01-26`, with `ui://` resources, `text/html;profile=mcp-app`, tool-to-app metadata, host context, lifecycle notifications, and the `postMessage` bridge. |
 | Veoveo reactive App resource adapter | Repository-owned extension over MCP Apps `2026-01-26`. A sandboxed App requests an authorized resource filter through one final-profile `subscriptions/listen` stream; the Console projects contentless `ui/notifications/resource-updated` wakes from its auth-scoped MCP client. This adapter is not claimed as part of SEP-1865. |
 | Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. Exact `ui://` targets navigate only when present in the caller-visible App catalog; `veoveo-console://agents` and `veoveo-console://recordings` are the only platform-view targets. Other custom, missing, or unexposed targets fail closed. |
-| Veoveo App agent-message adapter | Repository-owned `veoveo/agents/message` profile. An App resource declares exact targets in `_meta["ai.veoveo/agent-message-targets"]`; the Console validates that declaration and submits only UUIDv7-idempotent bounded text through its existing authenticated human-message BFF path. This adapter is not part of SEP-1865. |
 | MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`; app-started durable work retains the same task lifecycle and ownership rules as a normal MCP client. |
 | Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. Gateway dependency metadata uses camelCase fields and unchanged snake_case operation values. |
 | [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/) | Linked tool arguments and structured results use the same canonical schemas exposed outside the app. |
@@ -177,18 +172,6 @@ The hosting core (gateway + console BFF + console web) stays fully generic:
   resource or one of the two declared platform targets. The Console resolves
   App targets against its current caller-visible catalog and never accepts a
   browser-supplied server alias or arbitrary Console route.
-- **Always-on agent messages** — an App may send `veoveo/agents/message` only
-  when its listed resource declares that exact agent in
-  `_meta["ai.veoveo/agent-message-targets"]`. The bridge accepts a closed
-  `{agentId, requestId, message}` object, requires a UUIDv7 request identity and
-  at most 16 KiB of nonempty UTF-8 text, and forwards it to the ordinary
-  same-origin BFF mutation. The BFF and gateway retain human identity, Work
-  Context, CSRF, policy, audit, idempotency, and durable-wake authority. The
-  iframe receives no cookie, gateway bearer, agent credential, or database
-  access, and malformed metadata grants no targets. The Console projects the
-  already validated target list into
-  `hostContext._meta["ai.veoveo/agent-message-targets"]` during App
-  initialization, which lets a generic view render only its admitted choices.
 
 ## Governed Cross-Server Resources
 

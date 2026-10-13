@@ -3621,13 +3621,23 @@ dependencies = [
 name = "veoveo-sdk-rust-fixture"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
+ "chrono",
+ "futures",
+ "parking_lot",
  "rmcp",
+ "rustls",
  "schemars",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
  "veoveo-sdk-rust",
+ "veoveo-task-runtime",
  "veoveo-types",
 ]
 

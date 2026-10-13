@@ -264,3 +264,60 @@ fn the_token_names_the_client_the_caller_used() {
         Err(InternalTokenError::InvalidRequestContext)
     ));
 }
+
+#[test]
+fn audit_attribution_names_the_actor_the_acting_server_and_the_invocation_facts() {
+    let fixture = fixtures().remove(0);
+    let issuer = tests::issuer();
+    let verifier = tests::verifier("computers");
+    let direct = verifier
+        .verify(
+            &issuer
+                .issue(forwarded_with(
+                    &fixture.actor,
+                    fixture.authority.clone(),
+                    fixture.request_context.clone(),
+                ))
+                .unwrap()
+                .bearer_token,
+        )
+        .unwrap();
+    let context = direct.audit_context().unwrap();
+    assert_eq!(context.actor.principal, fixture.actor.id);
+    assert_eq!(context.actor.tenant, fixture.actor.tenant);
+    assert_eq!(
+        context.actor.work_context.as_ref(),
+        Some(&fixture.authority.work_context)
+    );
+    assert_eq!(context.via, None);
+    assert_eq!(context.request, fixture.request_context.audit);
+    let invocation = direct.audit_invocation().unwrap();
+    assert_eq!(
+        invocation.oauth_client,
+        fixture.request_context.access_token.oauth_client_id
+    );
+    assert_eq!(
+        invocation.policy_revision,
+        fixture.authority.policy_revision
+    );
+    assert_eq!(invocation.scopes, fixture.actor.scopes);
+
+    // A call another server made from one of its Tasks names both in the envelope.
+    let task = veoveo_types::TaskId::new();
+    let mut delegated = forwarded_with(
+        &fixture.actor,
+        fixture.authority.clone(),
+        fixture.request_context.clone(),
+    );
+    delegated.acting_server = Some(ActingServer {
+        server: ServerSlug::parse("media").unwrap(),
+        client: OAuthClientId::parse("media-client").unwrap(),
+    });
+    delegated.acting_task = Some(OpaqueTaskId::parse(task.to_string()).unwrap());
+    let delegated = verifier
+        .verify(&issuer.issue(delegated).unwrap().bearer_token)
+        .unwrap();
+    let via = delegated.audit_context().unwrap().via.unwrap();
+    assert_eq!(via.server.as_str(), "media");
+    assert_eq!(via.task, Some(task));
+}

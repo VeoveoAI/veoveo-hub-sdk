@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn unrelated_mcp_message_cannot_satisfy_same_code_denial() {
         assert_ne!(
-            ObservedFailure::mcp(-32602, "unknown artifact"),
+            ObservedFailure::mcp(-32602, "unknown reading"),
             ObservedFailure::mcp(-32602, "malformed request")
         );
     }

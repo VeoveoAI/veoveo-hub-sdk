@@ -444,10 +444,10 @@ mod tests {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
             "$defs": {
-                "ArtifactId": { "type": "string" }
+                "ReadingId": { "type": "string" }
             },
             "properties": {
-                "artifact_id": { "$ref": "#/$defs/ArtifactId" },
+                "reading_id": { "$ref": "#/$defs/ReadingId" },
                 "mode": {
                     "oneOf": [
                         { "type": "string", "const": "read" },
@@ -456,7 +456,7 @@ mod tests {
                 }
             },
             "additionalProperties": false,
-            "required": ["artifact_id"]
+            "required": ["reading_id"]
         });
 
         let stats = validate_tool_input_schema(&tool(schema)).unwrap();

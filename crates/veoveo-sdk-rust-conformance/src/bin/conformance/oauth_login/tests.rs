@@ -178,8 +178,8 @@ async fn sdk_implicit_offline_scope_and_granted_widening_are_rejected() {
     })
     .await;
     for grant in [
-        "knowledge:read offline_access",
-        "knowledge:read admin:manage",
+        "observatory:read offline_access",
+        "observatory:read admin:manage",
     ] {
         case(false, grant, false, |cx| async move {
             let args = args(&cx);

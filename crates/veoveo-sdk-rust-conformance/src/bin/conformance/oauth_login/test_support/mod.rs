@@ -26,7 +26,7 @@ pub const TOKEN: &str = "fixture-access-token-never-print";
 pub const SECRET_MARKER: &str = "fixture-remote-secret-never-print";
 pub const REFRESH_TOKEN: &str = "fixture-private-refresh-never-print";
 pub const VENDOR_SECRET: &str = "fixture-private-vendor-field-never-print";
-pub const SCOPE: &str = "knowledge:read";
+pub const SCOPE: &str = "observatory:read";
 pub const CLIENT: &str = "fixture-public";
 
 #[derive(Clone, Default)]

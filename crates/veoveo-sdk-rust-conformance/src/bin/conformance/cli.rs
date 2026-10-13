@@ -137,7 +137,7 @@ mod tests {
             "--redirect-uri",
             "http://127.0.0.1:8789/oauth/callback",
             "--scope",
-            "knowledge:read",
+            "observatory:read",
             "--authorization-url-file",
             "/private/authorization-url",
             "--token-file",

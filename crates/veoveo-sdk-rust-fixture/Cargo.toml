@@ -1,0 +1,29 @@
+[package]
+name = "veoveo-sdk-rust-fixture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+default = ["server"]
+contract = ["dep:thiserror", "dep:veoveo-types", "dep:schemars"]
+server = ["contract", "dep:axum", "dep:rmcp", "dep:veoveo-sdk-rust"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror = { workspace = true, optional = true }
+veoveo-types = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+rmcp = { workspace = true, features = ["server"], optional = true }
+veoveo-sdk-rust = { workspace = true, features = ["server"], optional = true }
+
+[[test]]
+name = "contract"
+required-features = ["contract"]
+
+[lints]
+workspace = true

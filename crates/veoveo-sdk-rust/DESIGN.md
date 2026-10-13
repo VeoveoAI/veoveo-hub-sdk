@@ -19,7 +19,7 @@ crate documents and in its contract resource.
 | MCP Tasks, SEP-2663 | official `tasks/get`, `tasks/update`, and `tasks/cancel`, task status notifications through `subscriptions/listen`, opaque task IDs, and typed terminal payloads |
 | MCP multi-round requests, SEP-2322 | `input_required`, protected opaque `requestState`, and retry `inputResponses`; server-initiated elicitation is excluded |
 | MCP subscriptions | request-scoped `subscriptions/listen` with an authorized accepted filter; resource subscribe and unsubscribe are excluded |
-| rmcp 3.5.0 | the official Rust SDK, pinned to the `VeoveoAI/rust-sdk` fork at `917e791` for Task status subscriptions and typed HTTP rejections; the pin's comment states the removal condition |
+| rmcp 3.5.0 | the official Rust SDK, pinned to the `VeoveoAI/rust-sdk` fork at `917e791` for Task status subscriptions and typed HTTP rejections, with default features off so each SDK feature enables only the rmcp features it uses; the pin's comment states the removal condition |
 | Requirement catalog `https://veoveo.ai/formats/hosted-mcp-requirements` and compliance declaration `https://veoveo.ai/formats/hosted-mcp-compliance` | closed C01–C31 and C33 identifiers, complete camelCase owner profiles and deterministic manual sections; `catalog/requirements.json` and `catalog/compliance-profile.schema.json` are generated from the types and checked by tests |
 | JSON Schema 2020-12 | ordinary rmcp and Schemars generation with bounded references and composition |
 | RFC 6570 URI Templates | checked MCP setup uses the foundational ASCII-template profile and the iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses |
@@ -93,8 +93,8 @@ declaration consistency; hosted conformance and domain tests establish behavior.
 
 | Feature | Contains | Excludes |
 |---|---|---|
-| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls a provider publishes, the token exchange wire types, the Gateway's client-visible metadata, the document and compliance declarations and the MCP audit vocabulary | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
-| `client` | `GatewayClient`: typed calls and Task handles through a Gateway profile over MCP Streamable HTTP | axum and core's Task runtime |
+| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Gateway's client-visible metadata, the document and compliance declarations and the MCP audit vocabulary | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
+| `client` | `GatewayClient`: typed calls, Task handles and typed resource reads and waits through a Gateway profile over MCP Streamable HTTP, with rmcp's client and Streamable HTTP client transport | rmcp's server, server transport and macros, axum, jsonwebtoken, OpenTelemetry, sqlx and core's Task runtime; `tests/contract_boundary.rs` fails when the resolved graph or rmcp's features contain them |
 | `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry and the MCP Tasks adapter over core's durable Task runtime | |
 | `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests and `TestMesh` for calls between servers | |
 
@@ -454,12 +454,15 @@ the [calls to other servers](#calls-to-other-servers) that `ctx.client()` makes.
 
 ## Calls To Other Servers
 
-A provider publishes each tool's request in its `contract` feature. `ProviderContract`
-names its slug once, and each request type implements `ToolCall`: the tool's name on
-its server and its structured result type. A tool that runs as a Task also implements
-`TaskToolCall`. A consumer depends on the provider's `contract` feature by Git revision
-and declares the permissions it uses with `AuthorizationBuilder::uses`, taking the
-provider's permission enum.
+A provider publishes each tool's request and each resource consumers read in its
+`contract` feature. `ProviderContract` names its slug once, and each request type
+implements `ToolCall`: the tool's name on its server and its structured result type. A
+tool that runs as a Task also implements `TaskToolCall`. Each read type implements
+`ResourceRead`: the provider's typed resource address, which builds the URI, and the
+content type it decodes from the resource's one `application/json` text content. A
+consumer depends on the provider's `contract` feature by Git revision and declares the
+permissions it uses with `AuthorizationBuilder::uses`, taking the provider's permission
+enum.
 
 Calls are builders that run when awaited:
 
@@ -473,6 +476,16 @@ let tallied = tally.timeout(Duration::from_secs(60)).await?;
 // In a Task worker: for the caller that created the Task, while it runs.
 let client = calls.for_task(&snapshot)?;
 client.call(Inspect {}).await?;
+
+// Reads: once, until the content reaches a state, or each time it changes.
+let entry = client.read(ReadEntry { entry: name.clone() }).await?;
+let closed = client
+    .read(ReadEntry { entry: name.clone() })
+    .until(|entry| entry.state == EntryState::Closed)
+    .timeout(Duration::from_secs(60))
+    .await?;
+let mut updates = client.read(ReadEntry { entry: name }).updates();
+while let Some(entry) = updates.next().await { /* ... */ }
 ```
 
 `GatewayClient::call` resolves with the tool's structured result and, for a tool that
@@ -483,12 +496,23 @@ current status. `TaskHandle::state` reads it once, `cancel` requests cancellatio
 `GatewayClient::task` restores a handle from a recorded Task identifier. `Call::timeout`
 and `TaskHandle::timeout` bound the wait.
 
+`GatewayClient::read` resolves with the resource's content. `Read::until` subscribes to
+the resource through `subscriptions/listen` before it reads, reads again on each
+`notifications/resources/updated` for the resource, and resolves with the first content
+that satisfies its predicate, so it waits without polling. `Read::updates` yields the
+content when the subscription opens and each time a read after an update finds it
+changed. A subscription that ends is opened again up to three times, each time with a
+fresh read, and a subscription the Gateway does not acknowledge for the resource fails
+with `Unsubscribed`. The provider must advertise resource subscriptions and announce
+each change to the resource.
+
 `CallError` separates the outcomes. `Refused` carries the token endpoint's OAuth error
 and description, such as `invalid_target` naming a permission no registered server
 provides. `Undeclared` names a provider the server declared no use of, refused before
 any request. `Rejected` carries a JSON-RPC error from the Gateway or the provider,
-`Tool` a tool's error result, `Task` a failed or cancelled Task, and `Decode`,
-`Timeout` and `Transport` the remaining failures. A request binding lasts as long as the
+`Tool` a tool's error result, `Task` a failed or cancelled Task, `Content` a read
+without the one JSON text content, and `Decode`, `Timeout` and `Transport` the remaining
+failures. A request binding lasts as long as the
 forwarded token of that request, at most 60 seconds, so a wait longer than that belongs
 in a Task of the calling server.
 

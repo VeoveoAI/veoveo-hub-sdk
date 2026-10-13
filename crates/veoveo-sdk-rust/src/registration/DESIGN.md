@@ -350,7 +350,7 @@ server verifies the token and rejects it when:
 - `act` is missing, names another party than `iss`, or carries anything but `sub` and
   one prior actor;
 - `act` names a prior actor without the invocation claim's `acting_server`, or the
-  reverse;
+  reverse, or the invocation claim names an `acting_task` without an `acting_server`;
 - `sub`, `groups`, `roles` and `scope` disagree with the embedded actor, or
   `client_id` differs from the client in the request context;
 - the token carries more than one authorization details entry, or a granted
@@ -365,13 +365,21 @@ server as the prior actor of RFC 8693 §4.1:
 ```json
 {
   "act": { "sub": "https://gateway.example", "act": { "sub": "media-4f2c9a01b3d8e7" } },
-  "https://veoveo.ai/claims/invocation": { "server": "artifact", "acting_server": "media", "...": "..." }
+  "https://veoveo.ai/claims/invocation": {
+    "server": "artifact",
+    "acting_server": "media",
+    "acting_task": "0199d4a1-7c00-7b3e-9f2a-6c1d2e3f4a5b",
+    "...": "..."
+  }
 }
 ```
 
 The prior actor's `sub` is the calling server's registration client identifier, and
-`acting_server` its slug. `GatewayInternalIdentity::acting_server` returns that slug,
-which the receiving server records as provenance. A delegated token ends with the
+`acting_server` its slug. When the calling server called from one of its Tasks, which
+its exchange named as the subject, `acting_task` is that Task's identifier as the
+calling server issued it, and it appears only beside `acting_server`.
+`GatewayInternalIdentity::acting_server` and `GatewayInternalIdentity::acting_task`
+return them, and the receiving server records both as provenance. A delegated token ends with the
 exchanged token that carried the call, which the Gateway bounds by the caller's token
 or by the Task the call serves, so the verifier does not compare it with the caller's
 original access token.
@@ -416,9 +424,10 @@ the tokens it signed expire.
 
 ## Calls Between Servers
 
-A server calls another server's tools through the Gateway for its own caller. It
-declares the permissions it calls with in `uses`, exchanges a token for each call, and
-sends the call to the profile the caller reached it through.
+A server calls another server's tools, reads its resources and subscribes to their
+updates through the Gateway for its own caller. It declares the permissions it calls
+with in `uses`, exchanges a token for each provider, and sends each request to the
+profile the caller reached it through.
 
 ```text
 caller -> Gateway -> media            forwarded token, aud media
@@ -465,9 +474,11 @@ document with `issued_token_type` `urn:ietf:params:oauth:token-type:access_token
 | A requested permission the server did not declare in `uses` | `invalid_authorization_details` |
 
 At the profile the Gateway admits the exchanged token itself, whatever authorization
-servers the profile names. The permissions of each call are the caller's role-granted
-permissions in the target's namespace narrowed to the token's, and the target receives
-the [delegated forwarded token](#forwarded-identity).
+servers the profile names. The permissions of each request, whether a tool call, a
+resource read or a subscription, are the caller's role-granted permissions in the
+target's namespace narrowed to the token's, and the target receives the [delegated
+forwarded token](#forwarded-identity), which names the calling server's Task when the
+token's subject was one.
 
 `ServerCalls` holds what a server calls with: its client identifier, key, `uses` and
 the token endpoint, which `ServerCalls::discover` reads from the issuer's metadata.

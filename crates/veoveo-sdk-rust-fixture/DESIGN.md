@@ -34,14 +34,19 @@ documents. Domain cases check typed exact reads and rejected grants separately.
 ## Calls Fixture
 
 Ledger and Relay are two more hosted servers for calls between servers. Ledger's
-`calls` contract, in the `contract` feature, publishes its permissions and the typed
-requests of `inspect`, `read_seal` and `tally`, a tool that runs as a Task kept in
-memory. Each tool answers with the forwarded identity it received: the caller, the
-OAuth client, the acting server and the permissions. Relay declares Ledger's two
-permissions in `uses` and calls Ledger through `ctx.client()`, inline and through
-Ledger's Task. With core's Task runtime it also runs `relay_later` as a durable Task
-whose worker calls Ledger for the Task's caller. The SDK's mesh tests and the Gateway's
-integration tests use both.
+`calls` contract, in the `contract` feature, publishes its permissions, the typed
+requests of `inspect`, `read_seal`, `tally`, a tool that runs as a Task kept in memory,
+and `open_entry`, and `ReadEntry`, the typed read of `ledger://entries/{entry}`. Each of
+the first three tools answers with the forwarded identity it received: the caller, the
+OAuth client, the acting server, the acting server's Task and the permissions. An entry
+that `open_entry` opens closes after the given delay, and Ledger announces both changes
+to the entry's subscribers. Relay declares Ledger's three permissions in `uses` and
+calls Ledger through `ctx.client()`, inline and through Ledger's Task, and
+`relay_follow_entry` opens an entry and follows its typed updates until it closes.
+`relay_whoami` answers with the identity Relay received, so a Ledger Task that calls it
+shows the Task as provenance. With core's Task runtime Relay also runs `relay_later` as
+a durable Task whose worker calls Ledger for the Task's caller. The SDK's mesh tests
+and the Gateway's integration tests use both.
 
 The `tool_inputs` module needs only Serde. A server's tests load its own cases and
 check required members, defaults, open objects, typed dictionaries and rejected

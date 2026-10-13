@@ -19,8 +19,8 @@ which holds the protocol-independent platform, and on rmcp, the official MCP Rus
 
 | Feature of `veoveo-sdk-rust` | Gives | Pulls in |
 |---|---|---|
-| `contract` | Declarations and wire types a server shares with its consumers: identity, registration and authorization declarations, typed tool calls, the token exchange, Gateway metadata, document and compliance declarations, MCP audit details | veoveo-types, the audit envelope, Serde and Schemars |
-| `client` | Typed calls and Task handles through a Gateway profile | rmcp's client, tokio and reqwest |
+| `contract` | Declarations and wire types a server shares with its consumers: identity, registration and authorization declarations, typed tool calls and resource reads, the token exchange, Gateway metadata, document and compliance declarations, MCP audit details | veoveo-types, the audit envelope, Serde and Schemars |
+| `client` | Typed calls, Task handles and typed resource reads and waits through a Gateway profile | rmcp's client and Streamable HTTP client transport, tokio and reqwest; no rmcp server or macros |
 | `server` (default) | Everything a hosted server runs, including `ctx.client()` calls to other servers for the current caller | rmcp, tokio, axum, reqwest and core's Task runtime |
 | `testing` | `server` plus an in-process Gateway and a mesh of in-process servers for server tests | tower |
 

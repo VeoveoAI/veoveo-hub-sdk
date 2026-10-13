@@ -24,6 +24,9 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
+mod mesh;
+pub use mesh::{MESH_PROFILE, RunningMesh, TestMesh};
+
 use crate::registration::{AccessTokenTrust, Ed25519JwkSet, ResourceIndicator};
 use axum::{
     Router,

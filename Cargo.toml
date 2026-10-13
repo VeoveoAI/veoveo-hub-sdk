@@ -54,6 +54,7 @@ secrecy = "0.10.3"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.11.0"
+# The 0.2 line, whose `Sse` type rmcp 3.5.0's transport exposes.
 sse-stream = "=0.2.6"
 thiserror = "=2.0.21"
 tokio = "1.53.1"

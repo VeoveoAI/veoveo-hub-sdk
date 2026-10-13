@@ -31,7 +31,7 @@ verifies the forwarded access token, described under
 | Authorization server metadata, RFC 8414 | A server reads `issuer`, `registration_endpoint` and `jwks_uri` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`, and the JWK Set at `jwks_uri` holds the keys that verify them. |
 | MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
 | JSON Schema 2020-12 | Schemas for every request, response and declaration are generated from the Rust types by Schemars 1.2. |
-| PostgreSQL connection URIs and role names | `veoveo_database` names the installation database as a `postgres://` URL and the server's login as an unquoted PostgreSQL role name. The [database design](../../docs/DATABASE.md) describes the roles and schemas. |
+| PostgreSQL connection URIs and role names | `veoveo_database` names the installation database as a `postgres://` URL and the server's login as an unquoted PostgreSQL role name. The [database design](https://github.com/VeoveoAI/veoveo-core/blob/7a6c210ff1f9ee9f5150c0a5d101afeb98d659da/docs/DATABASE.md) describes the roles and schemas. |
 
 Every Veoveo addition uses the extension point of the standard it extends:
 

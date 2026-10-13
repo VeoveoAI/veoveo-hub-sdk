@@ -9,17 +9,26 @@
 //! the Task without settling it. A provider event, a due status check or the deadline
 //! queues the Task again, and the handler runs from its start: finished steps and
 //! dispatched operations return what they recorded, so it resumes where it parked.
-use std::{fmt, future::Future, sync::Arc};
+//!
+//! A process that stops drains its Tasks without settling them wrongly. Its stop
+//! reaches each handler through `ctx.cancelled()` and `ctx.checkpoint()`. A `resume`
+//! Task whose process is stopping publishes no outcome and stays with its instance,
+//! whose recovery queues it for another worker; a requested cancellation still
+//! settles. A handler that stops with an error leaves its Task to its recovery class.
+use std::{collections::BTreeMap, fmt, future::Future, sync::Arc, time::Duration};
 
 use futures::StreamExt;
-use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
+use tokio_util::{
+    sync::{CancellationToken, WaitForCancellationFuture},
+    task::TaskTracker,
+};
 use veoveo_audit_contract::AuditRequest;
 use veoveo_task_runtime::{
     CallbackToken, Operation, OperationCalls, OperationKey, OperationSpec, RecoveryClass,
     ResumeCancellationPolicy, StepAttempt, StepDispatch, StepKey, StepOperationId, Submission,
-    TaskError, TaskFailure, TaskRuntime, TaskSnapshot, TaskTransition, WaitOutcome,
+    TaskError, TaskFailure, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition, WaitOutcome,
 };
-use veoveo_types::{ServerSlug, TaskId};
+use veoveo_types::{ServerSlug, TaskId, TaskTypeName};
 
 use crate::{
     client::{CallError, GatewayClient},
@@ -133,15 +142,39 @@ struct ContextInner {
     calls: Option<ServerCalls>,
     callbacks: Option<CallbackUrls>,
     usage: Option<TaskUsageRecorder>,
+    /// How a pending cancellation settles this Task's outcome, when it is `resume`.
+    policy: ResumeCancellationPolicy,
+    /// Cancelled when the Task's cancellation reaches this worker or the process stops.
     cancellation: CancellationToken,
+    /// Cancelled when the process stops.
+    stop: CancellationToken,
+}
+
+/// Why a Task's work stopped before its outcome.
+#[derive(Debug, thiserror::Error)]
+pub enum TaskStop {
+    /// The Task's cancellation was requested, on this worker or on another replica.
+    #[error("the Task's cancellation was requested")]
+    Cancelled,
+    /// This process is stopping; the Task's instance recovery takes it on.
+    #[error("the process running the Task is stopping")]
+    Stopping,
+    #[error(transparent)]
+    Runtime(#[from] TaskError),
 }
 
 impl TaskContext {
-    fn new(worker: &WorkerParts, snapshot: TaskSnapshot, cancellation: CancellationToken) -> Self {
+    fn new(
+        worker: &WorkerParts,
+        snapshot: TaskSnapshot,
+        cancellation: CancellationToken,
+        stop: CancellationToken,
+    ) -> Self {
         let usage = worker
             .usage
             .as_ref()
             .map(|ledger| ledger.for_task(&snapshot));
+        let policy = worker.policy(&snapshot.task_type);
         Self {
             inner: Arc::new(ContextInner {
                 runtime: worker.runtime.clone(),
@@ -149,7 +182,9 @@ impl TaskContext {
                 calls: worker.calls.clone(),
                 callbacks: worker.callbacks.clone(),
                 usage,
+                policy,
                 cancellation,
+                stop,
             }),
         }
     }
@@ -167,9 +202,65 @@ impl TaskContext {
         &self.inner.runtime
     }
 
-    /// Resolves when the Task's cancellation reaches this worker.
+    /// Resolves when the Task's cancellation reaches this worker or the process stops.
+    /// A cancellation requested on another replica reaches the handler at its next
+    /// [`TaskContext::checkpoint`].
     pub fn cancelled(&self) -> WaitForCancellationFuture<'_> {
         self.inner.cancellation.cancelled()
+    }
+
+    /// A token cancelled with [`TaskContext::cancelled`], for work that runs outside the
+    /// handler's future, such as a blocking calculation.
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.inner.cancellation.clone()
+    }
+
+    /// Whether the process running the Task is stopping.
+    pub fn stopping(&self) -> bool {
+        self.inner.stop.is_cancelled()
+    }
+
+    /// Whether the Task's work may go on: it fails with [`TaskStop`] when the process is
+    /// stopping, when the Task's cancellation was requested on any replica, or when this
+    /// instance no longer owns the Task. The handler propagates the error, and the worker
+    /// settles a requested cancellation and leaves a stopping Task to its recovery.
+    ///
+    /// A Task that dispatched an operation reaches [`TaskContext::wait`] before any
+    /// checkpoint, so the wait carries a cancellation to the provider.
+    pub async fn checkpoint(&self) -> Result<(), TaskStop> {
+        if self.stopping() {
+            return Err(TaskStop::Stopping);
+        }
+        if self.inner.cancellation.is_cancelled() {
+            return Err(TaskStop::Cancelled);
+        }
+        let id = self.task_id();
+        let current = self
+            .inner
+            .runtime
+            .get(id)
+            .await?
+            .ok_or(TaskError::NotFound(id))?;
+        if current.is_terminal() || current.status == TaskStatus::CancelRequested {
+            return Err(TaskStop::Cancelled);
+        }
+        self.inner.runtime.ensure_owner(&current)?;
+        Ok(())
+    }
+
+    /// Record a transition of the Task while its work runs, such as its progress. A
+    /// `resume` Task records it through resumable settlement with the Task's
+    /// cancellation and its kind's cancellation policy, so a stopping process records
+    /// no success.
+    pub async fn update(&self, transition: TaskTransition) -> Result<TaskSnapshot, TaskError> {
+        record(
+            &self.inner.runtime,
+            &self.inner.snapshot,
+            transition,
+            &self.inner.cancellation,
+            self.inner.policy,
+        )
+        .await
     }
 
     /// Run one durable step of the Task: a finished step returns its stored result
@@ -297,15 +388,31 @@ impl TaskWorkError for TaskError {
     }
 }
 
+impl TaskWorkError for TaskStop {
+    fn is_parked(&self) -> bool {
+        matches!(self, Self::Runtime(error) if error.is_parked())
+    }
+
+    fn is_lost(&self) -> bool {
+        matches!(self, Self::Runtime(error) if TaskWorkError::is_lost(error))
+    }
+}
+
 impl TaskWorkError for anyhow::Error {
     fn is_parked(&self) -> bool {
         self.downcast_ref::<TaskError>()
             .is_some_and(TaskError::is_parked)
+            || self
+                .downcast_ref::<TaskStop>()
+                .is_some_and(TaskWorkError::is_parked)
     }
 
     fn is_lost(&self) -> bool {
         self.downcast_ref::<TaskError>()
             .is_some_and(TaskWorkError::is_lost)
+            || self
+                .downcast_ref::<TaskStop>()
+                .is_some_and(TaskWorkError::is_lost)
     }
 }
 
@@ -314,11 +421,30 @@ struct WorkerParts {
     calls: Option<ServerCalls>,
     callbacks: Option<CallbackUrls>,
     usage: Option<UsageLedger>,
+    policies: BTreeMap<TaskTypeName, ResumeCancellationPolicy>,
 }
+
+impl WorkerParts {
+    fn policy(&self, task_type: &TaskTypeName) -> ResumeCancellationPolicy {
+        self.policies
+            .get(task_type)
+            .copied()
+            .unwrap_or(DEFAULT_CANCELLATION)
+    }
+}
+
+/// How long a stopping worker waits for its running Tasks by default.
+pub const DEFAULT_DRAIN: Duration = Duration::from_secs(30);
+
+/// How a pending cancellation settles a `resume` Task's outcome unless its kind names
+/// another policy: the cancellation replaces a success, and a genuine failure stays.
+pub const DEFAULT_CANCELLATION: ResumeCancellationPolicy =
+    ResumeCancellationPolicy::PreserveFailure;
 
 /// Claims a server's Tasks and runs a handler for each.
 pub struct TaskWorker {
     parts: WorkerParts,
+    drain: Duration,
 }
 
 impl TaskWorker {
@@ -329,8 +455,30 @@ impl TaskWorker {
                 calls: None,
                 callbacks: None,
                 usage: None,
+                policies: BTreeMap::new(),
             },
+            drain: DEFAULT_DRAIN,
         }
+    }
+
+    /// How a pending cancellation settles the outcome of `resume` Tasks of `task_type`,
+    /// [`DEFAULT_CANCELLATION`] for kinds not named. `CancellationWins` turns any
+    /// outcome into `Cancelled`; `PreserveFailure` keeps a genuine failure.
+    pub fn cancellation(
+        mut self,
+        task_type: TaskTypeName,
+        policy: ResumeCancellationPolicy,
+    ) -> Self {
+        self.parts.policies.insert(task_type, policy);
+        self
+    }
+
+    /// How long [`TaskWorker::run`] waits, once stopped, for its running Tasks to settle
+    /// or release, [`DEFAULT_DRAIN`] by default. A Task still running after it stays
+    /// with its instance, whose recovery takes it on when the process ends.
+    pub fn drain(mut self, drain: Duration) -> Self {
+        self.drain = drain;
+        self
     }
 
     /// Calls to other servers, for `ctx.client()`.
@@ -354,7 +502,8 @@ impl TaskWorker {
     /// Run `handler` for every Task this instance claims until `stop`. Each Task runs on
     /// its own task, registered for local cancellation. A handler's transition settles
     /// its Task, a `resume` Task through resumable settlement, and a parked Task is
-    /// released without settlement.
+    /// released without settlement. Once `stop` is cancelled the worker claims nothing
+    /// more and waits up to its drain time for its running Tasks.
     pub async fn run<H, Fut, E>(self, handler: H, stop: CancellationToken) -> Result<(), TaskError>
     where
         H: Fn(TaskContext) -> Fut + Clone + Send + Sync + 'static,
@@ -362,25 +511,39 @@ impl TaskWorker {
         E: TaskWorkError,
     {
         let parts = Arc::new(self.parts);
+        let running = TaskTracker::new();
         let mut claimed = parts.runtime.work().await?;
         loop {
             let next = tokio::select! {
-                () = stop.cancelled() => return Ok(()),
+                () = stop.cancelled() => break,
                 next = claimed.next() => next,
             };
             let snapshot = next.ok_or(TaskError::ListenerStopped)??;
             let task_id = snapshot.task_id;
             let cancellation = stop.child_token();
-            let context = TaskContext::new(&parts, snapshot, cancellation.clone());
+            let context = TaskContext::new(&parts, snapshot, cancellation.clone(), stop.clone());
             let handler = handler.clone();
             let runtime = parts.runtime.clone();
-            let join = tokio::spawn(async move { settle(&runtime, context, handler).await });
+            let join = tokio::spawn(
+                running.track_future(async move { settle(&runtime, context, handler).await }),
+            );
             parts
                 .runtime
                 .register_worker(task_id, cancellation, join)
                 .await?;
             parts.runtime.reap_workers().await;
         }
+        running.close();
+        if tokio::time::timeout(self.drain, running.wait())
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                running = running.len(),
+                "Tasks still ran when the worker's drain ended; their instance's recovery takes them on"
+            );
+        }
+        Ok(())
     }
 }
 
@@ -392,7 +555,10 @@ where
     E: TaskWorkError,
 {
     let task_id = context.task_id();
-    let recovery = context.task().recovery_class;
+    let claimed = context.task().clone();
+    let policy = context.inner.policy;
+    let cancellation = context.inner.cancellation.clone();
+    let stop = context.inner.stop.clone();
     let transition = match handler(context).await {
         Ok(transition) => transition,
         Err(error) if error.is_parked() => {
@@ -403,35 +569,99 @@ where
             tracing::debug!(%task_id, %error, "the worker no longer owns the Task");
             return;
         }
-        Err(error) => {
-            tracing::warn!(%task_id, %error, "a Task handler failed");
-            TaskTransition::Failed(TaskFailure::new(
-                "task_error",
-                "the Task could not finish its work",
-            ))
-        }
+        Err(error) => match stopped(runtime, task_id, &stop).await {
+            Stopped::Finished => return,
+            Stopped::Cancelled => TaskTransition::Cancelled,
+            Stopped::Stopping => {
+                tracing::debug!(%task_id, %error, "the Task stopped with its process");
+                return;
+            }
+            Stopped::No => {
+                tracing::warn!(%task_id, %error, "a Task handler failed");
+                TaskTransition::Failed(TaskFailure::new(
+                    "task_error",
+                    "the Task could not finish its work",
+                ))
+            }
+        },
     };
-    let settled = match recovery {
+    if claimed.recovery_class == RecoveryClass::Resume
+        && stop.is_cancelled()
+        && matches!(
+            stopped(runtime, task_id, &stop).await,
+            Stopped::Stopping | Stopped::Finished
+        )
+    {
+        // A stopping process publishes no outcome of a resumable Task: its instance's
+        // recovery queues it, and another worker runs it to the same outcome.
+        tracing::debug!(%task_id, "the Task's outcome waits for its recovery");
+        return;
+    }
+    if let Err(error) = record(runtime, &claimed, transition, &cancellation, policy).await {
+        tracing::warn!(%task_id, %error, "a Task did not settle");
+    }
+}
+
+/// Record `transition` of the claimed Task: a `resume` Task through resumable
+/// settlement with its cancellation and `policy`, any other through a plain transition.
+async fn record(
+    runtime: &TaskRuntime,
+    claimed: &TaskSnapshot,
+    transition: TaskTransition,
+    cancellation: &CancellationToken,
+    policy: ResumeCancellationPolicy,
+) -> Result<TaskSnapshot, TaskError> {
+    match claimed.recovery_class {
         RecoveryClass::Resume => {
             runtime
-                .transition_resumable(
-                    task_id,
-                    transition,
-                    ResumeCancellationPolicy::PreserveFailure,
-                    None,
-                )
+                .transition_resumable(claimed.task_id, transition, policy, Some(cancellation))
                 .await
         }
-        RecoveryClass::InterruptedIndeterminate => runtime.transition(task_id, transition).await,
-    };
-    if let Err(error) = settled {
-        tracing::warn!(%task_id, %error, "a Task did not settle");
+        RecoveryClass::InterruptedIndeterminate => {
+            runtime.transition(claimed.task_id, transition).await
+        }
+    }
+}
+
+/// Why a Task's work ended without an outcome.
+enum Stopped {
+    /// The Task already finished.
+    Finished,
+    /// Its cancellation was requested.
+    Cancelled,
+    /// The process is stopping and nobody asked to cancel the Task.
+    Stopping,
+    /// Neither: the work failed.
+    No,
+}
+
+async fn stopped(runtime: &TaskRuntime, task_id: TaskId, stop: &CancellationToken) -> Stopped {
+    match runtime.get(task_id).await {
+        Ok(None) => Stopped::Finished,
+        Ok(Some(current)) if current.is_terminal() => Stopped::Finished,
+        Ok(Some(current)) if current.status == TaskStatus::CancelRequested => Stopped::Cancelled,
+        _ if stop.is_cancelled() => Stopped::Stopping,
+        _ => Stopped::No,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stopped_task_is_parked_or_lost_only_when_its_runtime_says_so() {
+        let id = TaskId::new();
+        for stop in [TaskStop::Cancelled, TaskStop::Stopping] {
+            assert!(!stop.is_parked() && !stop.is_lost());
+            let error = anyhow::Error::from(stop);
+            assert!(!error.is_parked() && !error.is_lost());
+        }
+        let lost = anyhow::Error::from(TaskStop::Runtime(TaskError::NotOwner(id)));
+        assert!(lost.is_lost() && !lost.is_parked());
+        let parked = anyhow::Error::from(TaskStop::Runtime(TaskError::Parked(id)));
+        assert!(parked.is_parked() && !parked.is_lost());
+    }
 
     #[test]
     fn callback_urls_place_the_operation_and_its_token_under_the_server() {

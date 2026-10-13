@@ -16,6 +16,6 @@ pub use service::{
     update_durable_task,
 };
 pub use work::{
-    CallbackUrlError, CallbackUrls, OperationDispatch, OperationStep, TaskClientError, TaskContext,
-    TaskWorkError, TaskWorker,
+    CallbackUrlError, CallbackUrls, DEFAULT_CANCELLATION, DEFAULT_DRAIN, OperationDispatch,
+    OperationStep, TaskClientError, TaskContext, TaskStop, TaskWorkError, TaskWorker,
 };

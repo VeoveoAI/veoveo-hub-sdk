@@ -7,22 +7,63 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
-repository = "https://github.com/VeoveoAI/veoveo-template-mcp-rust"
+repository = "https://github.com/VeoveoAI/veoveo-sdk-rust"
 publish = false
 
 [workspace.dependencies]
 # veoveo-core, pinned to one revision for every core crate.
-veoveo-platform-store = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "435fc1a90d5761f6dca2af05f4cadde324b72428" }
-veoveo-test-fixtures = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "435fc1a90d5761f6dca2af05f4cadde324b72428" }
-veoveo-types = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "435fc1a90d5761f6dca2af05f4cadde324b72428" }
+veoveo-audit-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "7a6c210ff1f9ee9f5150c0a5d101afeb98d659da" }
+veoveo-platform-store = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "7a6c210ff1f9ee9f5150c0a5d101afeb98d659da" }
+veoveo-task-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "7a6c210ff1f9ee9f5150c0a5d101afeb98d659da" }
+veoveo-task-runtime = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "7a6c210ff1f9ee9f5150c0a5d101afeb98d659da" }
+veoveo-test-fixtures = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "7a6c210ff1f9ee9f5150c0a5d101afeb98d659da" }
+veoveo-types = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "7a6c210ff1f9ee9f5150c0a5d101afeb98d659da" }
 
+veoveo-sdk-rust = { path = "crates/veoveo-sdk-rust", default-features = false }
+veoveo-sdk-rust-fixture = { path = "crates/veoveo-sdk-rust-fixture" }
+
+anyhow = "=1.0.104"
+aws-lc-rs = "1.18.0"
+axum = "0.8.9"
+axum-server = { version = "0.8.0", features = ["tls-rustls-no-provider"] }
+base64 = "0.23.1"
+chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
+clap = { version = "4.6.6", features = ["derive", "env"] }
+futures = "0.3.34"
+hex = "=0.4.3"
+jsonschema = { version = "=0.51.0", default-features = false }
+# AWS-LC provides constant-time RSA; the RustCrypto backend carries RUSTSEC-2023-0071.
+jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+oauth2 = { version = "=5.0.0", default-features = false }
+opentelemetry = "0.32.0"
+opentelemetry-appender-tracing = "0.32.0"
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-client", "trace", "logs", "metrics"] }
+opentelemetry_sdk = "0.32.1"
+parking_lot = "0.12.5"
+rcgen = "0.14.9"
+reqwest = { version = "=0.13.5", default-features = false }
+# rmcp 3.5.0 from the VeoveoAI fork (D26). The fork is upstream 3.5.0 plus three
+# changes: Task status subscriptions through `taskIds` in `subscriptions/listen`, a
+# typed `StreamableHttpError::HttpResponse` that keeps the HTTP status, and a debug-level
+# log for a send that fails during shutdown drain. Upstream 3.5.1 has none of the three.
+# Remove the fork when upstream ships Task status subscriptions.
+rmcp = { version = "=3.5.0", git = "https://github.com/VeoveoAI/rust-sdk", rev = "917e7914c93975fc1eddbff8792f1e2de933bc17" }
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
+schemars = "1.2.2"
+secrecy = "0.10.3"
 serde = { version = "=1.0.229", features = ["derive"] }
-# PostgreSQL 18 through the same sqlx release and features as veoveo-core. `sqlx-toml`
-# reads the crate's migration table from its `sqlx.toml`.
-sqlx = { version = "=0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring-native-roots", "uuid", "chrono", "json", "migrate", "macros", "sqlx-toml"] }
+serde_json = "=1.0.151"
+sha2 = "=0.11.0"
 thiserror = "=2.0.21"
 tokio = "1.53.1"
-uuid = { version = "1.24.1", features = ["serde", "v7"] }
+tokio-util = "0.7.19"
+tower = "0.5.3"
+tower-http = { version = "0.7.0", features = ["fs", "trace", "cors"] }
+tracing = "0.1.44"
+tracing-opentelemetry = "0.33.0"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+url = "=2.5.8"
+uuid = { version = "1.24.1", features = ["serde", "v4", "v5", "v7"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

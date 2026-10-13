@@ -1,5 +1,9 @@
+mod exchange;
 mod forwarded;
 mod request;
+pub use exchange::{
+    DelegatedCaller, ExchangeGrant, ExchangedIdentity, ExchangedTokenVerifier, IssuedExchangedToken,
+};
 pub use forwarded::{
     ForwardedTokenVerifier, KEY_DOCUMENT_LIMIT, KEY_FETCH_TIMEOUT, KEY_REFRESH_INTERVAL,
 };
@@ -778,6 +782,8 @@ pub enum InternalTokenError {
     /// The JOSE header `typ` is not `at+jwt` (RFC 9068 §4).
     UnsupportedTokenType,
     ExpiredDelegation,
+    /// A delegated identity was presented as the subject of another exchange.
+    RedelegatedIdentity,
     AudienceMismatch {
         expected: ServerSlug,
         actual: ServerSlug,
@@ -833,6 +839,9 @@ impl fmt::Display for InternalTokenError {
             }
             Self::ExpiredDelegation => {
                 f.write_str("internal token expiration is not in the future")
+            }
+            Self::RedelegatedIdentity => {
+                f.write_str("a delegated identity cannot be delegated again")
             }
             Self::AudienceMismatch { expected, actual } => write!(
                 f,

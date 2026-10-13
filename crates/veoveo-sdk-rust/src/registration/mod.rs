@@ -17,6 +17,8 @@ pub mod jwk;
 pub mod oauth;
 
 #[cfg(feature = "server")]
+pub mod assertion;
+#[cfg(feature = "server")]
 pub mod client;
 #[cfg(feature = "server")]
 pub mod mcp;

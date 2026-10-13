@@ -32,6 +32,16 @@ fn fixtures() -> Vec<Fixture> {
     serde_json::from_str(include_str!("../../testdata/gateway-request-context.json")).unwrap()
 }
 
+/// A direct call to `server` as the Gateway forwards it, with its signed request
+/// context.
+pub(super) fn direct_call(server: &str) -> ForwardedRequest {
+    let fixture = fixtures().remove(0);
+    let mut request = forwarded_with(&fixture.actor, fixture.authority, fixture.request_context);
+    request.server = ServerSlug::parse(server).unwrap();
+    request.audience = tests::resource(server);
+    request
+}
+
 #[test]
 fn all_invocation_modes_preserve_signed_source_and_session_context() {
     let issuer = tests::issuer();

@@ -11,6 +11,7 @@
 pub const HOSTED_MCP_CONTRACT: &str = "https://veoveo.ai/contracts/hosted-mcp";
 
 pub mod audit;
+pub mod calls;
 pub mod docs;
 pub mod gateway;
 pub mod identity;
@@ -66,10 +67,11 @@ pub use host::{
 };
 #[cfg(feature = "server")]
 pub use internal_auth::{
-    ACCESS_TOKEN_TYPE, ActingServer, ForwardedRequest, ForwardedTokenVerifier,
-    GATEWAY_ROUTING_REQUIRED, GatewayInternalIdentity, GatewayInternalSigningKey,
-    GatewayInternalTokenIssuer, GatewayInternalTokenVerifier, GatewayInternalTrustBundle,
-    GatewayRequestContext, INVOCATION_CLAIM, InternalTokenError, IssuedGatewayInternalToken,
+    ACCESS_TOKEN_TYPE, ActingServer, DelegatedCaller, ExchangeGrant, ExchangedIdentity,
+    ExchangedTokenVerifier, ForwardedRequest, ForwardedTokenVerifier, GATEWAY_ROUTING_REQUIRED,
+    GatewayInternalIdentity, GatewayInternalSigningKey, GatewayInternalTokenIssuer,
+    GatewayInternalTokenVerifier, GatewayInternalTrustBundle, GatewayRequestContext,
+    INVOCATION_CLAIM, InternalTokenError, IssuedExchangedToken, IssuedGatewayInternalToken,
     KEY_DOCUMENT_LIMIT, KEY_FETCH_TIMEOUT, KEY_REFRESH_INTERVAL, TokenAudience,
 };
 #[cfg(feature = "server")]

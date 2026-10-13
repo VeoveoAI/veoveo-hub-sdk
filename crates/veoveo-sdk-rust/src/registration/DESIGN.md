@@ -345,13 +345,34 @@ server verifies the token and rejects it when:
   resource, the invocation claim names another server, or `exp` and `nbf` place the
   current time outside the token's lifetime, with no leeway;
 - `jti` is not a UUIDv7;
-- `act` is missing, carries anything but `sub`, or names another party than `iss`;
+- `act` is missing, names another party than `iss`, or carries anything but `sub` and
+  one prior actor;
+- `act` names a prior actor without the invocation claim's `acting_server`, or the
+  reverse;
 - `sub`, `groups`, `roles` and `scope` disagree with the embedded actor, or
   `client_id` differs from the client in the request context;
 - the token carries more than one authorization details entry, or a granted
   permission lies outside the server's namespace;
-- the request context disagrees with the actor or authority, or the token outlives
-  the caller's own access token.
+- the request context disagrees with the actor or authority, or an undelegated token
+  outlives the caller's own access token.
+
+A call that another registered server makes for its caller carries a delegated token.
+The caller stays `sub`, `client_id` and the actor, and the Gateway acts with the calling
+server as the prior actor of RFC 8693 §4.1:
+
+```json
+{
+  "act": { "sub": "https://gateway.example", "act": { "sub": "media-4f2c9a01b3d8e7" } },
+  "https://veoveo.ai/claims/invocation": { "server": "artifact", "acting_server": "media", "...": "..." }
+}
+```
+
+The prior actor's `sub` is the calling server's registration client identifier, and
+`acting_server` its slug. `GatewayInternalIdentity::acting_server` returns that slug,
+which the receiving server records as provenance. A delegated token ends with the
+exchanged token that carried the call, which the Gateway bounds by the caller's token
+or by the Task the call serves, so the verifier does not compare it with the caller's
+original access token.
 
 A rejected request receives HTTP 401 with `WWW-Authenticate: Bearer`, adding
 `error="invalid_token"` when a token was sent. An ordinary request's token lives at

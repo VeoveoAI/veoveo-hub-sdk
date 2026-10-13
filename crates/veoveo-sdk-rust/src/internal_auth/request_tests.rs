@@ -23,6 +23,7 @@ fn forwarded_with(
         authority,
         permissions: Default::default(),
         request_context: Some(context),
+        acting_server: None,
         expires_at: Utc::now() + TimeDelta::seconds(60),
     }
 }

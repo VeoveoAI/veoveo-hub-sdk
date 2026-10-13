@@ -221,6 +221,10 @@ pub struct GatewayInternalIdentity {
     /// Required by consumers that admit renewable grants or recheck accepted work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_context: Option<GatewayRequestContext>,
+    /// The registered server that made this call for the caller through the Gateway,
+    /// absent when the caller called directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_server: Option<ActingServer>,
     pub jwt_id: JwtId,
     pub issued_at: DateTime<Utc>,
     pub not_before: DateTime<Utc>,
@@ -232,6 +236,21 @@ impl GatewayInternalIdentity {
     pub fn grants(&self, permission: &PermissionName) -> bool {
         self.permissions.contains(permission)
     }
+
+    /// The server that called for the caller, when another server made this call.
+    pub fn acting_server(&self) -> Option<&ServerSlug> {
+        self.acting_server.as_ref().map(|acting| &acting.server)
+    }
+}
+
+/// A registered server that calls another server through the Gateway for its own
+/// caller. `client` is the registration the server authenticated with; the forwarded
+/// token names it as the prior actor of RFC 8693 §4.1.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ActingServer {
+    pub server: ServerSlug,
+    pub client: OAuthClientId,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -319,6 +338,7 @@ impl GatewayInternalTokenIssuer {
             authority,
             permissions,
             request_context,
+            acting_server,
             expires_at,
         } = request;
         ensure_jwt_crypto_provider();
@@ -328,7 +348,13 @@ impl GatewayInternalTokenIssuer {
             if context.access_token.oauth_client_id != client {
                 return Err(InternalTokenError::InvalidRequestContext);
             }
-            expires_at.min(context.access_token.expires_at)
+            // A delegated call lives as long as the exchanged token that carried it,
+            // which the Gateway bounds by the subject token or the live Task.
+            if acting_server.is_some() {
+                expires_at
+            } else {
+                expires_at.min(context.access_token.expires_at)
+            }
         } else {
             expires_at
         };
@@ -345,6 +371,7 @@ impl GatewayInternalTokenIssuer {
             authority,
             permissions,
             request_context,
+            acting_server,
             jwt_id: fresh_jwt_id()?,
             issued_at: now,
             not_before: now,
@@ -368,6 +395,9 @@ pub struct ForwardedRequest {
     /// The permissions the Gateway granted in `server`'s namespace.
     pub permissions: BTreeSet<PermissionName>,
     pub request_context: Option<GatewayRequestContext>,
+    /// The registered server that made the call for the caller, for a call that
+    /// arrived with an exchanged token.
+    pub acting_server: Option<ActingServer>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -475,9 +505,18 @@ impl GatewayInternalTokenVerifier {
             }
             _ => return Err(InternalTokenError::InconsistentClaims),
         };
+        let acting_server = match (claims.standard.act.act, invocation.acting_server) {
+            (None, None) => None,
+            (Some(prior), Some(server)) => Some(ActingServer {
+                server,
+                client: prior.sub,
+            }),
+            _ => return Err(InternalTokenError::InconsistentClaims),
+        };
         if let Some(context) = &invocation.request_context {
             context.validate_for(&invocation.actor, &invocation.authority)?;
-            if claims.standard.exp > context.access_token.expires_at.timestamp()
+            if (acting_server.is_none()
+                && claims.standard.exp > context.access_token.expires_at.timestamp())
                 || context.access_token.oauth_client_id != claims.standard.client_id
             {
                 return Err(InternalTokenError::InvalidRequestContext);
@@ -493,6 +532,7 @@ impl GatewayInternalTokenVerifier {
             authority: invocation.authority,
             permissions,
             request_context: invocation.request_context,
+            acting_server,
             jwt_id: claims.standard.jti,
             issued_at: timestamp_to_datetime(claims.standard.iat, "iat")?,
             not_before: timestamp_to_datetime(claims.standard.nbf, "nbf")?,
@@ -549,7 +589,8 @@ fn ensure_jwt_crypto_provider() {
 
 /// RFC 9068 §2.2 claims of every token the Gateway forwards. `iss` is the Gateway's
 /// issuer URL, `client_id` the OAuth client the caller used, and `act` (RFC 8693 §4.1)
-/// names the Gateway as the party acting for the caller. `sub`, `groups`, `roles` and
+/// names the Gateway as the party acting for the caller, with the calling server as the
+/// prior actor of a call between servers. `sub`, `groups`, `roles` and
 /// `scope` restate the embedded actor for standard resource-server libraries; a
 /// verifier rejects a token in which they disagree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -571,12 +612,22 @@ struct StandardClaims {
     roles: BTreeSet<RoleId>,
 }
 
-/// RFC 8693 `act`: the Gateway, identified by its issuer URL. A nested actor chain is
-/// refused until delegated tokens define one.
+/// RFC 8693 `act`: the Gateway, identified by its issuer URL. In a call between
+/// servers its own `act` names the calling server's registration, the one prior actor
+/// a forwarded token admits.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ActingParty {
     sub: TokenIssuer,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    act: Option<PriorActor>,
+}
+
+/// The calling server's registration as the prior actor. It names no further actor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PriorActor {
+    sub: OAuthClientId,
 }
 
 impl StandardClaims {
@@ -586,6 +637,7 @@ impl StandardClaims {
         client: &OAuthClientId,
         actor: &Principal,
         audience: &str,
+        acting_server: Option<&ActingServer>,
         jwt_id: &JwtId,
         issued_at: DateTime<Utc>,
         not_before: DateTime<Utc>,
@@ -602,6 +654,9 @@ impl StandardClaims {
             jti: jwt_id.clone(),
             act: ActingParty {
                 sub: issuer.clone(),
+                act: acting_server.map(|acting| PriorActor {
+                    sub: acting.client.clone(),
+                }),
             },
             scope: scope_claim(actor),
             groups: actor.groups.clone(),
@@ -664,6 +719,9 @@ struct Invocation {
     authority: InvocationAuthority,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     request_context: Option<GatewayRequestContext>,
+    /// The calling server's slug, present exactly when `act` names a prior actor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    acting_server: Option<ServerSlug>,
 }
 
 impl AccessTokenClaims {
@@ -674,6 +732,7 @@ impl AccessTokenClaims {
                 &identity.client,
                 &identity.actor,
                 identity.audience.as_str(),
+                identity.acting_server.as_ref(),
                 &identity.jwt_id,
                 identity.issued_at,
                 identity.not_before,
@@ -689,6 +748,10 @@ impl AccessTokenClaims {
                 actor: identity.actor.clone(),
                 authority: identity.authority.clone(),
                 request_context: identity.request_context.clone(),
+                acting_server: identity
+                    .acting_server
+                    .as_ref()
+                    .map(|acting| acting.server.clone()),
             },
         }
     }
@@ -857,6 +920,7 @@ pub(crate) mod tests {
                 .map(|permission| PermissionName::parse(*permission).unwrap())
                 .collect(),
             request_context: None,
+            acting_server: None,
             expires_at: Utc::now() + TimeDelta::minutes(5),
         }
     }
@@ -935,10 +999,12 @@ pub(crate) mod tests {
             Err(InternalTokenError::InconsistentClaims)
         ));
 
-        // RFC 8693: `act` names the issuing Gateway and nothing else.
+        // RFC 8693: `act` names the issuing Gateway, and a prior actor only with the
+        // acting server it names.
         for act in [
             serde_json::json!({"sub": "https://other.example"}),
             serde_json::json!({"sub": TEST_ISSUER, "act": {"sub": "agent"}}),
+            serde_json::json!({"sub": TEST_ISSUER, "client_id": "agent"}),
         ] {
             let mut acting = granted.clone();
             acting["act"] = act;
@@ -959,6 +1025,70 @@ pub(crate) mod tests {
         let mut slugged = granted.clone();
         slugged["aud"] = serde_json::json!("time");
         assert!(verifier.verify(&sign(&slugged)).is_err());
+    }
+
+    #[test]
+    fn delegated_calls_name_the_acting_server_as_the_prior_actor() {
+        let acting = ActingServer {
+            server: ServerSlug::parse("media").unwrap(),
+            client: OAuthClientId::parse("media-0123456789abcd").unwrap(),
+        };
+        let mut request = forwarded("time", &["time.read"]);
+        request.acting_server = Some(acting.clone());
+        let issued = issuer().issue(request).unwrap();
+        let identity = verifier("time").verify(&issued.bearer_token).unwrap();
+        assert_eq!(identity.acting_server.as_ref(), Some(&acting));
+        assert_eq!(
+            identity.acting_server().map(ServerSlug::as_str),
+            Some("media")
+        );
+        // The caller stays the caller: the subject and client are the original ones.
+        assert_eq!(identity.client.as_str(), TEST_CLIENT);
+        assert_eq!(identity.actor.id, principal().id);
+
+        let claims: serde_json::Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(issued.bearer_token.split('.').nth(1).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            claims["act"],
+            serde_json::json!({"sub": TEST_ISSUER, "act": {"sub": "media-0123456789abcd"}})
+        );
+        assert_eq!(claims[INVOCATION_CLAIM]["acting_server"], "media");
+
+        let mut header = Header::new(Algorithm::EdDSA);
+        header.typ = Some(ACCESS_TOKEN_TYPE.to_owned());
+        header.kid = Some(signing_key().key_id().to_owned());
+        let sign = |claims: &serde_json::Value| {
+            encode(
+                &header,
+                claims,
+                &EncodingKey::from_ed_der(&signing_key().private_key_der),
+            )
+            .unwrap()
+        };
+        // The prior actor and the acting server travel together.
+        let mut unnamed = claims.clone();
+        unnamed[INVOCATION_CLAIM]
+            .as_object_mut()
+            .unwrap()
+            .remove("acting_server");
+        assert!(matches!(
+            verifier("time").verify(&sign(&unnamed)),
+            Err(InternalTokenError::InconsistentClaims)
+        ));
+        let mut unacted = claims.clone();
+        unacted["act"] = serde_json::json!({"sub": TEST_ISSUER});
+        assert!(matches!(
+            verifier("time").verify(&sign(&unacted)),
+            Err(InternalTokenError::InconsistentClaims)
+        ));
+        // One prior actor at most.
+        let mut chained = claims;
+        chained["act"]["act"]["act"] = serde_json::json!({"sub": "agent"});
+        assert!(verifier("time").verify(&sign(&chained)).is_err());
     }
 
     #[test]

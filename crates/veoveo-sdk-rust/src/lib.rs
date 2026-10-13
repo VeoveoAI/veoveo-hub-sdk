@@ -66,11 +66,11 @@ pub use host::{
 };
 #[cfg(feature = "server")]
 pub use internal_auth::{
-    ACCESS_TOKEN_TYPE, ForwardedRequest, ForwardedTokenVerifier, GATEWAY_ROUTING_REQUIRED,
-    GatewayInternalIdentity, GatewayInternalSigningKey, GatewayInternalTokenIssuer,
-    GatewayInternalTokenVerifier, GatewayInternalTrustBundle, GatewayRequestContext,
-    INVOCATION_CLAIM, InternalTokenError, IssuedGatewayInternalToken, KEY_DOCUMENT_LIMIT,
-    KEY_FETCH_TIMEOUT, KEY_REFRESH_INTERVAL, TokenAudience,
+    ACCESS_TOKEN_TYPE, ActingServer, ForwardedRequest, ForwardedTokenVerifier,
+    GATEWAY_ROUTING_REQUIRED, GatewayInternalIdentity, GatewayInternalSigningKey,
+    GatewayInternalTokenIssuer, GatewayInternalTokenVerifier, GatewayInternalTrustBundle,
+    GatewayRequestContext, INVOCATION_CLAIM, InternalTokenError, IssuedGatewayInternalToken,
+    KEY_DOCUMENT_LIMIT, KEY_FETCH_TIMEOUT, KEY_REFRESH_INTERVAL, TokenAudience,
 };
 #[cfg(feature = "server")]
 pub use pagination::{Page, PaginationError, paginate};

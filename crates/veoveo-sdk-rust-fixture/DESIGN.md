@@ -1,13 +1,17 @@
 # Observatory Fixture
 
 `veoveo-sdk-rust-fixture` is an independent hosted server, Observatory, that the Gateway
-registers as its test peer and that MCP conformance certifies. It also carries the
-pure tool-input fixtures that hosted servers use in their argument-schema tests.
+registers as its test peer and that MCP conformance certifies. It also carries Ledger
+and Relay for calls between servers, Foundry and its fake provider Kiln for operations
+and usage, and the pure tool-input fixtures that hosted servers use in their
+argument-schema tests.
 
 ## Standards And Protocols
 
 The fixture implements the resource portion of MCP `2026-07-28` over stateless
-Streamable HTTP. JSON carries reading values and embedded contract documents.
+Streamable HTTP. JSON carries reading values and embedded contract documents. Kiln's
+events are JSON bodies signed with HMAC-SHA256 (RFC 2104) in a `x-kiln-signature`
+header of lowercase hexadecimal, with the event's identifier in `x-kiln-event`.
 The foundational concrete URI profile defines `observatory://` parsing and component
 construction. Its RFC 6570 declaration has a single path variable and passes the
 foundational template parser before its MCP descriptor is constructed.
@@ -47,6 +51,20 @@ calls Ledger through `ctx.client()`, inline and through Ledger's Task, and
 shows the Task as provenance. With core's Task runtime Relay also runs `relay_later` as
 a durable Task whose worker calls Ledger for the Task's caller. The SDK's mesh tests
 and the Gateway's integration tests use both.
+
+## Operations Fixture
+
+Foundry is a hosted server whose `foundry_cast` runs as a durable Task in core's Task
+runtime, and Kiln is the fake provider it casts in, on a loopback port. A cast records
+an estimate of its cost, dispatches an operation to Kiln with the operation identity as
+Kiln's idempotency key and the callback URL of Foundry's public route, and parks. Kiln
+calls the callback URL with an event whose body it signs with HMAC-SHA256 under a shared
+secret; Foundry's parser checks the signature and reads Kiln's event identifier and
+job. The resumed Task records the billed cost and completes with the piece. Kiln also
+finds a job by the operation identity, which an unsettled dispatch uses to reconcile
+instead of casting again, and cancels a job with a receipt. The operations tests run
+Foundry and Kiln on a private PostgreSQL cluster from core's store fixture, through the
+SDK's mesh, and reach no outside service.
 
 The `tool_inputs` module needs only Serde. A server's tests load its own cases and
 check required members, defaults, open objects, typed dictionaries and rejected

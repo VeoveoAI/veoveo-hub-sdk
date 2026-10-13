@@ -30,7 +30,10 @@ crate documents and in its contract resource.
 | Veoveo access-token `session_family` | signed UUIDv7 refresh-family binding for browser tokens; the Gateway enforces current family revocation, and absence supplies no renewable session authority |
 | Veoveo `request_context` | signed source principal, verified access-token metadata and required audit request correlation, including the OAuth client and optional session family; it contains no bearer value and grants no independent renewal permission |
 | MCP Apps, SEP-1865 | `ui://` App resources and tool links, specified in [MCP Apps](src/apps/DESIGN.md) |
-| [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/f685fbfd3d28a477d35f77cee3feacc8787772ac/platform/audit/contract/DESIGN.md) | the classes `mcp.discovery`, `mcp.tool_admission`, `mcp.tool_completion` and `mcp.read` and the targets `tool`, `resource_template`, `prompt`, `discovery` and `task_route`, which an MCP producer declares under the owner `mcp` |
+| [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/50e72a3a1895d59b4f1eedd2b50cf947fa5d2e72/platform/audit/contract/DESIGN.md), after NIST SP 800-53 Rev. 5 AU-3 and mapped to OCSF 1.9 | the classes `mcp.discovery` and `mcp.read` (OCSF API Activity Read) and `mcp.tool_admission` and `mcp.tool_completion` (API Activity Other), which an MCP producer declares under the owner `mcp`; targets are `veoveo://` URIs built by the shared resource URI builder; the acting server and Task travel in the envelope's `via`, and the OAuth client, delegating principal, policy revision, scopes and data labels in each detail's `invocation` |
+| [Veoveo durable Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/50e72a3a1895d59b4f1eedd2b50cf947fa5d2e72/platform/task-runtime/DESIGN.md) | durable steps, and operations whose outcome arrives through provider events or a bounded check schedule, run through `TaskWorker` and `TaskContext` |
+| Provider webhooks over HTTP | `POST {mount}/operations/{operation_id}/{token}` and `POST {mount}/providers/{provider}/events` on a server's public routes; the server's parser checks the provider's signature, and the route answers 204 only after the Task runtime stored the event |
+| FOCUS 1.4 and ISO 4217, through [core's usage ledger](https://github.com/VeoveoAI/veoveo-core/blob/50e72a3a1895d59b4f1eedd2b50cf947fa5d2e72/platform/usage/DESIGN.md) | usage kinds a server declares under its slug, estimates and actual usage of a Task, and the Task's cost under the `ai.veoveo/usage` `_meta` key of its result and of `tasks/get` |
 
 A hosted server declares its MCP endpoint when it registers with the Gateway and keeps
 its registration while its process holds a live kernel instance on the login the
@@ -78,7 +81,7 @@ URIs, and fixed discovery literals and URI templates require agreement tests wit
 builders.
 
 Task-backed resource addresses may implement the foundational `TaskResourceAddress`
-trait. The [Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/f685fbfd3d28a477d35f77cee3feacc8787772ac/platform/task-runtime/DESIGN.md) can then deliver
+trait. The [Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/50e72a3a1895d59b4f1eedd2b50cf947fa5d2e72/platform/task-runtime/DESIGN.md) can then deliver
 requested Task status and resource invalidations from one authorized watch.
 
 `McpServerSetup` checks implementation and document identity, required document
@@ -93,10 +96,10 @@ declaration consistency; hosted conformance and domain tests establish behavior.
 
 | Feature | Contains | Excludes |
 |---|---|---|
-| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Gateway's client-visible metadata, the document and compliance declarations and the MCP audit vocabulary | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
+| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Gateway's client-visible metadata, the document and compliance declarations, the MCP audit vocabulary and the usage kinds and Task cost types | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
 | `client` | `GatewayClient`: typed calls, Task handles and typed resource reads and waits through a Gateway profile over MCP Streamable HTTP, with rmcp's client and Streamable HTTP client transport | rmcp's server, server transport and macros, axum, jsonwebtoken, OpenTelemetry, sqlx and core's Task runtime; `tests/contract_boundary.rs` fails when the resolved graph or rmcp's features contain them |
-| `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry and the MCP Tasks adapter over core's durable Task runtime | |
-| `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests and `TestMesh` for calls between servers | |
+| `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry, the MCP Tasks adapter over core's durable Task runtime, [Task work](#task-work) with its provider event routes, and the usage ledger | |
+| `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests and `TestMesh` for calls between servers, whose origin also delivers requests under a served server's mount to its public routes, as an ingress would | |
 
 The Gateway attaches discovery degradation and App dependency metadata to federated
 lists. Their DTOs live in the `gateway` module, and `GatewayDiscoveryMetadata`
@@ -160,9 +163,10 @@ unaudited content URLs, and second sources of truth are prohibited.
 
 The gateway records authorization and execution as separate audit facts. A
 policy event reports whether `tools/call` was admitted. After an admitted call
-returns, a tool-call event reports `succeeded` or `failed`, the bounded result
+returns, a tool-call event reports its outcome, the bounded result
 kind, duration, and the JSON-RPC error code when the failure crossed that
-boundary. It never records tool arguments, provider payloads, credentials, or
+boundary. A call another server made for its caller names that server, and the Task it
+called from, in the record's `via`. It never records tool arguments, provider payloads, credentials, or
 an upstream error message. Both records carry the same trace identity, which
 keeps policy admission distinct from domain or protocol completion.
 
@@ -526,6 +530,84 @@ A program with its own access token for a profile builds `GatewayClient::new` wi
 behind a loopback token endpoint and profile, with the Gateway's exchange and
 narrowing, so a server tests its calls to another without a Gateway.
 
+## Task Work
+
+`durable_tasks::TaskWorker` claims a server's Tasks and runs a handler for each with a
+`TaskContext`, the `ctx` of that Task's work. The worker carries the server's calls to
+other servers, the callback base of its operations and the usage ledger:
+
+```rust
+let worker = TaskWorker::new(runtime.clone())
+    .calls(calls)
+    .callbacks(CallbackUrls::new(public_base, slug)?)
+    .usage(UsageLedger::new(&runtime));
+worker.run(|ctx| async move { cast(ctx).await }, stop).await?;
+
+async fn cast(ctx: TaskContext) -> anyhow::Result<TaskTransition> {
+    let spec = OperationSpec::events(OperationKey::parse("cast")?, ProviderName::parse("kiln")?, timeout);
+    ctx.usage()?.estimate(Usage::Casts, Quantity::whole(1)).money(estimate).operation(&spec.key).await?;
+    ctx.operation(&spec)
+        .dispatch(|dispatch| async move {
+            let job = match dispatch.dispatch {
+                StepDispatch::First => provider.submit(dispatch.operation_id, dispatch.callback_url).await?,
+                StepDispatch::Unsettled { .. } => provider.find(dispatch.operation_id).await?,
+            };
+            Ok(Submission::job(job))
+        })
+        .await?;
+    match ctx.wait::<ProviderOutcome, _>(&spec.key, &provider).await? {
+        WaitOutcome::Settled(outcome) => { /* record actual usage, complete */ }
+        WaitOutcome::Expired => { /* the outcome is unknown, never a failure by itself */ }
+        WaitOutcome::Cancelled { .. } => Ok(TaskTransition::Cancelled),
+    }
+}
+```
+
+`ctx.step` runs a durable step: a finished step returns its stored result, and a step
+an earlier run dispatched without a result receives an unsettled attempt with the same
+operation identity. `ctx.operation(..).dispatch` records an operation and runs its
+closure once, with the operation identity as the provider's idempotency key and, on the
+first attempt, the callback URL `{base}/{slug}/operations/{operation_id}/{token}` under
+the worker's callback base; an unsettled attempt reconciles with the provider and never
+resubmits blindly. `ctx.wait` returns the outcome of a settled operation, runs a due
+status check, carries a cancellation to the provider through the server's
+`OperationCalls`, or parks the Task. A parked wait fails with `TaskError::Parked`, the
+handler propagates it with `?`, and the worker releases the Task without settling it: a
+waiting Task holds no worker and survives restarts. A provider event, a due check or the
+deadline queues the Task, and the handler runs again from its start, so its finished
+steps and its dispatched operation return what they recorded and it resumes at its wait.
+A Task whose cancellation was requested while it was parked runs to its wait, which
+cancels the operation and returns the provider's receipt.
+
+The worker settles the transition a handler returns, a `resume` Task through resumable
+settlement. A handler error that is a parked Task releases it, one that reports the
+Task lost to another instance leaves it alone, and any other error fails the Task with
+`task_error`; `TaskWorkError` reads these from `TaskError` and from `anyhow::Error`.
+`ctx.client()` calls other servers for the Task's caller, and `ctx.audit_request()`
+names the Task in the records its work writes. A Task the store reports waiting is
+`working` over MCP unless it holds outstanding input requests.
+
+`hosting::operations::operation_callbacks` serves the callback route on a server's
+public routes, and `provider_events` serves `POST /providers/{provider}/events` for a
+provider that sends every event to one fixed URL and names its own job. Both hand the
+request to the server's `ProviderEvents` parser, which checks the provider's signature
+and reads the event's identifier, payload and finality, and then store the event through
+the Task runtime. A stored event answers 204 whether it was new, a repeat or late. An
+unknown operation, a malformed path and a wrong token answer the same 404, a refused
+signature 401, an unreadable event 400 and an unavailable database 503. A body holds at
+most 1 MiB, and the request span records the route template, never the token.
+
+A server declares its usage kinds from a closed enum that implements `usage::UsageKinds`
+through `UsageLedger::declare`, each under its slug with its FOCUS service category and
+unit. `ctx.usage()` records an estimate before billed work, which is the work's
+reservation, and the actual usage the provider reports. Each record is for the Task's
+caller and names the Task and its operation. Its source identifier defaults to
+`task:<task>:<operation key>` and its charge period to the Task's creation, so a
+replayed run writes an identical record, which the ledger accepts as a repeat. A
+completed Task's result and every `tasks/get` answer carry the Task's cost under
+`ai.veoveo/usage`: per kind and currency, the actual records when a kind has any and its
+estimates otherwise.
+
 ## Deployment Identity
 
 Ordinary hosted MCP endpoints and the gateway run behind load-balanced replicas.
@@ -600,7 +682,7 @@ then calls the shared `embedded_document!` proc macro and admits the adjacent
 `contract-compliance.json`. Admission checks the server identity and the generated
 manual section against the profile. Its manifest-relative document
 selection must expand in the calling crate, as declared in the
-[shared macro catalog](https://github.com/VeoveoAI/veoveo-core/blob/f685fbfd3d28a477d35f77cee3feacc8787772ac/platform/macros/DESIGN.md#macro-catalog-and-enforcement).
+[shared macro catalog](https://github.com/VeoveoAI/veoveo-core/blob/50e72a3a1895d59b4f1eedd2b50cf947fa5d2e72/platform/macros/DESIGN.md#macro-catalog-and-enforcement).
 
 The Console renders these resources generically; the gateway generates an
 installation llms.txt from the catalog. Neither requires per-server work.

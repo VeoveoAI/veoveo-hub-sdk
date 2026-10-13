@@ -34,6 +34,7 @@ mod catalog;
 mod domain;
 mod host;
 mod listing;
+pub mod operations;
 mod results;
 mod server;
 mod subscriptions;

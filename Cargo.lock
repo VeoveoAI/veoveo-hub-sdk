@@ -3625,10 +3625,13 @@ name = "veoveo-sdk-rust-fixture"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-lc-rs",
  "axum",
  "chrono",
  "futures",
+ "hex",
  "parking_lot",
+ "reqwest",
  "rmcp",
  "rustls",
  "schemars",
@@ -3638,9 +3641,11 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
  "uuid",
  "veoveo-sdk-rust",
  "veoveo-task-runtime",
+ "veoveo-test-fixtures",
  "veoveo-types",
 ]
 
@@ -3678,6 +3683,21 @@ dependencies = [
  "uuid",
  "veoveo-platform-store",
  "veoveo-task-contract",
+ "veoveo-types",
+]
+
+[[package]]
+name = "veoveo-test-fixtures"
+version = "0.1.0"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=50e72a3a1895d59b4f1eedd2b50cf947fa5d2e72#50e72a3a1895d59b4f1eedd2b50cf947fa5d2e72"
+dependencies = [
+ "hex",
+ "secrecy",
+ "sha2 0.11.0",
+ "sqlx",
+ "tokio",
+ "uuid",
+ "veoveo-platform-store",
  "veoveo-types",
 ]
 

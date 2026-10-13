@@ -17,14 +17,18 @@ contract = [
 server = [
     "contract",
     "dep:anyhow",
+    "dep:aws-lc-rs",
     "dep:axum",
     "dep:chrono",
     "dep:futures",
+    "dep:hex",
     "dep:parking_lot",
+    "dep:reqwest",
     "dep:rmcp",
     "dep:tokio",
     "dep:tokio-util",
     "dep:tracing",
+    "dep:url",
     "dep:uuid",
     "dep:veoveo-task-runtime",
     "veoveo-sdk-rust/server",
@@ -38,19 +42,24 @@ veoveo-types = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 veoveo-sdk-rust = { workspace = true, features = ["contract"], optional = true }
 anyhow = { workspace = true, optional = true }
+aws-lc-rs = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 rmcp = { workspace = true, features = ["server", "macros"], optional = true }
 tokio = { workspace = true, features = ["full"], optional = true }
 tokio-util = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 veoveo-task-runtime = { workspace = true, optional = true }
 
 [dev-dependencies]
 rustls.workspace = true
+veoveo-test-fixtures = { workspace = true, features = ["store"] }
 veoveo-sdk-rust = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["full"] }
 
@@ -60,6 +69,10 @@ required-features = ["contract"]
 
 [[test]]
 name = "calls"
+required-features = ["server"]
+
+[[test]]
+name = "operations"
 required-features = ["server"]
 
 [lints]

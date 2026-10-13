@@ -205,6 +205,7 @@ impl TestMesh {
         let router = Router::new()
             .route("/oauth/token", post(token))
             .route("/mcp/{profile}", post(mcp))
+            .fallback(ingress)
             .with_state(shared.clone());
         let listener = self.listener;
         let task = tokio::spawn(async move {
@@ -227,6 +228,13 @@ impl Drop for RunningMesh {
 }
 
 impl RunningMesh {
+    /// The mesh's origin. A request under a served server's mount reaches that server's
+    /// routes there, as an ingress would deliver it, so a provider calls back a server's
+    /// public routes at this origin.
+    pub fn base(&self) -> url::Url {
+        self.shared.base.clone()
+    }
+
     /// The MCP endpoint of the mesh's profile.
     pub fn endpoint(&self) -> url::Url {
         let mut endpoint = self.shared.base.clone();
@@ -863,4 +871,35 @@ async fn mcp(
         );
     }
     Response::from_parts(parts, Body::from(bytes))
+}
+
+/// A request outside the token and MCP endpoints, delivered as an ingress would: under a
+/// served server's mount it reaches that server's router with the test host, without
+/// Gateway authentication, so only a server's public routes answer it.
+async fn ingress(State(shared): State<Arc<Shared>>, request: Request<Body>) -> Response {
+    let path = request.uri().path().to_owned();
+    let served = shared
+        .servers
+        .values()
+        .filter_map(|server| server.router.as_ref());
+    let Some((router, _)) = served.into_iter().find(|(_, mount)| {
+        !mount.is_empty()
+            && path
+                .strip_prefix(mount.as_str())
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    }) else {
+        return (StatusCode::NOT_FOUND, "no served server owns this path").into_response();
+    };
+    let (mut parts, body) = request.into_parts();
+    parts
+        .headers
+        .insert(header::HOST, header::HeaderValue::from_static(TEST_HOST));
+    match router
+        .clone()
+        .oneshot(Request::from_parts(parts, body))
+        .await
+    {
+        Ok(response) => response.into_response(),
+        Err(never) => match never {},
+    }
 }

@@ -50,11 +50,13 @@ impl fmt::Debug for ForwardedBearer {
     }
 }
 
-/// Middleware state: the verifier bound to this server's audience.
+/// Middleware state: the verifier bound to this server's audience, and the calls to
+/// other servers that `ctx.client()` makes for a verified caller.
 #[derive(Clone)]
 pub(super) struct InternalAuth {
     pub(super) verifier: Arc<ForwardedTokenVerifier>,
     pub(super) slug: ServerSlug,
+    pub(super) calls: Option<super::ServerCalls>,
 }
 
 pub(super) async fn authenticate(
@@ -82,6 +84,9 @@ pub(super) async fn authenticate(
     };
     request.extensions_mut().insert(bearer);
     request.extensions_mut().insert(identity);
+    if let Some(calls) = &auth.calls {
+        request.extensions_mut().insert(calls.clone());
+    }
     next.run(request).await
 }
 

@@ -39,6 +39,9 @@ pub enum GrantType {
     JwtBearer,
     #[vocabulary(rename = "urn:ietf:params:oauth:grant-type:saml2-bearer")]
     Saml2Bearer,
+    /// RFC 8693: the grant a server uses to call other servers for its caller.
+    #[vocabulary(rename = "urn:ietf:params:oauth:grant-type:token-exchange")]
+    TokenExchange,
 }
 
 /// RFC 7591 §2 response types. A server uses no authorization endpoint.
@@ -120,7 +123,7 @@ impl ClientMetadata {
         let metadata = Self {
             jwks: ServerKeySet::new(key),
             token_endpoint_auth_method: TokenEndpointAuthMethod::PrivateKeyJwt,
-            grant_types: Vec::new(),
+            grant_types: Self::grants_for(&authorization),
             response_types: Vec::new(),
             registration,
             authorization,
@@ -129,12 +132,24 @@ impl ClientMetadata {
         Ok(metadata)
     }
 
+    /// The RFC 7591 `grant_types` of a server: token exchange when it uses other
+    /// servers, and none otherwise.
+    fn grants_for(authorization: &AuthorizationDeclaration) -> Vec<GrantType> {
+        if authorization.uses.is_empty() {
+            Vec::new()
+        } else {
+            vec![GrantType::TokenExchange]
+        }
+    }
+
     /// Check the profile and every declaration against the registering namespace.
     pub fn check(&self) -> Result<(), DeclarationError> {
-        if !self.grant_types.is_empty() || !self.response_types.is_empty() {
+        if self.grant_types != Self::grants_for(&self.authorization)
+            || !self.response_types.is_empty()
+        {
             return Err(DeclarationError::invalid(
                 "grant_types",
-                "servers register without grant or response types",
+                "servers register token exchange exactly when they use other servers, and no response type",
             ));
         }
         let slug = &self.registration.slug;
@@ -471,8 +486,9 @@ pub struct RegistrationErrorResponse {
 }
 
 /// The RFC 8414 authorization server metadata members a server reads: the registration
-/// endpoint when it registers, and the JWK Set when it refreshes the keys that verify
-/// forwarded access tokens (RFC 9068 §4).
+/// endpoint when it registers, the token endpoint where it exchanges tokens to call other
+/// servers, and the JWK Set when it refreshes the keys that verify forwarded access
+/// tokens (RFC 9068 §4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AuthorizationServerMetadata {
     #[schemars(with = "url::Url")]
@@ -480,6 +496,9 @@ pub struct AuthorizationServerMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<url::Url>")]
     pub registration_endpoint: Option<url::Url>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<url::Url>")]
+    pub token_endpoint: Option<url::Url>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<url::Url>")]
     pub jwks_uri: Option<url::Url>,
@@ -494,6 +513,20 @@ impl AuthorizationServerMetadata {
             "the metadata names no JWK Set",
         ))?;
         http_url(url, "jwks_uri")?;
+        Ok(url)
+    }
+
+    /// The `token_endpoint` member: an HTTPS URL, or an HTTP URL on a local host, without
+    /// credentials, query or fragment.
+    pub fn token_endpoint_url(&self) -> Result<&url::Url, DeclarationError> {
+        let url = self
+            .token_endpoint
+            .as_ref()
+            .ok_or(DeclarationError::invalid(
+                "token_endpoint",
+                "the metadata names no token endpoint",
+            ))?;
+        http_url(url, "token_endpoint")?;
         Ok(url)
     }
 

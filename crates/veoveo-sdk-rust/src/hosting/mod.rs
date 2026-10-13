@@ -13,7 +13,8 @@
 //! HTTP service around it: routes, gateway authentication, host validation, health,
 //! readiness, administrative documents, the stateless MCP transport, and shutdown.
 //! Inside a domain method, [`gateway_identity`] and [`forwarded_bearer`] return the
-//! verified caller.
+//! verified caller, and `ctx.client()` through [`ClientContext`] calls other servers for
+//! that caller when the server was built with [`ServerCalls`].
 //!
 //! ```ignore
 //! let server = HostedServer::for_domain::<MyDomain>()
@@ -28,6 +29,7 @@
 
 mod admin;
 mod auth;
+mod calls;
 mod catalog;
 mod domain;
 mod host;
@@ -41,6 +43,7 @@ pub mod testing;
 mod tests;
 
 pub use auth::{ForwardedBearer, forwarded_bearer, gateway_identity};
+pub use calls::{ClientContext, ServerCalls};
 pub use domain::{
     DomainAddress, DomainRead, DomainServer, Hosted, NoTasks, ReadCache, TaskSupport,
     served_by_host, unknown_prompt,

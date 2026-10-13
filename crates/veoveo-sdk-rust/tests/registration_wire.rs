@@ -278,6 +278,19 @@ fn uses_name_other_servers_permissions() {
     let mut malformed = wire;
     malformed["uses"] = json!(["map"]);
     assert!(serde_json::from_value::<AuthorizationDeclaration>(malformed).is_err());
+
+    // RFC 7591 §2: a server that uses others registers the token exchange grant, and
+    // one that does not registers none.
+    let consumer = ClientMetadata::new(rfc8037_key(), registration(), declaration).unwrap();
+    assert_eq!(consumer.grant_types, [GrantType::TokenExchange]);
+    assert_eq!(
+        serde_json::to_value(&consumer).unwrap()["grant_types"],
+        json!(["urn:ietf:params:oauth:grant-type:token-exchange"])
+    );
+    assert!(metadata().grant_types.is_empty());
+    let mut ungranted = consumer.clone();
+    ungranted.grant_types.clear();
+    assert!(ungranted.check().is_err());
 }
 
 #[test]

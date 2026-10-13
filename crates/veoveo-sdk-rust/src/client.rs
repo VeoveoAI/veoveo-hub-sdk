@@ -73,6 +73,11 @@ impl std::fmt::Debug for Bearer {
 /// Supplies the bearer of calls to one provider's tools.
 pub trait BearerSource: Send + Sync + 'static {
     fn bearer<'a>(&'a self, provider: &'a ServerSlug) -> BoxFuture<'a, Result<Bearer, CallError>>;
+
+    /// Drops a bearer the Gateway no longer admits, so the next call obtains another.
+    fn forget(&self, provider: &ServerSlug) {
+        let _ = provider;
+    }
 }
 
 /// One bearer for every provider: a program's own access token for the profile.
@@ -251,6 +256,33 @@ impl GatewayClient {
         if let Some(connection) = connections.get(provider) {
             return Ok(connection.clone());
         }
+        let service = match self.connect(provider).await {
+            Ok(service) => service,
+            // The source's bearer is no longer admitted; the next one shows why.
+            Err(error)
+                if matches!(
+                    &*error,
+                    rmcp::service::ClientInitializeError::TransportError { error, .. }
+                        if auth_required(error)
+                ) =>
+            {
+                self.inner.bearers.forget(provider);
+                self.inner.bearers.bearer(provider).await?;
+                self.connect(provider)
+                    .await
+                    .map_err(|error| CallError::Transport(error.to_string()))?
+            }
+            Err(error) => return Err(CallError::Transport(error.to_string())),
+        };
+        let connection = Arc::new(Connection { service });
+        connections.insert(provider.clone(), connection.clone());
+        Ok(connection)
+    }
+
+    async fn connect(
+        &self,
+        provider: &ServerSlug,
+    ) -> Result<Service, Box<rmcp::service::ClientInitializeError>> {
         let transport = StreamableHttpClientTransport::with_client(
             BearerHttp {
                 http: self.inner.http.clone(),
@@ -263,7 +295,7 @@ impl GatewayClient {
             ClientCapabilities::builder().enable_tasks().build(),
             self.inner.implementation.clone(),
         );
-        let service = config
+        config
             .serve_with_lifecycle(
                 transport,
                 ClientLifecycleMode::Discover {
@@ -271,10 +303,7 @@ impl GatewayClient {
                 },
             )
             .await
-            .map_err(|error| CallError::Transport(error.to_string()))?;
-        let connection = Arc::new(Connection { service });
-        connections.insert(provider.clone(), connection.clone());
-        Ok(connection)
+            .map_err(Box::new)
     }
 
     async fn send<R: ToolCall>(
@@ -288,13 +317,37 @@ impl GatewayClient {
                 return Err(CallError::Contract(CallContractError::Tool(R::TOOL)));
             }
         };
-        let connection = self.connection(&R::Provider::slug()).await?;
-        let response = connection
-            .service
-            .call_tool_once(CallToolRequestParams::new(name.to_string()).with_arguments(arguments))
-            .await?;
-        Ok((connection, response))
+        let provider = R::Provider::slug();
+        let params = CallToolRequestParams::new(name.to_string()).with_arguments(arguments);
+        let connection = self.connection(&provider).await?;
+        match connection.service.call_tool_once(params.clone()).await {
+            Ok(response) => Ok((connection, response)),
+            // A bearer the Gateway stopped admitting, such as one whose Task ended, is
+            // replaced once, so the caller sees why the Gateway refuses another.
+            Err(error) if unauthorized(&error) => {
+                self.inner.bearers.forget(&provider);
+                self.inner.connections.lock().await.remove(&provider);
+                let connection = self.connection(&provider).await?;
+                let response = connection.service.call_tool_once(params).await?;
+                Ok((connection, response))
+            }
+            Err(error) => Err(error.into()),
+        }
     }
+}
+
+/// Whether the Gateway answered HTTP 401 to the bearer a request carried.
+fn unauthorized(error: &ServiceError) -> bool {
+    matches!(error, ServiceError::TransportSend(error) if auth_required(error))
+}
+
+fn auth_required(error: &rmcp::transport::DynamicTransportError) -> bool {
+    matches!(
+        error
+            .error
+            .downcast_ref::<StreamableHttpError<reqwest::Error>>(),
+        Some(StreamableHttpError::AuthRequired(_))
+    )
 }
 
 /// A tool call that runs when awaited.

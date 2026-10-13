@@ -51,6 +51,9 @@ pub struct ExchangeGrant {
     pub acting_server: ActingServer,
     /// The requested permissions the server declared and the caller holds.
     pub permissions: BTreeSet<PermissionName>,
+    /// The calling server's Task this delegation lasts as long as, when the subject was a
+    /// Task. The Gateway checks on every use that the Task is still running.
+    pub task: Option<String>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -63,6 +66,7 @@ pub struct ExchangedIdentity {
     pub caller: DelegatedCaller,
     pub acting_server: ActingServer,
     pub permissions: BTreeSet<PermissionName>,
+    pub task: Option<String>,
     pub jwt_id: JwtId,
     pub issued_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -106,6 +110,8 @@ struct ExchangedInvocation {
     profile: GatewayProfileId,
     acting_server: ServerSlug,
     caller: DelegatedCaller,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    task: Option<String>,
 }
 
 impl GatewayInternalTokenIssuer {
@@ -133,6 +139,7 @@ impl GatewayInternalTokenIssuer {
             caller: grant.caller,
             acting_server: grant.acting_server,
             permissions: grant.permissions,
+            task: grant.task,
             jwt_id: fresh_jwt_id()?,
             issued_at: now,
             expires_at,
@@ -157,6 +164,7 @@ impl GatewayInternalTokenIssuer {
                 profile: identity.profile.clone(),
                 acting_server: identity.acting_server.server.clone(),
                 caller: identity.caller.clone(),
+                task: identity.task.clone(),
             },
         };
         Ok(IssuedExchangedToken {
@@ -225,6 +233,7 @@ impl ExchangedTokenVerifier {
                 client: claims.client_id,
             },
             permissions,
+            task: invocation.task,
             jwt_id: claims.jti,
             issued_at: timestamp_to_datetime(claims.iat, "iat")?,
             expires_at: timestamp_to_datetime(claims.exp, "exp")?,
@@ -269,6 +278,7 @@ mod tests {
             permissions: BTreeSet::from([
                 PermissionName::parse("artifact.artifacts.write").unwrap()
             ]),
+            task: None,
             expires_at: Utc::now() + TimeDelta::seconds(60),
         }
     }

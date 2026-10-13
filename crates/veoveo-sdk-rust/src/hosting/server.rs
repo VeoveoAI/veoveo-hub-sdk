@@ -149,6 +149,7 @@ struct Options {
     readiness: Option<Probe>,
     mcp_request_limit: Option<usize>,
     request_timeout: Option<Duration>,
+    calls: Option<super::ServerCalls>,
 }
 
 /// Builds a [`HostedServer`] for the domain `D`. See the [module
@@ -187,6 +188,7 @@ impl HostedServer {
                 readiness: None,
                 mcp_request_limit: None,
                 request_timeout: None,
+                calls: None,
             },
         }
     }
@@ -415,6 +417,13 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         self
     }
 
+    /// Lets handlers call other servers for their caller through `ctx.client()`, as
+    /// the registered server `calls` describes.
+    pub fn calls(mut self, calls: super::ServerCalls) -> Self {
+        self.options.calls = Some(calls);
+        self
+    }
+
     /// Answers 504 when an authenticated request has not started its response
     /// within `timeout`. A streamed body, such as a subscription, continues past
     /// it once its response has started.
@@ -472,6 +481,7 @@ where
         let auth_state = InternalAuth {
             verifier,
             slug: slug.clone(),
+            calls: options.calls.clone(),
         };
         let timeout = options.request_timeout;
         let authenticate = |routes: Router| {

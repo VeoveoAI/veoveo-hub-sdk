@@ -1,5 +1,6 @@
 //! Calls between servers through the SDK's in-process mesh: Relay calls Ledger for its
-//! own caller inline, through a Ledger Task, and from a Ledger Task back to Relay.
+//! own caller inline, through a Ledger Task, and from a Ledger Task back to Relay, and
+//! reads and follows a Ledger entry through typed resource reads.
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -9,7 +10,7 @@ use veoveo_sdk_rust::{
     hosting::testing::{self, MESH_PROFILE, TEST_CLIENT, TestMesh},
 };
 use veoveo_sdk_rust_fixture::{
-    calls::Inspection,
+    calls::{EntryState, FollowedEntry, Inspection},
     ledger::{self, LedgerDomain, LedgerTasks},
     relay::{self, RelayDomain},
 };
@@ -216,6 +217,48 @@ async fn a_task_calls_for_its_caller_while_it_runs() {
         ),
         "{ended:?}"
     );
+}
+
+/// Relay opens a Ledger entry and follows it: the typed updates show it open, then
+/// closed, a wait for the closed state resolves at once, and a plain read agrees.
+#[tokio::test]
+async fn relay_follows_a_ledger_entry_until_it_closes() {
+    let mesh = mesh(
+        &[
+            "relay.calls.make",
+            "ledger.entries.read",
+            "ledger.entries.write",
+        ],
+        true,
+    )
+    .await;
+    let followed: FollowedEntry = serde_json::from_value(
+        relayed(
+            &mesh
+                .call("relay", "relay_follow_entry", json!({"entry": "batch-1"}))
+                .await,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(followed.states, [EntryState::Open, EntryState::Closed]);
+    assert_eq!(followed.waited.state, EntryState::Closed);
+    assert_eq!(followed.waited.entry.as_str(), "batch-1");
+    assert_eq!(followed.read, followed.waited);
+}
+
+/// A read carries only the permissions the caller holds: without the read permission
+/// Ledger refuses both the subscription and the read.
+#[tokio::test]
+async fn a_read_needs_the_callers_read_permission() {
+    let mesh = mesh(&["relay.calls.make", "ledger.entries.write"], true).await;
+    let refused = relayed(
+        &mesh
+            .call("relay", "relay_follow_entry", json!({"entry": "batch-2"}))
+            .await,
+    )
+    .unwrap_err();
+    assert!(refused.contains("ledger.entries.read"), "{refused}");
 }
 
 /// Relay's `relay_inspect` as a typed call, for a server that uses Relay.

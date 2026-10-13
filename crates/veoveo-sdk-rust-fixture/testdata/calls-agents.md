@@ -2,11 +2,13 @@
 
 ## Purpose
 
-Ledger answers calls, and Relay calls Ledger for its own caller through the Gateway.
+Ledger answers calls and serves entries that close a while after they open. Relay calls
+Ledger for its own caller through the Gateway, and reads and follows Ledger's entries.
 
 ## Invariants
 
-Ledger reports the identity it received, so tests can check what a delegated call carries.
+Ledger and Relay report the identity they received, so tests can check what a delegated
+call carries.
 
 ## Build And Test
 

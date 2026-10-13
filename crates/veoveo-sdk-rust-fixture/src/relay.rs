@@ -1,7 +1,7 @@
 //! Relay, the consumer of the calls fixture: its tools call Ledger through the Gateway
 //! for Relay's own caller, inline with `ctx.client()` and from a durable Task with
-//! `ServerCalls::for_task`. It declares the Ledger permissions it uses, and reports the
-//! identity calls reach it with.
+//! `ServerCalls::for_task`, and read and follow Ledger's entries. It declares the
+//! Ledger permissions it uses, and reports the identity calls reach it with.
 use std::{collections::BTreeSet, sync::LazyLock};
 
 use futures::StreamExt;
@@ -40,7 +40,10 @@ use veoveo_task_runtime::{
 };
 use veoveo_types::{ResourceScheme, TaskId, TaskTypeName, Vocabulary};
 
-use crate::calls::{Inspect, LedgerPermission, ReadSeal, RelayPermission, Tally};
+use crate::calls::{
+    EntryName, EntryState, FollowedEntry, Inspect, LedgerPermission, OpenEntry, ReadEntry,
+    ReadSeal, RelayPermission, Tally,
+};
 use crate::calls_support::{CallsResource, NoScope, contract_config, docs, require};
 
 /// The Task operation of `relay_later`.
@@ -102,7 +105,9 @@ pub fn authorization() -> Result<AuthorizationDeclaration, DeclarationError> {
         .tool(tool("relay_tally"), RelayPermission::CallsMake)
         .tool(tool("relay_later"), RelayPermission::CallsMake)
         .tool(tool("relay_whoami"), RelayPermission::CallsMake)
+        .tool(tool("relay_follow_entry"), RelayPermission::CallsMake)
         .uses(LedgerPermission::EntriesRead)
+        .uses(LedgerPermission::EntriesWrite)
         .uses(LedgerPermission::SealsRead)
         .build(&RelayContract::slug(), &RelayContract::scheme())
 }
@@ -123,6 +128,16 @@ fn relayed<T: serde::Serialize>(
 struct TallyRequest {
     entries: u32,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct FollowRequest {
+    entry: EntryName,
+}
+
+/// How long Relay follows an entry before it gives up.
+const FOLLOW_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+/// How long an entry Relay opens stays open.
+const ENTRY_OPEN_MS: u64 = 1_500;
 
 #[derive(Clone)]
 pub struct RelayDomain {
@@ -188,6 +203,60 @@ impl RelayDomain {
     ) -> Result<CallToolResult, ErrorData> {
         let identity = require(&context, RelayPermission::CallsMake)?;
         structured_result("inspected", &crate::calls_support::inspection(&identity))
+    }
+
+    #[tool(description = "Open a Ledger entry and follow it until it closes.")]
+    async fn relay_follow_entry(
+        &self,
+        Parameters(request): Parameters<FollowRequest>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        require(&context, RelayPermission::CallsMake)?;
+        let client = context.client()?;
+        let entry = request.entry;
+        let outcome = async {
+            // The entry stays open long enough for the subscription to see it open.
+            client
+                .call(OpenEntry {
+                    entry: entry.clone(),
+                    close_after_ms: ENTRY_OPEN_MS,
+                })
+                .await?;
+            let mut updates = client
+                .read(ReadEntry {
+                    entry: entry.clone(),
+                })
+                .updates();
+            let mut states = Vec::new();
+            let follow = async {
+                while let Some(content) = updates.next().await {
+                    let content = content?;
+                    states.push(content.state);
+                    if content.state == EntryState::Closed {
+                        return Ok(());
+                    }
+                }
+                Err(CallError::Transport("the entry's updates ended".into()))
+            };
+            tokio::time::timeout(FOLLOW_TIMEOUT, follow)
+                .await
+                .unwrap_or(Err(CallError::Timeout(FOLLOW_TIMEOUT)))?;
+            let waited = client
+                .read(ReadEntry {
+                    entry: entry.clone(),
+                })
+                .until(|content| content.state == EntryState::Closed)
+                .timeout(FOLLOW_TIMEOUT)
+                .await?;
+            let read = client.read(ReadEntry { entry }).await?;
+            Ok::<_, CallError>(FollowedEntry {
+                states,
+                waited,
+                read,
+            })
+        }
+        .await;
+        relayed(outcome)
     }
 
     #[tool(description = "Ask Ledger whom this call is for, later, from a Task.")]

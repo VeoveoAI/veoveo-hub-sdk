@@ -65,6 +65,13 @@ impl<C> Eq for CallsResource<C> {}
 
 impl<C: McpServerContract> CallsResource<C> {
     pub(crate) fn declared() -> Result<Vec<McpResource<Self>>, McpSetupError> {
+        Self::declared_as(|address| address)
+    }
+
+    /// The host's fixed addresses, as a server's own address type `A` wraps them.
+    pub(crate) fn declared_as<A: ResourceAddress + Eq>(
+        wrap: impl Fn(Self) -> A,
+    ) -> Result<Vec<McpResource<A>>, McpSetupError> {
         [
             (Self::Docs, "docs"),
             (Self::Document("agents"), "agents"),
@@ -72,7 +79,7 @@ impl<C: McpServerContract> CallsResource<C> {
             (Self::Contract, "contract"),
         ]
         .into_iter()
-        .map(|(address, name)| McpResource::new(address, |uri| Resource::new(uri, name)))
+        .map(|(address, name)| McpResource::new(wrap(address), |uri| Resource::new(uri, name)))
         .collect()
     }
 

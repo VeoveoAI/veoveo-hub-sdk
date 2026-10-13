@@ -40,12 +40,12 @@ mod tests {
     #[test]
     fn degradation_metadata_is_typed_sorted_and_deduplicated() {
         let resources = GatewayDiscoveryFailure {
-            server: ServerSlug::parse("recording").unwrap(),
+            server: ServerSlug::parse("time").unwrap(),
             surface: GatewayDiscoverySurface::Resources,
             code: GatewayDiscoveryFailureCode::UpstreamUnavailable,
         };
         let tools = GatewayDiscoveryFailure {
-            server: ServerSlug::parse("artifact").unwrap(),
+            server: ServerSlug::parse("observatory").unwrap(),
             surface: GatewayDiscoverySurface::Tools,
             code: GatewayDiscoveryFailureCode::UpstreamUnavailable,
         };

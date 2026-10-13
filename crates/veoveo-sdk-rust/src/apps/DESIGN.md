@@ -12,7 +12,7 @@ owns the pinned protocol constants and helpers; this document owns the rules.
 | [Model Context Protocol](https://modelcontextprotocol.io/specification/) | App discovery and invocation remain ordinary MCP resource, tool, and task traffic. The hosting path uses JSON-RPC 2.0 over Streamable HTTP. |
 | MCP Apps SEP-1865 / `ext-apps` | Version `2026-01-26`, with `ui://` resources, `text/html;profile=mcp-app`, tool-to-app metadata, host context, lifecycle notifications, and the `postMessage` bridge. |
 | Veoveo reactive App resource adapter | Repository-owned extension over MCP Apps `2026-01-26`. A sandboxed App requests an authorized resource filter through one final-profile `subscriptions/listen` stream; the Console projects contentless `ui/notifications/resource-updated` wakes from its auth-scoped MCP client. This adapter is not claimed as part of SEP-1865. |
-| Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. Exact `ui://` targets navigate only when present in the caller-visible App catalog; `veoveo-console://agents` and `veoveo-console://recordings` are the only platform-view targets. Other custom, missing, or unexposed targets fail closed. |
+| Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. Exact `ui://` targets navigate only when present in the caller-visible App catalog. Other custom, missing, or unexposed targets fail closed. |
 | MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`; app-started durable work retains the same task lifecycle and ownership rules as a normal MCP client. |
 | Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. Gateway dependency metadata uses camelCase fields and unchanged snake_case operation values. |
 | [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/) | Linked tool arguments and structured results use the same canonical schemas exposed outside the app. |
@@ -34,10 +34,8 @@ boundary: MCP.
 Domain servers must not expose bespoke admin REST routers, and hosts must not
 hardcode domain pages, domain nav entries, or domain proxy routes. If a
 domain needs UI, it ships an app; if it needs new operations, it ships tools.
-The Console's platform-plane views (overview, work, artifacts, agents,
-recordings, MCP, apps, access, audit, cluster) are the only compiled-in
-views: they render installation-generic state, never one server's domain
-vocabulary.
+The Console's platform views are the only compiled-in views: they render
+installation-generic state, never one server's domain vocabulary.
 
 ## Server obligations
 
@@ -169,7 +167,7 @@ The hosting core (gateway + console BFF + console web) stays fully generic:
   arrivals use MCP `listChanged` through the BFF event stream; timer-based
   refresh is not part of the correctness path.
 - **Context links** — an App may send `ui/open-link` for another exact `ui://`
-  resource or one of the two declared platform targets. The Console resolves
+  resource. The Console resolves
   App targets against its current caller-visible catalog and never accepts a
   browser-supplied server alias or arbitrary Console route.
 

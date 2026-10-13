@@ -1,6 +1,6 @@
 # MCP Naming Conventions
 
-These conventions extend [veoveo-core's naming and format conventions](https://github.com/VeoveoAI/veoveo-core/blob/dd7394ee566bf2a325a3eb2715e1645b27a6f0de/docs/CONVENTIONS.md)
+These conventions extend [veoveo-core's naming and format conventions](https://github.com/VeoveoAI/veoveo-core/blob/f685fbfd3d28a477d35f77cee3feacc8787772ac/docs/CONVENTIONS.md)
 for MCP. Where a standard governs a name, the standard wins.
 
 ## Standards And Protocols

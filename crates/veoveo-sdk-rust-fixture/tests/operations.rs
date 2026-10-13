@@ -340,6 +340,13 @@ async fn a_parked_cast_resumes_on_a_new_worker_after_a_restart() {
 
         // The worker's process ends; the parked Task holds no worker and stays parked.
         let old = harness.worker.take().unwrap().stop().await;
+        let stopped = old
+            .get(TaskId::parse(&task).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stopped.status, TaskStatus::Waiting);
+        assert_eq!(stopped.owner_instance, None);
         old.instance().shutdown().await.unwrap();
         let replacement = Worker::start(&harness.db, &harness.callbacks, &harness.furnace).await;
         let snapshot = harness

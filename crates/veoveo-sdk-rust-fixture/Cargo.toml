@@ -75,5 +75,9 @@ required-features = ["server"]
 name = "operations"
 required-features = ["server"]
 
+[[test]]
+name = "worker"
+required-features = ["server"]
+
 [lints]
 workspace = true

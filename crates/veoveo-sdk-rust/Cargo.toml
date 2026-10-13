@@ -31,6 +31,7 @@ client = [
 server = [
     "client",
     "rmcp/server",
+    "rmcp/schemars",
     "rmcp/transport-streamable-http-server",
     "dep:anyhow",
     "dep:aws-lc-rs",
@@ -82,7 +83,7 @@ opentelemetry-otlp = { workspace = true, optional = true }
 opentelemetry_sdk = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true, features = ["blocking", "rustls-no-provider"] }
-rmcp = { workspace = true, optional = true, features = ["schemars"] }
+rmcp = { workspace = true, optional = true }
 sse-stream = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["full"] }
 tokio-util = { workspace = true, optional = true }
@@ -96,7 +97,7 @@ veoveo-task-runtime = { workspace = true, optional = true }
 [dev-dependencies]
 axum.workspace = true
 jsonschema.workspace = true
-rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest", "reqwest-tls-no-provider"] }
+rmcp = { workspace = true, features = ["client", "macros", "server", "transport-streamable-http-client-reqwest", "reqwest-tls-no-provider"] }
 rustls.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tower.workspace = true

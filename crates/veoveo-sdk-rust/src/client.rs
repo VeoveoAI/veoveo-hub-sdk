@@ -33,7 +33,8 @@ use rmcp::{
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams,
         ClientCapabilities, ClientConfig, ClientJsonRpcMessage, DetailedTask, GetTaskParams,
-        Implementation, ProtocolVersion, ServerNotification, SubscriptionFilter, TaskPayload,
+        Implementation, JsonObject, ProtocolVersion, ServerNotification, SubscriptionFilter,
+        TaskPayload,
     },
     service::{RunningService, ServiceError},
     transport::{
@@ -291,10 +292,14 @@ impl GatewayClient {
             },
             StreamableHttpClientTransportConfig::with_uri(self.inner.endpoint.as_str()),
         );
-        let config = ClientConfig::new(
-            ClientCapabilities::builder().enable_tasks().build(),
-            self.inner.implementation.clone(),
+        // The capability builder is a server-side rmcp feature; the client sets the Tasks
+        // extension on the plain capability document.
+        let mut capabilities = ClientCapabilities::default();
+        capabilities.extensions.get_or_insert_default().insert(
+            rmcp::model::TASKS_EXTENSION_ID.to_owned(),
+            JsonObject::new(),
         );
+        let config = ClientConfig::new(capabilities, self.inner.implementation.clone());
         config
             .serve_with_lifecycle(
                 transport,

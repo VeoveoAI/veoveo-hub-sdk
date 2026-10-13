@@ -29,7 +29,7 @@ crate documents and in its contract resource.
 | Veoveo access-token `session_family` | signed UUIDv7 refresh-family binding for browser tokens; the Gateway enforces current family revocation, and absence supplies no renewable session authority |
 | Veoveo `request_context` | signed source principal, verified access-token metadata and required audit request correlation, including the OAuth client and optional session family; it contains no bearer value and grants no independent renewal permission |
 | MCP Apps, SEP-1865 | `ui://` App resources and tool links, specified in [MCP Apps](src/apps/DESIGN.md) |
-| [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/7a6c210ff1f9ee9f5150c0a5d101afeb98d659da/platform/audit/contract/DESIGN.md) | the classes `mcp.discovery`, `mcp.tool_admission`, `mcp.tool_completion` and `mcp.read` and the targets `tool`, `resource_template`, `prompt`, `discovery` and `task_route`, which an MCP producer declares under the owner `mcp` |
+| [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/dd7394ee566bf2a325a3eb2715e1645b27a6f0de/platform/audit/contract/DESIGN.md) | the classes `mcp.discovery`, `mcp.tool_admission`, `mcp.tool_completion` and `mcp.read` and the targets `tool`, `resource_template`, `prompt`, `discovery` and `task_route`, which an MCP producer declares under the owner `mcp` |
 
 A hosted server declares its MCP endpoint when it registers with the Gateway and keeps
 its registration while its process holds a live kernel instance on the login the
@@ -77,7 +77,7 @@ URIs, and fixed discovery literals and URI templates require agreement tests wit
 builders.
 
 Task-backed resource addresses may implement the foundational `TaskResourceAddress`
-trait. The [Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/7a6c210ff1f9ee9f5150c0a5d101afeb98d659da/platform/task-runtime/DESIGN.md) can then deliver
+trait. The [Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/dd7394ee566bf2a325a3eb2715e1645b27a6f0de/platform/task-runtime/DESIGN.md) can then deliver
 requested Task status and resource invalidations from one authorized watch.
 
 `McpServerSetup` checks implementation and document identity, required document
@@ -526,7 +526,7 @@ then calls the shared `embedded_document!` proc macro and admits the adjacent
 `contract-compliance.json`. Admission checks the server identity and the generated
 manual section against the profile. Its manifest-relative document
 selection must expand in the calling crate, as declared in the
-[shared macro catalog](https://github.com/VeoveoAI/veoveo-core/blob/7a6c210ff1f9ee9f5150c0a5d101afeb98d659da/platform/macros/DESIGN.md#macro-catalog-and-enforcement).
+[shared macro catalog](https://github.com/VeoveoAI/veoveo-core/blob/dd7394ee566bf2a325a3eb2715e1645b27a6f0de/platform/macros/DESIGN.md#macro-catalog-and-enforcement).
 
 The Console renders these resources generically; the gateway generates an
 installation llms.txt from the catalog. Neither requires per-server work.

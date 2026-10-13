@@ -3496,7 +3496,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "veoveo-audit-contract"
 version = "0.1.0"
-source = "git+https://github.com/VeoveoAI/veoveo-core?rev=7a6c210ff1f9ee9f5150c0a5d101afeb98d659da#7a6c210ff1f9ee9f5150c0a5d101afeb98d659da"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=dd7394ee566bf2a325a3eb2715e1645b27a6f0de#dd7394ee566bf2a325a3eb2715e1645b27a6f0de"
 dependencies = [
  "chrono",
  "jsonschema",
@@ -3511,7 +3511,7 @@ dependencies = [
 [[package]]
 name = "veoveo-macros"
 version = "0.1.0"
-source = "git+https://github.com/VeoveoAI/veoveo-core?rev=7a6c210ff1f9ee9f5150c0a5d101afeb98d659da#7a6c210ff1f9ee9f5150c0a5d101afeb98d659da"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=dd7394ee566bf2a325a3eb2715e1645b27a6f0de#dd7394ee566bf2a325a3eb2715e1645b27a6f0de"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3522,7 +3522,7 @@ dependencies = [
 [[package]]
 name = "veoveo-platform-store"
 version = "0.1.0"
-source = "git+https://github.com/VeoveoAI/veoveo-core?rev=7a6c210ff1f9ee9f5150c0a5d101afeb98d659da#7a6c210ff1f9ee9f5150c0a5d101afeb98d659da"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=dd7394ee566bf2a325a3eb2715e1645b27a6f0de#dd7394ee566bf2a325a3eb2715e1645b27a6f0de"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -3633,7 +3633,7 @@ dependencies = [
 [[package]]
 name = "veoveo-task-contract"
 version = "0.1.0"
-source = "git+https://github.com/VeoveoAI/veoveo-core?rev=7a6c210ff1f9ee9f5150c0a5d101afeb98d659da#7a6c210ff1f9ee9f5150c0a5d101afeb98d659da"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=dd7394ee566bf2a325a3eb2715e1645b27a6f0de#dd7394ee566bf2a325a3eb2715e1645b27a6f0de"
 dependencies = [
  "schemars",
  "serde",
@@ -3644,7 +3644,7 @@ dependencies = [
 [[package]]
 name = "veoveo-task-runtime"
 version = "0.1.0"
-source = "git+https://github.com/VeoveoAI/veoveo-core?rev=7a6c210ff1f9ee9f5150c0a5d101afeb98d659da#7a6c210ff1f9ee9f5150c0a5d101afeb98d659da"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=dd7394ee566bf2a325a3eb2715e1645b27a6f0de#dd7394ee566bf2a325a3eb2715e1645b27a6f0de"
 dependencies = [
  "async-stream",
  "chrono",
@@ -3667,7 +3667,7 @@ dependencies = [
 [[package]]
 name = "veoveo-types"
 version = "0.1.0"
-source = "git+https://github.com/VeoveoAI/veoveo-core?rev=7a6c210ff1f9ee9f5150c0a5d101afeb98d659da#7a6c210ff1f9ee9f5150c0a5d101afeb98d659da"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=dd7394ee566bf2a325a3eb2715e1645b27a6f0de#dd7394ee566bf2a325a3eb2715e1645b27a6f0de"
 dependencies = [
  "chrono",
  "iri-string",

@@ -447,6 +447,14 @@ async fn forward(
     }
 }
 
+/// The registered server whose URI scheme a resource URI names. A mesh server's scheme is
+/// its slug.
+fn resource_owner(shared: &Shared, uri: &str) -> Option<ServerSlug> {
+    let scheme = url::Url::parse(uri).ok()?.scheme().to_owned();
+    let server = ServerSlug::parse(scheme).ok()?;
+    shared.servers.contains_key(&server).then_some(server)
+}
+
 /// The route of `server`'s Task `task` while the Task runs, as its server reports it.
 async fn live_route(shared: &Shared, server: &ServerSlug, task: &str) -> Option<Route> {
     let route = shared.routes.lock().get(task).cloned()?;
@@ -781,16 +789,28 @@ async fn mcp(
                 None,
             )
         }
-        "subscriptions/listen" => {
-            let task = message["params"]["notifications"]["taskIds"][0]
+        "resources/read" => (
+            message["params"]["uri"]
                 .as_str()
-                .unwrap_or_default();
+                .and_then(|uri| resource_owner(&shared, uri))
+                .or(provider_of_permissions),
+            None,
+        ),
+        "subscriptions/listen" => {
+            let notifications = &message["params"]["notifications"];
+            let task = notifications["taskIds"][0].as_str().unwrap_or_default();
+            let task_server = shared
+                .routes
+                .lock()
+                .get(task)
+                .map(|route| route.server.clone());
             (
-                shared
-                    .routes
-                    .lock()
-                    .get(task)
-                    .map(|route| route.server.clone())
+                task_server
+                    .or_else(|| {
+                        notifications["resourceSubscriptions"][0]
+                            .as_str()
+                            .and_then(|uri| resource_owner(&shared, uri))
+                    })
                     .or(provider_of_permissions.clone()),
                 None,
             )

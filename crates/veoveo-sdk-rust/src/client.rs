@@ -18,6 +18,19 @@
 //! Task when the tool runs as one. [`GatewayClient::start`] resolves once a tool that
 //! runs as a Task has started and returns its [`TaskHandle`], which resolves with the
 //! result when the Task completes.
+//!
+//! [`GatewayClient::read`] reads a provider resource as its contract's content. The
+//! same builder waits for the content to reach a state, or yields it each time it
+//! changes, through a `subscriptions/listen` subscription to the resource:
+//!
+//! ```ignore
+//! let record = client.read(ReadArtifact { artifact }).await?;
+//! let verified = client
+//!     .read(ReadArtifact { artifact })
+//!     .until(|record| record.state != ArtifactState::Verifying)
+//!     .timeout(Duration::from_secs(600))
+//!     .await?;
+//! ```
 use std::{
     collections::{BTreeMap, HashMap},
     future::{Future, IntoFuture},
@@ -27,16 +40,16 @@ use std::{
     time::Duration,
 };
 
-use futures::{future::BoxFuture, stream::BoxStream};
+use futures::{StreamExt as _, future::BoxFuture, stream::BoxStream};
 use rmcp::{
     ClientLifecycleMode, ClientServiceExt, RoleClient,
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams,
         ClientCapabilities, ClientConfig, ClientJsonRpcMessage, DetailedTask, GetTaskParams,
-        Implementation, JsonObject, ProtocolVersion, ServerNotification, SubscriptionFilter,
-        TaskPayload,
+        Implementation, JsonObject, ProtocolVersion, ReadResourceRequestParams, ReadResourceResult,
+        ResourceContents, ServerNotification, SubscriptionFilter, TaskPayload,
     },
-    service::{RunningService, ServiceError},
+    service::{RunningService, ServiceError, Subscription},
     transport::{
         StreamableHttpClientTransport,
         streamable_http_client::{
@@ -49,7 +62,9 @@ use serde::de::DeserializeOwned;
 use sse_stream::Sse;
 use veoveo_types::ServerSlug;
 
-use crate::calls::{CallContractError, ProviderContract, TaskToolCall, TokenErrorCode, ToolCall};
+use crate::calls::{
+    CallContractError, ProviderContract, ResourceRead, TaskToolCall, TokenErrorCode, ToolCall,
+};
 
 /// A bearer token, never printed.
 #[derive(Clone, PartialEq, Eq)]
@@ -130,6 +145,13 @@ pub enum CallError {
     /// The result is not the contract's output type.
     #[error("the result is not the contract's output: {0}")]
     Decode(#[from] serde_json::Error),
+    /// A resource read answered without the one JSON text content the contract reads.
+    #[error("the resource {uri} has no JSON content: {reason}")]
+    Content { uri: String, reason: String },
+    /// The Gateway did not accept a subscription to the resource, so its updates cannot
+    /// be followed.
+    #[error("the Gateway did not accept a subscription to {uri}")]
+    Unsubscribed { uri: String },
     #[error(transparent)]
     Contract(#[from] CallContractError),
     /// The transport or the protocol failed before an answer arrived.
@@ -240,6 +262,16 @@ impl GatewayClient {
         }
     }
 
+    /// Reads a provider resource and resolves with its typed content. The builder can
+    /// also wait for the content to reach a state, or follow its changes.
+    pub fn read<R: ResourceRead>(&self, request: R) -> Read<R> {
+        Read {
+            client: self.clone(),
+            request,
+            timeout: None,
+        }
+    }
+
     /// The handle of a Task this client started earlier, such as one a durable step
     /// recorded before a restart.
     pub async fn task<R: TaskToolCall>(
@@ -322,23 +354,361 @@ impl GatewayClient {
                 return Err(CallError::Contract(CallContractError::Tool(R::TOOL)));
             }
         };
-        let provider = R::Provider::slug();
         let params = CallToolRequestParams::new(name.to_string()).with_arguments(arguments);
-        let connection = self.connection(&provider).await?;
-        match connection.service.call_tool_once(params.clone()).await {
-            Ok(response) => Ok((connection, response)),
-            // A bearer the Gateway stopped admitting, such as one whose Task ended, is
-            // replaced once, so the caller sees why the Gateway refuses another.
+        self.request(&R::Provider::slug(), |connection| {
+            let params = params.clone();
+            async move { connection.service.call_tool_once(params).await }
+        })
+        .await
+    }
+
+    /// Reads `uri` from `provider` as the JSON text it serves.
+    async fn read_text(&self, provider: &ServerSlug, uri: &str) -> Result<String, CallError> {
+        let params = ReadResourceRequestParams::new(uri);
+        let (_, result) = self
+            .request(provider, |connection| {
+                let params = params.clone();
+                async move { connection.service.read_resource(params).await }
+            })
+            .await?;
+        json_text(uri, result)
+    }
+
+    /// Sends one request to `provider` through its connection. A bearer the Gateway
+    /// stopped admitting, such as one whose Task ended, is replaced once, so the caller
+    /// sees why the Gateway refuses another.
+    async fn request<T, F, Fut>(
+        &self,
+        provider: &ServerSlug,
+        send: F,
+    ) -> Result<(Arc<Connection>, T), CallError>
+    where
+        F: Fn(Arc<Connection>) -> Fut,
+        Fut: Future<Output = Result<T, ServiceError>>,
+    {
+        let connection = self.connection(provider).await?;
+        match send(connection.clone()).await {
+            Ok(answer) => Ok((connection, answer)),
             Err(error) if unauthorized(&error) => {
-                self.inner.bearers.forget(&provider);
-                self.inner.connections.lock().await.remove(&provider);
-                let connection = self.connection(&provider).await?;
-                let response = connection.service.call_tool_once(params).await?;
-                Ok((connection, response))
+                self.inner.bearers.forget(provider);
+                self.inner.connections.lock().await.remove(provider);
+                let connection = self.connection(provider).await?;
+                let answer = send(connection.clone()).await?;
+                Ok((connection, answer))
             }
             Err(error) => Err(error.into()),
         }
     }
+}
+
+/// The one JSON text content a read of `uri` answered with.
+fn json_text(uri: &str, result: ReadResourceResult) -> Result<String, CallError> {
+    let content = |reason: &str| CallError::Content {
+        uri: uri.to_owned(),
+        reason: reason.to_owned(),
+    };
+    let mut texts = result
+        .contents
+        .into_iter()
+        .filter_map(|contents| match contents {
+            ResourceContents::TextResourceContents {
+                uri: served,
+                mime_type,
+                text,
+                ..
+            } if served == uri => Some((mime_type, text)),
+            _ => None,
+        });
+    let (mime_type, text) = texts
+        .next()
+        .ok_or_else(|| content("no text content names the resource"))?;
+    if texts.next().is_some() {
+        return Err(content("more than one text content names the resource"));
+    }
+    if mime_type
+        .as_deref()
+        .is_some_and(|mime_type| !is_json(mime_type))
+    {
+        return Err(content("the content is not application/json"));
+    }
+    Ok(text)
+}
+
+/// Whether a media type is JSON: `application/json` or a `+json` suffix (RFC 6839).
+fn is_json(mime_type: &str) -> bool {
+    let essence = mime_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    essence == "application/json" || essence.ends_with("+json")
+}
+
+/// A resource read that runs when awaited.
+#[must_use = "a read runs when it is awaited"]
+pub struct Read<R: ResourceRead> {
+    client: GatewayClient,
+    request: R,
+    timeout: Option<Duration>,
+}
+
+impl<R: ResourceRead> Read<R> {
+    /// Fails the read, or the wait of [`Read::until`], with [`CallError::Timeout`] when
+    /// no answer arrives in time.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    /// Waits until the content satisfies `ready` and resolves with it. The read
+    /// subscribes to the resource first and reads it again on each update the provider
+    /// announces, so it waits without polling.
+    pub fn until<F>(self, ready: F) -> Until<R, F>
+    where
+        F: FnMut(&R::Content) -> bool + Send + 'static,
+    {
+        Until { read: self, ready }
+    }
+
+    /// The content now and each time it changes, until the subscription to the
+    /// resource ends. An item is an error when a read or the subscription fails; the
+    /// stream ends after it. [`Read::timeout`] does not apply to the stream.
+    pub fn updates(self) -> ResourceUpdates<R::Content> {
+        let uri = self.request.uri();
+        let provider = R::Provider::slug();
+        let client = self.client;
+        let state = match uri {
+            Ok(uri) => Follow::Start {
+                client,
+                provider,
+                uri: uri.to_string(),
+            },
+            Err(error) => Follow::Failed(Some(CallError::Contract(error))),
+        };
+        ResourceUpdates {
+            stream: futures::stream::unfold(state, Follow::advance::<R::Content>).boxed(),
+        }
+    }
+}
+
+impl<R: ResourceRead> IntoFuture for Read<R> {
+    type Output = Result<R::Content, CallError>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        let Read {
+            client,
+            request,
+            timeout,
+        } = self;
+        let read = async move {
+            let uri = request.uri()?;
+            let text = client.read_text(&R::Provider::slug(), uri.as_str()).await?;
+            Ok(serde_json::from_str(&text)?)
+        };
+        Box::pin(within(timeout, read))
+    }
+}
+
+/// A wait for a resource's content to reach a state, which runs when awaited.
+#[must_use = "a wait runs when it is awaited"]
+pub struct Until<R: ResourceRead, F> {
+    read: Read<R>,
+    ready: F,
+}
+
+impl<R: ResourceRead, F> Until<R, F> {
+    /// Fails the wait with [`CallError::Timeout`] when the content has not reached the
+    /// state in time.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.read.timeout = Some(timeout);
+        self
+    }
+}
+
+impl<R, F> IntoFuture for Until<R, F>
+where
+    R: ResourceRead,
+    F: FnMut(&R::Content) -> bool + Send + 'static,
+{
+    type Output = Result<R::Content, CallError>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        let Until { read, mut ready } = self;
+        let timeout = read.timeout;
+        let mut updates = read.updates();
+        let wait = async move {
+            while let Some(content) = updates.next().await {
+                let content = content?;
+                if ready(&content) {
+                    return Ok(content);
+                }
+            }
+            Err(CallError::Transport(
+                "the subscription to the resource ended before it reached the state".into(),
+            ))
+        };
+        Box::pin(within(timeout, wait))
+    }
+}
+
+/// A resource's content now and each time it changes, from [`Read::updates`].
+#[must_use = "streams do nothing unless polled"]
+pub struct ResourceUpdates<C> {
+    stream: BoxStream<'static, Result<C, CallError>>,
+}
+
+impl<C> std::fmt::Debug for ResourceUpdates<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResourceUpdates").finish_non_exhaustive()
+    }
+}
+
+impl<C> futures::Stream for ResourceUpdates<C> {
+    type Item = Result<C, CallError>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.stream.as_mut().poll_next(context)
+    }
+}
+
+/// How often a followed resource's subscription is opened again after it ends before
+/// the resource reached a state. A reopened subscription reads the content again, so
+/// it misses no change.
+const SUBSCRIPTION_OPENINGS: u8 = 3;
+
+/// The state of a followed resource.
+enum Follow {
+    Start {
+        client: GatewayClient,
+        provider: ServerSlug,
+        uri: String,
+    },
+    Listening(Box<Listening>),
+    Failed(Option<CallError>),
+}
+
+struct Listening {
+    client: GatewayClient,
+    provider: ServerSlug,
+    uri: String,
+    subscription: Subscription,
+    /// The JSON text last yielded, so an update that changed nothing yields nothing.
+    last: Option<String>,
+    /// Whether the next step reads the resource before waiting for an update.
+    stale: bool,
+    openings: u8,
+}
+
+impl Follow {
+    async fn advance<C: DeserializeOwned>(self) -> Option<(Result<C, CallError>, Self)> {
+        let mut listening = match self {
+            Self::Failed(error) => return error.map(|error| (Err(error), Self::Failed(None))),
+            Self::Start {
+                client,
+                provider,
+                uri,
+            } => match subscribe(&client, &provider, &uri).await {
+                Ok(subscription) => Box::new(Listening {
+                    client,
+                    provider,
+                    uri,
+                    subscription,
+                    last: None,
+                    stale: true,
+                    openings: 1,
+                }),
+                Err(error) => return Some((Err(error), Self::Failed(None))),
+            },
+            Self::Listening(listening) => listening,
+        };
+        loop {
+            if listening.stale {
+                listening.stale = false;
+                let text = match listening
+                    .client
+                    .read_text(&listening.provider, &listening.uri)
+                    .await
+                {
+                    Ok(text) => text,
+                    Err(error) => return Some((Err(error), Self::Failed(None))),
+                };
+                if listening.last.as_deref() != Some(text.as_str()) {
+                    let content = serde_json::from_str(&text).map_err(CallError::from);
+                    listening.last = Some(text);
+                    let next = if content.is_ok() {
+                        Self::Listening(listening)
+                    } else {
+                        Self::Failed(None)
+                    };
+                    return Some((content, next));
+                }
+            }
+            match listening.subscription.next().await {
+                Ok(Some(ServerNotification::ResourceUpdatedNotification(update)))
+                    if update.params.uri == listening.uri =>
+                {
+                    listening.stale = true;
+                }
+                Ok(Some(_)) => {}
+                // The provider or the Gateway ended the subscription: open another and
+                // read again, so a change made in between is not missed.
+                Ok(None) if listening.openings < SUBSCRIPTION_OPENINGS => {
+                    match subscribe(&listening.client, &listening.provider, &listening.uri).await {
+                        Ok(subscription) => {
+                            listening.subscription = subscription;
+                            listening.openings += 1;
+                            listening.stale = true;
+                        }
+                        Err(error) => return Some((Err(error), Self::Failed(None))),
+                    }
+                }
+                Ok(None) => {
+                    return Some((
+                        Err(CallError::Transport(format!(
+                            "the subscription to {} kept ending",
+                            listening.uri
+                        ))),
+                        Self::Failed(None),
+                    ));
+                }
+                Err(error) => return Some((Err(error.into()), Self::Failed(None))),
+            }
+        }
+    }
+}
+
+/// Subscribes to updates of `uri` through `provider`'s connection.
+async fn subscribe(
+    client: &GatewayClient,
+    provider: &ServerSlug,
+    uri: &str,
+) -> Result<Subscription, CallError> {
+    let filter = SubscriptionFilter::builder()
+        .resource_subscriptions([uri.to_owned()])
+        .build();
+    let (_, subscription) = client
+        .request(provider, |connection| {
+            let filter = filter.clone();
+            async move { connection.service.listen(filter).await }
+        })
+        .await?;
+    if subscription
+        .acknowledged()
+        .resource_subscriptions
+        .as_ref()
+        .is_none_or(|uris| !uris.iter().any(|accepted| accepted == uri))
+    {
+        return Err(CallError::Unsubscribed {
+            uri: uri.to_owned(),
+        });
+    }
+    Ok(subscription)
 }
 
 /// Whether the Gateway answered HTTP 401 to the bearer a request carried.
@@ -692,5 +1062,65 @@ impl StreamableHttpClient for BearerHttp {
         self.http
             .get_stream(uri, session_id, last_event_id, Some(bearer), custom_headers)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rmcp::model::{ReadResourceResult, ResourceContents};
+
+    use super::{CallError, is_json, json_text};
+
+    const URI: &str = "ledger://entries/batch-1";
+
+    fn read(contents: Vec<ResourceContents>) -> ReadResourceResult {
+        ReadResourceResult::new(contents)
+    }
+
+    fn json(uri: &str, text: &str) -> ResourceContents {
+        ResourceContents::text(text, uri).with_mime_type("application/json")
+    }
+
+    #[test]
+    fn a_read_yields_the_one_json_text_naming_the_resource() {
+        let text = json_text(URI, read(vec![json(URI, r#"{"state":"open"}"#)])).unwrap();
+        assert_eq!(text, r#"{"state":"open"}"#);
+        // Content for another URI is not this resource's.
+        let text = json_text(
+            URI,
+            read(vec![json("ledger://entries/other", "{}"), json(URI, "[]")]),
+        )
+        .unwrap();
+        assert_eq!(text, "[]");
+    }
+
+    #[test]
+    fn a_read_without_one_json_text_is_no_content() {
+        for result in [
+            read(vec![]),
+            read(vec![json("ledger://entries/other", "{}")]),
+            read(vec![json(URI, "{}"), json(URI, "{}")]),
+            read(vec![ResourceContents::text("plain", URI)]),
+            read(vec![ResourceContents::blob("e30=", URI)]),
+        ] {
+            assert!(
+                matches!(json_text(URI, result), Err(CallError::Content { .. })),
+                "accepted a read without one JSON text"
+            );
+        }
+    }
+
+    #[test]
+    fn json_media_types_include_structured_suffixes() {
+        for mime in [
+            "application/json",
+            "Application/JSON; charset=utf-8",
+            "application/problem+json",
+        ] {
+            assert!(is_json(mime), "{mime}");
+        }
+        for mime in ["text/plain", "application/jsonl", "text/json-ish"] {
+            assert!(!is_json(mime), "{mime}");
+        }
     }
 }

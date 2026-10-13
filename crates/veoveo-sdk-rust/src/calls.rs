@@ -2,13 +2,14 @@
 //! request of each tool, the token exchange that narrows a call to the permissions the
 //! consumer declared, and the errors that exchange answers with.
 //!
-//! A provider's `contract` feature implements [`ProviderContract`] once and
-//! [`ToolCall`] for each tool request, so a consumer names a tool and decodes its
-//! result through types, never through strings. The `client` feature sends the calls.
+//! A provider's `contract` feature implements [`ProviderContract`] once, [`ToolCall`]
+//! for each tool request and [`ResourceRead`] for each resource a consumer reads, so a
+//! consumer names a tool or a resource and decodes its result through types, never
+//! through strings. The `client` feature sends the calls and reads.
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use veoveo_types::{PermissionName, ServerSlug};
+use veoveo_types::{PermissionName, ResourceAddress, ResourceUri, ServerSlug};
 
 use crate::gateway::{GatewayToolName, GatewayToolNameError};
 use crate::identity::LocalToolName;
@@ -41,13 +42,37 @@ pub trait ToolCall: Serialize + Send + Sync + 'static {
 /// Task's result.
 pub trait TaskToolCall: ToolCall {}
 
-/// A provider contract that names an invalid tool.
+/// A read of one provider resource: the provider's typed address and the resource's
+/// typed content, which the provider serves as one `application/json` text content.
+pub trait ResourceRead: Send + Sync + 'static {
+    /// The provider whose resource this read names.
+    type Provider: ProviderContract;
+    /// The provider's resource address type, which builds the URI.
+    type Address: ResourceAddress;
+    /// The resource's content, decoded from its JSON text.
+    type Content: DeserializeOwned + Send + 'static;
+
+    /// The resource this read names.
+    fn address(&self) -> Self::Address;
+
+    /// The resource's URI, built by the provider's address type.
+    fn uri(&self) -> Result<ResourceUri, CallContractError> {
+        self.address()
+            .to_uri()
+            .map_err(|error| CallContractError::Address(error.to_string()))
+    }
+}
+
+/// A provider contract that names an invalid tool or resource.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CallContractError {
     #[error("the contract names an invalid tool `{0}`")]
     Tool(&'static str),
     #[error(transparent)]
     GatewayName(#[from] GatewayToolNameError),
+    /// The provider's address type could not build the resource's URI.
+    #[error("the contract cannot address the resource: {0}")]
+    Address(String),
 }
 
 /// RFC 8693 §2.1 `grant_type` of a token exchange.

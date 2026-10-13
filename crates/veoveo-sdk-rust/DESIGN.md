@@ -580,9 +580,29 @@ A Task whose cancellation was requested while it was parked runs to its wait, wh
 cancels the operation and returns the provider's receipt.
 
 The worker settles the transition a handler returns, a `resume` Task through resumable
-settlement. A handler error that is a parked Task releases it, one that reports the
-Task lost to another instance leaves it alone, and any other error fails the Task with
-`task_error`; `TaskWorkError` reads these from `TaskError` and from `anyhow::Error`.
+settlement. A pending cancellation turns a `resume` Task's success into `Cancelled` and
+keeps a genuine failure; `TaskWorker::cancellation(task_type, policy)` names
+`CancellationWins` for a kind whose outcome a cancellation always replaces. Core admits
+no success from a Task whose cancellation was requested, so no policy keeps one. A
+handler error that is a parked Task releases it, one that reports the Task lost to
+another instance leaves it alone, a requested cancellation settles the Task as
+`Cancelled`, and any other error fails it with `task_error`; `TaskWorkError` reads these
+from `TaskError`, `TaskStop` and `anyhow::Error`. `ctx.update` records progress through
+the same settlement.
+
+A process stops its worker with the token `run` takes. The worker claims nothing more
+and waits up to its drain time, 30 seconds by default, for its running Tasks. The stop
+reaches each handler through `ctx.cancelled()`, which also resolves when the Task's
+cancellation reaches this worker, and through `ctx.checkpoint()`, which fails with
+`TaskStop::Stopping` while the process stops and with `TaskStop::Cancelled` when the
+Task's cancellation was requested on any replica. A stopping process publishes no
+outcome of a `resume` Task, neither a success nor a failure, unless its cancellation is
+pending: the Task stays with its instance, whose recovery queues it when the process
+ends, and another worker runs it to its outcome. A handler of another recovery class
+that finishes during the drain settles its outcome, and one that stops with an error
+leaves its Task to that class's recovery. A parked Task holds no worker, so stopping
+leaves it parked. A Task that dispatched an operation reaches `ctx.wait` before any
+checkpoint, so the wait carries a cancellation to the provider.
 `ctx.client()` calls other servers for the Task's caller, and `ctx.audit_request()`
 names the Task in the records its work writes. A Task the store reports waiting is
 `working` over MCP unless it holds outstanding input requests.

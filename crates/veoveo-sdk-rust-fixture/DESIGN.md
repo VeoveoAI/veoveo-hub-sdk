@@ -66,6 +66,14 @@ instead of casting again, and cancels a job with a receipt. The operations tests
 Foundry and Kiln on a private PostgreSQL cluster from core's store fixture, through the
 SDK's mesh, and reach no outside service.
 
+The worker tests run `TaskWorker` over Tasks of a test server, `anvil`, on two process
+instances of a private PostgreSQL cluster. They stop a worker while its Tasks run and
+check that a `resume` Task keeps no outcome and is finished by a worker of the next
+instance, that a Task of the `interrupted_indeterminate` class keeps a finished outcome
+and otherwise fails as indeterminate, that a cancellation requested on another replica
+reaches a handler at its checkpoint, and that each Task kind settles a pending
+cancellation by its own policy.
+
 The `tool_inputs` module needs only Serde. A server's tests load its own cases and
 check required members, defaults, open objects, typed dictionaries and rejected
 controls against the server's generated input schemas.

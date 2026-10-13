@@ -1,10 +1,10 @@
-# Modular MCP Fixture Instructions
+# Observatory Fixture Instructions
 
 Follow the repository and parent fixture instructions.
 
 ## Purpose
 
-Qualify an independent server contract without adding domain definitions to core.
+Qualify an independent server contract without adding domain definitions to the SDK or core.
 
 ## Invariants
 
@@ -14,7 +14,7 @@ Qualify an independent server contract without adding domain definitions to core
 
 ## Build And Test
 
-Run the fixture contract tests and `mcp/conformance` modular-server hosted test.
+Run the fixture contract tests and the `veoveo-sdk-rust-conformance` modular-server hosted test.
 Resolve an independent contract consumer to check dependency isolation.
 
 ## Contract Compliance

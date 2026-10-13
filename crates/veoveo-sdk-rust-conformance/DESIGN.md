@@ -1,5 +1,9 @@
 # MCP Conformance Design
 
+`veoveo-sdk-rust-conformance` certifies a running hosted MCP server against the
+[hosted MCP contract](../veoveo-sdk-rust/DESIGN.md) over MCP alone, so it can qualify a
+server in any language without linking its implementation.
+
 ## Standards And Protocols
 
 | Standard or protocol | Supported profile |
@@ -15,9 +19,7 @@
 | `https://veoveo.ai/formats/mcp-conformance-profile` | domain-neutral declaration of applicable hosted-server checks |
 | `https://veoveo.ai/formats/mcp-conformance-report` | machine-readable implementation identity, capabilities, requirement results, and evidence |
 | `https://veoveo.ai/contracts/hosted-mcp` | Veoveo hosted-server contract for MCP `2026-07-28` |
-| `ai.veoveo/gateway-discovery-degradation` | typed server/surface/failure-code catalog metadata; full-catalog rejection and selected-source coverage admission |
-| `ai.veoveo/knowledge-source` | typed collection declarations, enumeration, observations and conditional member reads; [extension rules](../ext-knowledge/DESIGN.md#server-rules) |
-| `https://veoveo.ai/contracts/live-view` | optional provider-neutral authoritative cameras, typed camera regions in shared encoded products, actor/browser authorization, Annex B H.264 WebSocket fanout, and redaction profile layered on a domain-owned simulation server |
+| `ai.veoveo/gateway-discovery-degradation` | typed server/surface/failure-code catalog metadata; a degraded catalog makes naming inspection incomplete |
 
 ## Naming Inspection
 
@@ -61,9 +63,8 @@ Gateway tool names use the typed server/local projection; prompts stay unqualifi
 JWT, frozen, external and owner-specific declarations still require source review;
 remote inspection validates their structure and the built-in grammar it can establish.
 
-Adopted Apps and Knowledge metadata is decoded and inspected with the actual owning
-DTO schemas. This includes capability declarations, template collection declarations,
-search tool declarations and projected App dependencies. Other vendor metadata keeps
+Adopted Apps metadata is decoded and inspected with the actual owning DTO schemas.
+This includes capability declarations, tool App links and projected App dependencies. Other vendor metadata keeps
 its open vocabulary while consuming the same traversal and byte limits.
 
 ## Boundary
@@ -86,7 +87,7 @@ resource templates. Domain harnesses use it to require the tools their scenario 
 `info` reads all three catalogs and continues to require their availability.
 
 The `modular_server` integration test hosts the independent
-[`modular-mcp` fixture](../../testing/fixtures/modular-mcp/DESIGN.md), which is a
+[Observatory fixture](../veoveo-sdk-rust-fixture/DESIGN.md), which is a
 development dependency. The fixture owns its scopes and resource family in a library
 with an isolated contract feature. Its MCP feature implements the public setup trait.
 The test supplies a profile to this same hosted runner, then checks typed reading
@@ -139,139 +140,6 @@ issuer and resource are `https://conformance.veoveo.local`; it has no browser se
 family or delegation. This synthetic identity supports direct protocol certification.
 Public OAuth and current installation policy require separate installed acceptance.
 
-## Knowledge Checks
-
-`src/runner/knowledge.rs` runs when Discover declares the knowledge-source extension.
-K01 rejects unsupported settings, duplicate collections and unowned URI schemes.
-K02 requires the shared immutable docs descriptor and matching member template.
-K03 traverses at most eight pages of 100 members within 30 seconds; a larger
-qualification fixture fails explicitly. It rejects repeated cursors and member URIs.
-The required docs check also verifies document-ID ordering across every docs page.
-
-K04–K06 allow 60 seconds per collection. Each member must return one admitted text
-or JSON item within 64 KiB, a content-bound observation and an empty response to its
-matching validator. An unauthenticated conditional HTTP read must return 401.
-The independent fixture also checks conditional denial for an authenticated caller
-without its required scope. These checks do not qualify arbitrary domain access
-policies; domain tests own those cases.
-
-K07 and K08 skip collections without change subscriptions or search declarations.
-Every declared listen collection and search tool requires one owner-supplied probe.
-`knowledge_probes` exposes typed selections, `KnowledgeChangeDriver` for existing
-members and `KnowledgeCreateDriver` for members assigned an identity on creation;
-`run_hosted_server_conformance_with_probes` executes them in the hosted report.
-The ordinary runner and CLI fail these checks when a required probe is absent.
-They never select domain mutations or restart commands from server names.
-
-For K07 updates and removals, the owner supplies populated members, mutations and a restart operation.
-The runner requires acknowledgement of member and collection subscriptions, waits
-for both initial observation invalidations, then performs the mutation. Separate
-notifications and a changed revision prove mutation delivery. It checks that text and access survive the
-restart. It subscribes again and verifies another committed change. Each probe has
-90 seconds, with 15 seconds for each notification window. The owner must restart the
-actual service or source and preserve only declared persistence. Database recovery,
-cross-replica delivery and policy cases belong to that owner's harness. Subscription
-handles cancel on failure or timeout, and the owner cleans up its fixture.
-
-`KnowledgeChange::Update` changes the same member twice or uses distinct members
-before and after restart. With distinct members, the second must survive the first
-change and restart unchanged, and the first must preserve its committed state after
-the second change. `KnowledgeChange::Remove` requires two distinct members. Each
-removal must notify both subscriptions, disappear from enumeration and reject full
-and conditional reads. The first removal must survive restart, while the second
-member must remain unchanged until its own removal.
-
-`KnowledgeChange::Create` subscribes to the collection and waits for its initial
-invalidation before creating a member. The owner returns a typed `ResourceUri`.
-The checker requires a new identity, a separate collection invalidation, enumeration,
-a content-bound observation and a matching conditional read. The same member must
-remain readable and enumerated after restart with unchanged content and access. A
-fresh subscription then observes a second distinct creation, and the first member
-must stay unchanged. Generated member identities need no advance subscription.
-Creation uses the same 90-second deadline and 15-second notification windows.
-Each variant contains its applicable driver, preventing invalid driver selections.
-
-For K08, the owner supplies tool arguments, expected hits and a second authenticated
-reader whose expected results are a strict subset, or whose scopes deny the entire
-tool. `KnowledgeSearchAccess` makes that policy expectation explicit. The runner checks the closed
-`SearchResults` envelope, unique links, matching titles and snippets, admitted member
-reads, and full and conditional denial for the excluded resources. Arguments have a
-64 KiB limit; responses have at most 100 hits and 128 KiB. Each probe has 60 seconds.
-Credentials stay outside profiles and reports. HTTP or transport failure cannot count
-as a successful resource denial. A denied-tool case still requires full and conditional
-denial for every ordinary hit; a tool error alone cannot establish access enforcement.
-
-The synthetic checker fixture recreates its source from a temporary document and
-qualifies rejection of missing probes, lost state, ineffective mutations, incomplete
-acknowledgements, missing readiness, baseline-only notification streams, missing links,
-search leakage, readable or enumerated removed members, and conditional authorization bypass.
-Creation cases also reject reused identities, missing enumeration, unreadable members,
-content in matching conditional responses, and loss of the first member after the second creation.
-It establishes checker behavior; it does not qualify production Store recovery.
-
-## Source Checks Through A Gateway
-
-`run_knowledge_source_conformance` executes the same K01–K08 checks for one source
-at either its direct endpoint or a gateway. `KnowledgeSourceTarget` requires a checked
-HTTP(S) URL, server slug, nonempty owned-scheme set and `KnowledgeRoute`. Credentials
-and owner callbacks stay separate. This entry point fails K01 when the endpoint
-does not declare the extension.
-
-The gateway route selects collection templates by their declared owner and retains
-duplicates for K01 to reject. It converts checked gateway tool names into source-local
-names for declaration matching, then builds the gateway name when calling a tool.
-Member and collection addresses keep their source-owned schemes. The runner has no
-domain registry or implementation dependencies for this selection.
-
-For this Gateway-routed source check, each templates and tools page admits typed
-Gateway discovery degradation against the selected server slug. A failure for that
-server, a mismatched surface, or malformed or unsupported degradation metadata
-refuses the check. Failures for other servers permit the selected source checks;
-K01 evidence preserves its collection count and records `selectedSourceCatalog`
-with the selected server, `wholeProfileComplete: false`, and every unrelated typed
-server/surface/code observation. This establishes selected-source coverage only.
-Direct-source checks and the default catalog readers used by full hosted
-certification reject any degradation. Both selected catalog surfaces share a
-256 KiB degradation-metadata budget and a 4,096-failure budget, including repeated
-rows on later pages. Each traversal retains its thirty-second deadline,
-1,024-page and 16,384-item limits and repeated-cursor rejection.
-
-The result uses the shared report format with a `knowledge-{server}` profile ID and
-the observed endpoint implementation, which may be the gateway. It contains only
-knowledge checks and does not certify the full hosted-server contract. K09/K10
-require owner review. The run has a fifteen-minute deadline, ten-second connection
-timeouts and 65-second HTTP request timeouts, with redirects disabled. The ordinary
-collection and probe limits still apply.
-
-`conformance knowledge-source --url <endpoint> --server <slug> --owned-scheme <scheme>
---route gateway --report <new-path>` runs this checker from the CLI. The route may
-also be `direct`; repeat `--owned-scheme` for additional owner schemes. Credentials
-use the CLI's existing out-of-band inputs. It writes a private, create-only report
-and exits unsuccessfully when a check fails. Sources declaring mutation or search
-probes require their owner harness; the CLI supplies no probes and therefore fails
-those requirements. Documentation-only sources can use this command directly.
-
-Native fixtures check direct and gateway selection, missing declarations, duplicate
-preservation and gateway tool calls for both ordinary and restricted readers. The
-fault matrix runs under both naming routes. Installed owner harnesses use the
-[shared transport and restart helpers](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/testing/installed/DESIGN.md); their
-workload, mutation, fixture admission and cleanup remain owner decisions.
-
-## Authoritative Live-View Profile
-
-A simulation profile may require `list_live_cameras`, `open_live_view`,
-`renew_live_view`, and `close_live_view` plus domain-owned camera, product, and
-redacted authorization resources. The profile verifies strict schemas, stable per-camera
-product identity, actor and browser-instance isolation, token rotation, credential
-redaction, App declaration, and authenticated shared-stream admission. Resource URIs retain
-the simulation server's own scheme; conformance never requires a shared renderer URI.
-
-The anonymous external simulation fixture exercises this public contract without
-claiming visual or GPU acceptance. Hardware RTX rendering, declared tiled-product and
-NVENC topology, exact bitstream fanout, frame freshness, and headed-browser
-playback remain implementation-owned evidence. The first-party UAV simulation
-acceptance supplies that evidence for the NVIDIA runtime.
-
 ## Report
 
 Each result carries a stable requirement identifier, status, summary, and bounded
@@ -283,9 +151,7 @@ Certification reads the live contract declaration and binds it to the selection 
 observation. The declaration's contract must equal the selected contract, and its
 server must match both the expected slug and discovered implementation. The complete
 declaration must cover the current catalog and mark C18–C21 met. Unknown
-IDs, duplicate entries and omissions fail admission. Discover checks C32 applicability
-in both directions: extension presence forbids `not_applicable`, and absence requires
-it. Discover and the MCP lists supply the observed
+IDs, duplicate entries and omissions fail admission. Discover and the MCP lists supply the observed
 capabilities. The client follows the relative document links published in `llms.txt`;
 it does not synthesize document URLs from parsed identifiers.
 
@@ -311,45 +177,25 @@ exposed for its final private-file write; the complete token model is never seri
 The library,
 `certify` and ordinary MCP commands continue to receive credentials out of band.
 
-Machine-client `gateway-token-exchange` belongs to
-[`gateway-smoke-support`](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/platform/gateway/composition/src/smoke/utility/cli.rs).
-Its installation-owned signing input and client registration are separate from this
-public-client login.
-
 Each CLI command reserves standard output for its requested result. Structured resources
 therefore remain parseable even when the server emits notifications while the command is
 running. Unsolicited progress, task-status, resource-update, and list-change notifications
 are operator diagnostics on standard error.
-The Gateway's `gateway-smoke-support` utility owns Media generation and its
-request-scoped Task notification drain. It checks the owner result contract and
-Artifact downloads described in the
-[Media design](https://github.com/BiomaAI/veoveo/blob/0c33cf8a7e5a1d46f953702553ac6643f99c1363/servers/media-mcp/DESIGN.md#catalog-and-result-contracts).
 
 ## Distribution
 
-The thin `certify` binary is copied into the digest-addressed
-`veoveo/mcp-conformance` OCI image. The image contains no server implementation and
-runs as uid 10001. Installation operators mirror it into their private registry or
-offline bundle and execute it against extension endpoints.
+The `conformance` and `certify` binaries install from this repository with
+`cargo install --locked --git https://github.com/VeoveoAI/veoveo-sdk-rust veoveo-sdk-rust-conformance`.
+They contain no server implementation.
 
 ## Requirement Verification Coverage
 
-`src/requirements.rs` maps the closed catalog IDs to existing VV-MCP and K-series
-checks. The generated `catalog/coverage.json`, checked against the suite by a test, records runtime, review and mixed verification modes. A missing
+`src/requirements.rs` maps the closed catalog IDs to existing VV-MCP checks. The generated `catalog/coverage.json`, checked against the suite by a test, records runtime, review and mixed verification modes. A missing
 or skipped required check produces an incomplete outcome; a failed check produces
 failure. Review and mixed requirements require review even when their runtime checks
 pass. C12 HTTP probes do not prove all private surfaces are authorized; C31 catalog
 probes do not prove installation readiness policy. Both require review after their
 selected runtime checks pass. Owner declarations do not supply results.
-
-C32 uses mixed verification. `VV-MCP-CONTRACT-003` checks adoption against Discover
-in both directions; K01–K08 qualify the implemented runtime source profile.
-Passing all nine runtime checks produces `ReviewRequired`. For K09, the owner
-reviews observation construction from domain records and exclusion of caller input
-from provenance. For K10, the owner reviews revision changes when returned text or
-member access descriptors change, including notifications for `listen` collections.
-Runtime results named K09 or K10 cannot replace that review or compensate for a
-missing runtime probe.
 
 ## Declaration And Runtime Selection
 
@@ -357,4 +203,4 @@ The declaration profile contains foundational identities, checked catalog/profil
 
 ## Certification Delivery
 
-The `conformance` and `certify` binaries accept an out-of-band bearer token. Their normal and build dependency graphs contain protocol declarations and shared client mechanics. Domain schemas, installation registries, signing fixtures and provider operations compile with their owning delivery targets. `conformance schemas` writes the two certification schemas; the Gateway composition's `gateway-smoke-support contract-schemas` command writes the complete installation schema set with its existing filenames.
+The `conformance` and `certify` binaries accept an out-of-band bearer token. Their normal and build dependency graphs contain protocol declarations and shared client mechanics. Domain schemas, installation registries, signing fixtures and provider operations compile with their owning delivery targets. `conformance schemas` writes the two certification schemas; installation schemas belong to the Gateway.

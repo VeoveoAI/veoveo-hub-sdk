@@ -33,6 +33,7 @@ crate documents and in its contract resource.
 | [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/97ad23d7ee491f3deb447fa46996731b528ae787/platform/audit/contract/DESIGN.md), after NIST SP 800-53 Rev. 5 AU-3 and mapped to OCSF 1.9 | the classes `mcp.discovery` and `mcp.read` (OCSF API Activity Read) and `mcp.tool_admission` and `mcp.tool_completion` (API Activity Other), which an MCP producer declares under the owner `mcp`; targets are `veoveo://` URIs built by the shared resource URI builder; the acting server and Task travel in the envelope's `via`, and the OAuth client, delegating principal, policy revision, scopes and data labels in each detail's `invocation` |
 | [Veoveo durable Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/97ad23d7ee491f3deb447fa46996731b528ae787/platform/task-runtime/DESIGN.md) | durable steps, and operations whose outcome arrives through provider events or a bounded check schedule, run through `TaskWorker` and `TaskContext` |
 | Provider webhooks over HTTP | `POST {mount}/operations/{operation_id}/{token}` and `POST {mount}/providers/{provider}/events` on a server's public routes; the server's parser checks the provider's signature, and the route answers 204 only after the Task runtime stored the event |
+| PostgreSQL SQL and PL/pgSQL, through libpg_query 17-6.2.5 (`pg_query` 6.2.1) | the `testing` feature's SQL confinement check parses a server's query files, migrations, sqlx macro literals and function bodies with PostgreSQL 17's grammar; SQL only PostgreSQL 18 accepts fails the check instead of passing unread |
 | FOCUS 1.4 and ISO 4217, through [core's usage ledger](https://github.com/VeoveoAI/veoveo-core/blob/97ad23d7ee491f3deb447fa46996731b528ae787/platform/usage/DESIGN.md) | usage kinds a server declares under its slug, estimates and actual usage of a Task, and the Task's cost under the `ai.veoveo/usage` `_meta` key of its result and of `tasks/get` |
 
 A hosted server declares its MCP endpoint when it registers with the Gateway and keeps
@@ -99,7 +100,7 @@ declaration consistency; hosted conformance and domain tests establish behavior.
 | `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Gateway's client-visible metadata, the document and compliance declarations, the MCP audit vocabulary and the usage kinds and Task cost types | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
 | `client` | `GatewayClient`: typed calls, Task handles and typed resource reads and waits through a Gateway profile over MCP Streamable HTTP, with rmcp's client and Streamable HTTP client transport | rmcp's server, server transport and macros, axum, jsonwebtoken, OpenTelemetry, sqlx and core's Task runtime; `tests/contract_boundary.rs` fails when the resolved graph or rmcp's features contain them |
 | `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry, the MCP Tasks adapter over core's durable Task runtime, [Task work](#task-work) with its provider event routes, and the usage ledger | |
-| `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests and `TestMesh` for calls between servers, whose origin also delivers requests under a served server's mount to its public routes, as an ingress would | |
+| `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests and `TestMesh` for calls between servers, whose origin also delivers requests under a served server's mount to its public routes, as an ingress would, and `testing::assert_sql_confined`, the check that a server's SQL names only its own schema | |
 
 The Gateway attaches discovery degradation and App dependency metadata to federated
 lists. Their DTOs live in the `gateway` module, and `GatewayDiscoveryMetadata`
@@ -466,6 +467,45 @@ user, carrying the permissions `TestGateway::granting` sets, and sends MCP and H
 requests through the complete router, so discovery, reads, tools and prompts are
 testable without a deployment. `HostedServerBuilder::calls` gives a server's handlers
 the [calls to other servers](#calls-to-other-servers) that `ctx.client()` makes.
+
+### Core State Through The SDK
+
+A server reaches core state only through this SDK and core's runtime API: its Tasks
+through `TaskRuntime` and `OwnerTaskQuery`, its usage through the usage ledger, its audit
+through the audit writer. Its own SQL names only its own schema, never `tasks`,
+`kernel`, `usage`, `audit`, `identity`, `gateway`, another server's schema or an unknown
+one. When the API lacks something a server needs, the feature is added to core or this
+SDK for every server. A server keeps its database grants on core's tables, which core's
+libraries use on its login, so the rule is a check in its tests, not a database
+boundary.
+
+Each server runs the check as an ordinary test in its Docker check:
+
+```rust
+#[test]
+fn sql_names_only_the_servers_schema() {
+    veoveo_sdk_rust::testing::assert_sql_confined(env!("CARGO_MANIFEST_DIR"), "media");
+}
+```
+
+`check_sql_confined` returns the findings that `assert_sql_confined` reports. The check
+reads every `.sql` file under the crate root, which holds the query files and
+migrations, the SQL literal of every sqlx query macro, of every `sqlx` query function
+and of every executor method called with a string, and the file every `query_file`
+macro names. PostgreSQL's parser from libpg_query reads each statement, so comments and
+string literals never count. The check reads PL/pgSQL function bodies and `DO` blocks
+with libpg_query's PL/pgSQL parser and SQL-language bodies as SQL. It skips `target` and
+every hidden directory, such as the `.sqlx` offline metadata that holds core's own
+queries.
+
+A statement passes when every relation, type, function and object it names lies in the
+server's schema, in `pg_catalog` or in `pg_temp`, and every `search_path` it sets names
+only those. The one core function a server names is `kernel.notify_change`, and only as
+the function a trigger executes. The check fails closed: a statement the parser refuses,
+SQL built at run time, a dynamic `EXECUTE` and a function in another language each fail
+it with the file and line. It reads names as written. An unqualified name resolves
+through PostgreSQL's default `search_path`, which names none of core's schemas, and a
+statement that sets `search_path` to another schema fails the check.
 
 ## Calls To Other Servers
 
@@ -839,6 +879,9 @@ rules:
   response-budget middleware, gateway upstream client pool, and deployment
   checks enforce C10 and C25–C31 for first-party Rust servers. Packaged servers
   must pass the same black-box checks.
+- **Core state** — each server's tests run `testing::assert_sql_confined`, which fails
+  when the server's SQL names a schema other than its own; see
+  [Core State Through The SDK](#core-state-through-the-sdk).
 - **Review** — C05, C06, C09, C13, and C14 are review-enforced boundaries;
   their violation is architectural, not stylistic.
 

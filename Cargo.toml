@@ -38,6 +38,16 @@ jsonschema = { version = "=0.51.0", default-features = false }
 jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 oauth2 = { version = "=5.0.0", default-features = false }
 opentelemetry = "0.32.0"
+# PostgreSQL's parser from libpg_query, for the SQL confinement check of the `testing`
+# feature. 6.2.1 builds libpg_query 17-6.2.5, the PostgreSQL 17 grammar; SQL only
+# PostgreSQL 18 accepts fails that check closed. The build compiles C with clang and
+# uses the bundled protobuf bindings when protoc is absent.
+pg_query = "=6.2.1"
+# Rust source parsing for the same check. Line numbers need span locations. syn stays
+# at 3.0.6, the exact version veoveo-core's macros pin, so one syn serves the build;
+# move it with core's pin (3.0.9 is the latest stable).
+proc-macro2 = { version = "=1.0.107", features = ["span-locations"] }
+syn = { version = "=3.0.6", features = ["full", "visit"] }
 opentelemetry-appender-tracing = "0.32.0"
 opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-client", "trace", "logs", "metrics"] }
 opentelemetry_sdk = "0.32.1"

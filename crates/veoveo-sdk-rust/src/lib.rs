@@ -52,6 +52,8 @@ pub mod task_completion;
 pub mod tasks;
 #[cfg(feature = "server")]
 pub mod telemetry;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 #[cfg(feature = "server")]
 pub mod transport;
 #[cfg(feature = "server")]

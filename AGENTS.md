@@ -20,6 +20,10 @@ These rules apply to veoveo-sdk-rust.
   protected: changes to them need the repository owner's review.
 - The SDK owns no queries. Tests that need a database run on a private cluster from
   core's store fixture, with PostgreSQL 18.6 from the dev image.
+- A server reaches core state only through this SDK and core's runtime API, never in its
+  own SQL. Every server runs `testing::assert_sql_confined` in its tests. When a server
+  needs something the API lacks, add it to core or the SDK for every server instead of
+  querying core's tables.
 - Keep test logic in Rust and tool behavior in each tool's own configuration. Do not add
   a task runner or shell scripts that hold test logic.
 - Pin exact versions. When changing a pin, verify the latest stable release at its

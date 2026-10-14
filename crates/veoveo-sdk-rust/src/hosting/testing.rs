@@ -127,7 +127,7 @@ pub fn authority() -> InvocationAuthority {
 }
 
 /// A verifier of `D`'s tokens that holds the test key and never refreshes it.
-fn test_verifier<D: DomainServer>() -> ForwardedTokenVerifier {
+pub(crate) fn test_verifier<D: DomainServer>() -> ForwardedTokenVerifier {
     ForwardedTokenVerifier::fixed(
         GatewayInternalTokenVerifier::from_access_tokens(
             &access_token_trust(),

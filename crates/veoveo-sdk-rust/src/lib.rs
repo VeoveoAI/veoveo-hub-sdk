@@ -89,7 +89,7 @@ pub use protocol::{
     sanitized_request_meta, trace_id_from_traceparent,
 };
 #[cfg(feature = "server")]
-pub use public_endpoint::{PublicDeployment, ServerPublicEndpoint};
+pub use public_endpoint::{PublicDeployment, PublicOrigin, ServerPublicEndpoint};
 #[cfg(feature = "server")]
 pub use subscriptions::{
     ResourceListObservers, ResourceUpdate, SubscriptionHub, accepted_subscription_filter,

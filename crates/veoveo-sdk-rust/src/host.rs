@@ -75,6 +75,9 @@ pub fn public_allowed_hosts(
     allow_loopback_hosts: bool,
 ) -> Vec<String> {
     let mut hosts = vec![deployment.host_authority().to_string()];
+    if let Some(origin) = deployment.origin() {
+        hosts.push(origin.host_authority().to_string());
+    }
     if allow_loopback_hosts {
         hosts.extend([
             "localhost".to_string(),
@@ -222,6 +225,19 @@ mod tests {
         assert_eq!(
             public_allowed_hosts(&deployment, true),
             vec!["veoveo.example", "localhost", "127.0.0.1", "::1"]
+        );
+    }
+
+    #[test]
+    fn public_host_allowlist_admits_the_installation_origin() {
+        let deployment = PublicDeployment::new("http://media.internal:8802")
+            .expect("valid URL")
+            .with_origin(Some(
+                crate::PublicOrigin::parse("https://veoveo.example.com").expect("an origin"),
+            ));
+        assert_eq!(
+            public_allowed_hosts(&deployment, false),
+            vec!["media.internal:8802", "veoveo.example.com"]
         );
     }
 }

@@ -499,6 +499,41 @@ async fn hosts_are_validated_before_routing() {
 }
 
 #[tokio::test]
+async fn the_installation_origins_host_is_admitted_beside_the_deployment_host() {
+    let origin = crate::PublicOrigin::parse("https://veoveo.example.com").unwrap();
+    let deployment = crate::PublicDeployment::new(format!("https://{}", testing::TEST_HOST))
+        .unwrap()
+        .with_origin(Some(origin));
+    let gateway = TestGateway::new(
+        super::HostedServer::for_domain::<FixtureDomain>()
+            .deployment(&deployment, false)
+            .unwrap()
+            .with_verifier(testing::test_verifier::<FixtureDomain>())
+            .handler(|| Hosted::new(FixtureDomain::new()))
+            .build(),
+    );
+    let livez = |host: &str| {
+        Request::builder()
+            .uri("/livez")
+            .header("host", host)
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(
+        gateway.send(livez(testing::TEST_HOST)).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        gateway.send(livez("veoveo.example.com")).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        gateway.send(livez("attacker.example")).await.0,
+        StatusCode::MISDIRECTED_REQUEST
+    );
+}
+
+#[tokio::test]
 async fn rejected_requests_name_the_bearer_scheme() {
     let server = testing::for_domain::<FixtureDomain>()
         .handler(|| Hosted::new(FixtureDomain::new()))

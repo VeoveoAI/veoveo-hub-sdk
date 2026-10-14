@@ -418,6 +418,12 @@ must be that domain's `Hosted` value: a hand-written `ServerHandler` or another
 domain's handler does not compile. `authenticated_routes`, `admin_routes`,
 `public_routes`, `liveness` and `readiness` add server-specific HTTP. A liveness
 check covers only failures a restart repairs, such as a dead worker process.
+An installation serves the internet from one HTTPS origin, `VEOVEO_PUBLIC_ORIGIN`,
+such as `https://veoveo.example.com`, with each server's public routes under its own
+path. A server parses it as a `PublicOrigin` and passes it to
+`PublicDeployment::with_origin`, so requests that arrive for the origin's host pass
+host validation, and builds the public URLs it hands out, such as callback and share
+URLs, under the origin.
 `internal` replaces `deployment` for a server the gateway reaches at an internal
 authority under `/{slug}`. `internal_root` serves a cluster-internal server whose
 gateway upstream and protocol paths are root-relative. Both admit only the internal
@@ -440,7 +446,7 @@ The host gives every server the same behavior:
 |---|---|
 | Routes | `/livez` and optional `/readyz` at the listener root, whatever the mount; `{mount}/admin/docs/*` and `{mount}/mcp` |
 | Authentication | Gateway RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug, with the Gateway's keys refreshed as [key refresh](src/registration/DESIGN.md#key-refresh) describes; a rejection is 401 with `WWW-Authenticate: Bearer` |
-| Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts |
+| Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts: the deployment host, the installation's public origin when the deployment names one, and loopback only when asked |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` after the domain's list hooks, sorted, 100 per page, private, five-second cache |
 | Well-known reads | `{scheme}://docs` routes and `{scheme}://contract` |
 | Completion | `doc_id` on the document template; other references go to the domain |

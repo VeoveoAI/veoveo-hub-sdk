@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow, bail, ensure};
 use rmcp::model::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use veoveo_sdk_rust::hosting::undeclared_types;
 
 pub const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_SCHEMA_DEPTH: usize = 64;
@@ -47,6 +48,15 @@ pub fn validate_tool_input_schema(tool: &Tool) -> Result<SchemaStats> {
             )
         },
     )?;
+    if let Some(undeclared) = undeclared_types(&schema).first() {
+        bail!(
+            "tool `{}` input schema must declare `\"type\": {}` at `{}`, which its \
+             references, composition, `const` or `enum` already imply",
+            tool.name,
+            undeclared.types,
+            undeclared.pointer
+        );
+    }
 
     Ok(stats)
 }
@@ -447,8 +457,9 @@ mod tests {
                 "ReadingId": { "type": "string" }
             },
             "properties": {
-                "reading_id": { "$ref": "#/$defs/ReadingId" },
+                "reading_id": { "$ref": "#/$defs/ReadingId", "type": "string" },
                 "mode": {
+                    "type": "string",
                     "oneOf": [
                         { "type": "string", "const": "read" },
                         { "type": "string", "const": "write" }
@@ -462,6 +473,25 @@ mod tests {
         let stats = validate_tool_input_schema(&tool(schema)).unwrap();
         assert_eq!(stats.references, 1);
         assert_eq!(stats.composition_branches, 2);
+    }
+
+    #[test]
+    fn rejects_restricted_subschemas_that_declare_no_type() {
+        let schema = json!({"type":"object", "additionalProperties":false,
+        "properties":{"expression":{"$ref":"#/$defs/Expression"}},
+        "$defs":{"Expression":{"type":"object", "oneOf":[
+            {"type":"object", "additionalProperties":false,
+                "properties":{"format":{"type":"string", "const":"unix"}}},
+            {"type":"object", "additionalProperties":false,
+                "properties":{"format":{"type":"string", "const":"rfc3339"}}}
+        ]}}});
+        let error = validate_tool_input_schema(&tool(schema)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(r#"must declare `"type": "object"` at `/properties/expression`"#),
+            "{error}"
+        );
     }
 
     #[test]
@@ -530,8 +560,8 @@ mod tests {
         for keyword in ["oneOf", "anyOf", "allOf"] {
             let mut schema = json!({"type":"object"});
             schema[keyword] = json!([
-                {"type":"object", "properties":{"kind":{"const":"unit"}}, "additionalProperties":false},
-                {"type":"object", "properties":{"kind":{"const":"data"}, "value":{"type":"string"}}, "additionalProperties":false}
+                {"type":"object", "properties":{"kind":{"type":"string", "const":"unit"}}, "additionalProperties":false},
+                {"type":"object", "properties":{"kind":{"type":"string", "const":"data"}, "value":{"type":"string"}}, "additionalProperties":false}
             ]);
             validate_tool_input_schema(&tool(schema)).unwrap();
         }
@@ -583,7 +613,7 @@ mod tests {
     #[test]
     fn follows_recursive_local_references_without_revisiting_forever() {
         let schema = json!({"type":"object", "additionalProperties":false, "properties":{
-            "next":{"$ref":"#"}
+            "next":{"$ref":"#", "type":"object"}
         }});
         validate_tool_input_schema(&tool(schema)).unwrap();
         let schema = json!({"type":"object", "additionalProperties":false, "properties":{
@@ -626,8 +656,8 @@ mod tests {
     fn constraint_schemas_do_not_describe_decoded_objects() {
         let schema = json!({"type":"object", "unevaluatedProperties":false,
             "properties":{"kind":{"type":"string"}},
-            "not":{"properties":{"kind":{"const":"blocked"}}},
-            "if":{"properties":{"kind":{"const":"extended"}}},
+            "not":{"properties":{"kind":{"type":"string", "const":"blocked"}}},
+            "if":{"properties":{"kind":{"type":"string", "const":"extended"}}},
             "then":{"properties":{"extra":{"type":"integer"}}},
             "else":{"properties":{"other":{"type":"boolean"}}},
             "dependentSchemas":{"kind":{"properties":{"another":{"type":"integer"}}}},
@@ -679,7 +709,7 @@ mod tests {
             "$id":"https://example.invalid/root", "type":"object", "additionalProperties":false,
             "$defs":{"T":{"type":"object", "additionalProperties":false,
                 "properties":{"name":{"type":"string"}}}},
-            "properties":{"child":{"$ref":"#/$defs/T"}}
+            "properties":{"child":{"$ref":"#/$defs/T", "type":"object"}}
         });
         validate_tool_input_schema(&tool(schema)).unwrap();
     }

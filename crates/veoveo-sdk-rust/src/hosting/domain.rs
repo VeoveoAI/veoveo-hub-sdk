@@ -7,7 +7,7 @@
 //!
 //! - protocol versions and `get_info` from the checked setup;
 //! - authenticated, paged `resources/list`, `resources/templates/list` and
-//!   `tools/list`;
+//!   `tools/list`, with the JSON type of every tool input subschema declared;
 //! - `{scheme}://docs` and `{scheme}://contract` reads, and `doc_id` completion;
 //! - `prompts/list` and `prompts/get` from the domain's prompts;
 //! - address admission: an unparseable URI is Invalid Params (-32602), as the
@@ -36,7 +36,7 @@ use veoveo_types::{ResourceAddress, ResourceUri};
 
 use crate::GatewayInternalIdentity;
 
-use super::{auth::gateway_identity, listing::Listing};
+use super::{auth::gateway_identity, listing::Listing, schema::declare_types};
 use crate::{
     final_protocol_versions, private_resource_response,
     server_contract::{McpServerContract, McpServerSetup},
@@ -338,6 +338,14 @@ impl<D: DomainServer, T> Hosted<D, T> {
     fn setup() -> &'static McpServerSetup<D::Contract> {
         D::setup()
     }
+
+    /// A routed tool as discovery shows it: described by the domain, with the JSON
+    /// type of every input subschema declared.
+    fn published(&self, tool: Tool) -> Tool {
+        let mut tool = self.domain.describe_tool(tool);
+        declare_types(std::sync::Arc::make_mut(&mut tool.input_schema));
+        tool
+    }
 }
 
 impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
@@ -444,7 +452,7 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
             .tool_router()
             .list_all()
             .into_iter()
-            .map(|tool| self.domain.describe_tool(tool))
+            .map(|tool| self.published(tool))
             .collect();
         let tools = self.domain.list_tools(tools, &context).await?;
         Self::setup().list_tools(tools, request.as_ref())
@@ -455,7 +463,7 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
             .tool_router()
             .get(name)
             .cloned()
-            .map(|tool| self.domain.describe_tool(tool))
+            .map(|tool| self.published(tool))
     }
 
     async fn call_tool(

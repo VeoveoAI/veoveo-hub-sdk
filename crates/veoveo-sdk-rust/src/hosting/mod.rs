@@ -36,6 +36,7 @@ mod host;
 mod listing;
 pub mod operations;
 mod results;
+mod schema;
 mod server;
 mod subscriptions;
 #[cfg(any(test, feature = "testing"))]
@@ -51,6 +52,7 @@ pub use domain::{
 };
 pub use listing::{CATALOG_PAGE_SIZE, Listing};
 pub use results::{completion, json_read, product_result, rank_completions, structured_result};
+pub use schema::{UndeclaredType, declare_types, undeclared_types};
 pub use server::{Deployment, HostedServer, HostedServerBuilder, Missing, Provided};
 pub use subscriptions::{
     ListenOnly, ResourceSubscriptions, ResourcesOnly, SubscriptionListener,

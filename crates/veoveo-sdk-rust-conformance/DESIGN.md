@@ -11,7 +11,7 @@ server in any language without linking its implementation.
 | Model Context Protocol | negotiated Streamable HTTP protocol plus the hosted-server requirements selected by a typed profile |
 | JSON-RPC 2.0 | MCP request and response envelopes |
 | Owner-generated JSON Schema Draft7 | guarded local definitions/ref and legacy dependencies/tuple subset; published MCP schemas retain their normative 2020-12 obligation |
-| JSON Schema 2020-12 | bounded tool input schemas with same-document references and composition, plus generated profile/report schemas |
+| JSON Schema 2020-12 | bounded tool input schemas with same-document references, composition and a declared `type` wherever they restrict it, plus generated profile/report schemas |
 | OAuth 2.0 protected-resource metadata | unauthenticated Bearer rejection checks selected by the profile |
 | OAuth 2.0 authorization code / RFC 7636 | separate public-client CLI login with S256 PKCE and an installation-registered client |
 | RFC 8414 / RFC 8707 | SDK authorization-server discovery and explicit resource indication; requested and granted scopes must match |
@@ -114,6 +114,11 @@ schemas. Predicates such as `if`, `not` and `propertyNames` constrain an instanc
 than declare another decoded object. Closure inspection permits at most 50,000 visits
 and 64 nested references; cycle handling tracks whether closure came from the enclosing
 instance. This prevents an outer closed object from masking an open recursive child.
+
+After closure, the checker requires `type` on every subschema whose references,
+composition, `const` or `enum` restrict its JSON types. It infers those types with the
+SDK's `hosting::undeclared_types`, the function `Hosted` uses to declare them, and
+reports the first subschema without one by its JSON Pointer.
 
 ## Profile
 

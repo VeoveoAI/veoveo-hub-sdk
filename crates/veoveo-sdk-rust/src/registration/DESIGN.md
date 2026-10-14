@@ -165,8 +165,9 @@ Content-Type: application/json
 }
 ```
 
-In an OpenShell environment the server holds a placeholder for the registration secret,
-and the proxy substitutes the real value only on requests to the registration endpoint.
+In a local installation's environment the server holds a placeholder for the
+registration secret, and the installation's edge replaces it with the real value only on
+`POST /oauth/register`.
 
 `jwks` holds exactly one key, and its `kid` is the key's RFC 7638 thumbprint. The
 Gateway admits a request in this order and stops at the first failure:

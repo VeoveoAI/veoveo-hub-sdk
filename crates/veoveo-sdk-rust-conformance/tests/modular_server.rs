@@ -229,8 +229,8 @@ async fn qualify() -> anyhow::Result<()> {
     );
 
     server.stop().await;
-    // A refused connection is not required: inside an OpenShell 0.1.3 sandbox a closed
-    // loopback port can still complete the TCP handshake. The server must not answer.
+    // A refused connection is not required, because a proxy in front of a closed port
+    // can still complete the TCP handshake. The server must not answer.
     let answered = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()?

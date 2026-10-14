@@ -58,11 +58,11 @@ image installs. It runs the same way on macOS and Linux.
 
 ```sh
 docker build --target dev -t veoveo-sdk-rust:dev .
-openshell sandbox create --name vv-sdk-rust --from veoveo-sdk-rust:dev \
-  --policy openshell/policy.yaml --detach -- sleep infinity
+docker run -d --name vv-sdk-rust --cap-drop ALL veoveo-sdk-rust:dev sleep infinity
 ```
 
-The policy reaches the Rust toolchain, crates.io and GitHub fetches only.
+The environment runs as its non-root user with every capability dropped and holds no
+GitHub credential.
 
 ## License
 

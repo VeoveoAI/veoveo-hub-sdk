@@ -3644,6 +3644,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "veoveo-platform-store",
  "veoveo-sdk-rust",
  "veoveo-task-runtime",
  "veoveo-test-fixtures",

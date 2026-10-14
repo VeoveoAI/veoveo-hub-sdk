@@ -77,6 +77,8 @@ impl Worker {
 
 struct Harness {
     db: TestDb,
+    /// The runtime of the server's HTTP process, behind its routes and MCP handler.
+    routes: TaskRuntime,
     mesh: RunningMesh,
     kiln: Kiln,
     furnace: Furnace,
@@ -104,6 +106,7 @@ async fn harness() -> Harness {
     mesh.register(foundry::authorization().unwrap());
     let callbacks = CallbackUrls::new(mesh.base().clone(), slug()).unwrap();
     let tasks = FoundryTasks::new(routes.clone());
+    let http = routes.clone();
     mesh.serve(
         testing::for_domain::<FoundryDomain>()
             .public_routes(operation_callbacks(routes.clone(), furnace.clone()))
@@ -121,6 +124,7 @@ async fn harness() -> Harness {
     let worker = Worker::start(&db, &callbacks, &furnace).await;
     Harness {
         db,
+        routes: http,
         mesh,
         kiln,
         furnace,
@@ -288,6 +292,51 @@ async fn a_signed_callback_settles_a_parked_cast_and_its_cost_reaches_the_task()
         let after = harness.task(&task).await;
         assert_eq!(after["result"], completed["result"]);
         assert_eq!(harness.kiln.submissions(), 1);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_server_keeps_serving_and_working_after_its_database_sessions_end() {
+    within(async {
+        let harness = harness().await;
+        let task = harness.cast("bell").await;
+        let runtime = harness.runtime();
+        let job = harness.parked(&runtime, &task).await;
+
+        // The network between the server and the database fails for a moment, for its
+        // HTTP process and its worker alike.
+        assert!(
+            harness
+                .db
+                .end_sessions(harness.routes.platform_store())
+                .await
+                > 0
+        );
+        assert!(harness.db.end_sessions(runtime.platform_store()).await > 0);
+
+        // MCP reads answer through new connections.
+        let parked = harness.task(&task).await;
+        assert_eq!(parked["status"], "working", "{parked}");
+        // Kiln's signed callback reaches the public route, which stores it, and the
+        // worker, claiming again once its listener reconnected, finishes the cast.
+        let event = harness.kiln.event_id();
+        assert_eq!(
+            harness.kiln.send(&done(&job, "0.05"), &event).await,
+            StatusCode::NO_CONTENT
+        );
+        let completed = harness
+            .until(&task, |view| view["status"] == "completed")
+            .await;
+        assert_eq!(
+            completed["result"]["structuredContent"],
+            json!({"piece": "a bronze bell", "billed_usd": "0.05"}),
+            "{completed}"
+        );
+        // A new cast runs as any other.
+        let second = harness.cast("gong").await;
+        harness.parked(&runtime, &second).await;
+        assert!(!harness.worker.as_ref().unwrap().join.is_finished());
     })
     .await;
 }

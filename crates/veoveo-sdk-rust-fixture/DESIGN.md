@@ -64,7 +64,9 @@ job. The resumed Task records the billed cost and completes with the piece. Kiln
 finds a job by the operation identity, which an unsettled dispatch uses to reconcile
 instead of casting again, and cancels a job with a receipt. The operations tests run
 Foundry and Kiln on a private PostgreSQL cluster from core's store fixture, through the
-SDK's mesh, and reach no outside service.
+SDK's mesh, and reach no outside service. One of them ends every database session of
+Foundry's HTTP process and worker while a cast is parked, then checks that MCP reads
+still answer, that Kiln's callback still settles the cast, and that a new cast runs.
 
 The worker tests run `TaskWorker` over Tasks of a test server, `anvil`, on two process
 instances of a private PostgreSQL cluster. They stop a worker while its Tasks run and
@@ -72,7 +74,10 @@ check that a `resume` Task keeps no outcome and is finished by a worker of the n
 instance, that a Task of the `interrupted_indeterminate` class keeps a finished outcome
 and otherwise fails as indeterminate, that a cancellation requested on another replica
 reaches a handler at its checkpoint, and that each Task kind settles a pending
-cancellation by its own policy.
+cancellation by its own policy. They also end a worker's database sessions and check
+that it claims and finishes the next Task, that work a lost connection interrupted runs
+again as a `resume` Task and ends as interrupted otherwise, and that the worker ends once
+its login is removed.
 
 The `tool_inputs` module needs only Serde. A server's tests load its own cases and
 check required members, defaults, open objects, typed dictionaries and rejected

@@ -15,6 +15,11 @@
 //! Task whose process is stopping publishes no outcome and stays with its instance,
 //! whose recovery queues it for another worker; a requested cancellation still
 //! settles. A handler that stops with an error leaves its Task to its recovery class.
+//!
+//! A lost database connection says nothing about the Task. A handler whose work a lost
+//! connection interrupted releases its Task to its recovery, which runs a `resume` Task
+//! again from its finished steps, and an outcome that cannot be recorded while the
+//! connection is down is tried again before the Task goes to its recovery the same way.
 use std::{collections::BTreeMap, fmt, future::Future, sync::Arc, time::Duration};
 
 use futures::StreamExt;
@@ -27,6 +32,7 @@ use veoveo_task_runtime::{
     CallbackToken, Operation, OperationCalls, OperationKey, OperationSpec, RecoveryClass,
     ResumeCancellationPolicy, StepAttempt, StepDispatch, StepKey, StepOperationId, Submission,
     TaskError, TaskFailure, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition, WaitOutcome,
+    interrupted_by_connection,
 };
 use veoveo_types::{ServerSlug, TaskId, TaskTypeName};
 
@@ -370,12 +376,18 @@ impl OperationStep<'_> {
 }
 
 /// How a handler's error reaches the worker: a parked Task is released, a Task this
-/// instance no longer owns is left alone, and any other error fails the Task.
+/// instance no longer owns is left alone, a Task whose work a lost database connection
+/// interrupted goes to its recovery, and any other error fails the Task.
 pub trait TaskWorkError: fmt::Display + Send + 'static {
     /// The Task parked on an operation.
     fn is_parked(&self) -> bool;
     /// The instance lost the Task to recovery or another worker.
     fn is_lost(&self) -> bool;
+    /// A lost or unavailable database connection interrupted the work, so the error says
+    /// nothing about the Task. An error type that cannot carry one keeps the default.
+    fn is_interrupted(&self) -> bool {
+        false
+    }
 }
 
 impl TaskWorkError for TaskError {
@@ -386,6 +398,10 @@ impl TaskWorkError for TaskError {
     fn is_lost(&self) -> bool {
         matches!(self, Self::NotOwner(_) | Self::Conflict(_))
     }
+
+    fn is_interrupted(&self) -> bool {
+        self.is_connection()
+    }
 }
 
 impl TaskWorkError for TaskStop {
@@ -395,6 +411,10 @@ impl TaskWorkError for TaskStop {
 
     fn is_lost(&self) -> bool {
         matches!(self, Self::Runtime(error) if TaskWorkError::is_lost(error))
+    }
+
+    fn is_interrupted(&self) -> bool {
+        matches!(self, Self::Runtime(error) if error.is_connection())
     }
 }
 
@@ -413,6 +433,17 @@ impl TaskWorkError for anyhow::Error {
             || self
                 .downcast_ref::<TaskStop>()
                 .is_some_and(TaskWorkError::is_lost)
+    }
+
+    /// Any error in the chain reports a lost database connection: the runtime's own
+    /// errors, the store's, or a driver error the server's own queries returned.
+    fn is_interrupted(&self) -> bool {
+        self.chain().any(|error| {
+            error
+                .downcast_ref::<TaskStop>()
+                .is_some_and(TaskWorkError::is_interrupted)
+                || interrupted_by_connection(error)
+        })
     }
 }
 
@@ -569,6 +600,15 @@ where
             tracing::debug!(%task_id, %error, "the worker no longer owns the Task");
             return;
         }
+        Err(error) if error.is_interrupted() => {
+            tracing::warn!(
+                %task_id,
+                %error,
+                "a lost database connection interrupted the Task; its recovery takes it on"
+            );
+            release(runtime, task_id).await;
+            return;
+        }
         Err(error) => match stopped(runtime, task_id, &stop).await {
             Stopped::Finished => return,
             Stopped::Cancelled => TaskTransition::Cancelled,
@@ -597,8 +637,58 @@ where
         tracing::debug!(%task_id, "the Task's outcome waits for its recovery");
         return;
     }
-    if let Err(error) = record(runtime, &claimed, transition, &cancellation, policy).await {
-        tracing::warn!(%task_id, %error, "a Task did not settle");
+    let mut delay = SETTLE_RETRY_FIRST_DELAY;
+    let deadline = tokio::time::Instant::now() + SETTLE_RETRY_WINDOW;
+    loop {
+        match record(runtime, &claimed, transition.clone(), &cancellation, policy).await {
+            Ok(_) => return,
+            Err(error) if error.is_connection() && tokio::time::Instant::now() < deadline => {
+                tracing::debug!(%task_id, %error, "recording the Task's outcome waits for the database");
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(SETTLE_RETRY_MAX_DELAY);
+            }
+            Err(error) if error.is_connection() => {
+                tracing::warn!(
+                    %task_id,
+                    %error,
+                    "the Task's outcome could not be recorded; its recovery takes it on"
+                );
+                release(runtime, task_id).await;
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(%task_id, %error, "a Task did not settle");
+                return;
+            }
+        }
+    }
+}
+
+/// How long a worker tries to record an outcome while the database connection is down
+/// before it gives the Task to its recovery.
+pub const SETTLE_RETRY_WINDOW: Duration = Duration::from_secs(60);
+/// The wait after the first failed attempt to record an outcome. Each further failure
+/// doubles it, up to [`SETTLE_RETRY_MAX_DELAY`].
+pub const SETTLE_RETRY_FIRST_DELAY: Duration = Duration::from_millis(100);
+/// The longest wait between attempts to record an outcome or release a Task.
+pub const SETTLE_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
+
+/// Give the claimed Task to its recovery, trying again while the database connection is
+/// down and the instance lasts. A Task the instance no longer owns already went on.
+async fn release(runtime: &TaskRuntime, task_id: TaskId) {
+    let mut delay = SETTLE_RETRY_FIRST_DELAY;
+    loop {
+        match runtime.release(task_id).await {
+            Ok(_) | Err(TaskError::NotOwner(_)) => return,
+            Err(error) if error.is_connection() && !runtime.instance().is_lost() => {
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(SETTLE_RETRY_MAX_DELAY);
+            }
+            Err(error) => {
+                tracing::warn!(%task_id, %error, "a Task could not be released to its recovery");
+                return;
+            }
+        }
     }
 }
 

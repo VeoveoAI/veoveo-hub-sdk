@@ -2,15 +2,27 @@
 //! a stopping process publishes no outcome of a resumable Task and leaves it to its
 //! instance's recovery, a Task of another recovery class keeps that class's behavior, and
 //! a cancellation requested on another replica reaches the handler at its checkpoint.
-use std::{collections::BTreeSet, future::Future, sync::Arc, time::Duration};
+//! A worker whose database sessions end keeps working, work a lost connection
+//! interrupted goes to its recovery instead of failing, and a worker ends once its
+//! login is removed.
+use std::{
+    collections::BTreeSet,
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use veoveo_platform_store::StoreError;
 use veoveo_sdk_rust::durable_tasks::{TaskContext, TaskStop, TaskWorker};
 use veoveo_task_runtime::{
-    CreateTask, Instance, PrincipalKind, RecoveryClass, ResumeCancellationPolicy, TaskFailure,
-    TaskOwner, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition,
+    CreateTask, Instance, PrincipalKind, RecoveryClass, ResumeCancellationPolicy, TaskError,
+    TaskFailure, TaskOwner, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition,
 };
 use veoveo_test_fixtures::store::TestDb;
 use veoveo_types::{
@@ -364,6 +376,132 @@ async fn each_task_kind_settles_a_pending_cancellation_by_its_own_policy() {
         assert!(cancelled.error.is_none());
         stop.cancel();
         join.await.unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_worker_keeps_working_after_its_database_sessions_end() {
+    within(async {
+        let db = TestDb::new().await;
+        let runtime = replica(&db).await;
+        let (stop, join) = start(&runtime, |_ctx| async { Ok(struck()) });
+        let first = create(&runtime, "strike", RecoveryClass::Resume).await;
+        stored_until(&db, &runtime, first, |snapshot| {
+            snapshot.status == TaskStatus::Succeeded
+        })
+        .await;
+
+        // The network between the server and the database fails for a moment. A replica's
+        // reaps may delete the instance's row while its lock is free, so the instance may
+        // come back as a new generation; either way the worker claims the next Task.
+        assert!(db.end_sessions(runtime.platform_store()).await > 0);
+        let second = create(&runtime, "strike", RecoveryClass::Resume).await;
+        stored_until(&db, &runtime, second, |snapshot| {
+            snapshot.status == TaskStatus::Succeeded
+        })
+        .await;
+        assert!(!join.is_finished(), "the worker kept running");
+        stop.cancel();
+        join.await.unwrap();
+    })
+    .await;
+}
+
+/// A database error that a lost connection causes: no pooled connection in time.
+fn lost_connection() -> anyhow::Error {
+    anyhow::Error::from(TaskError::Store(StoreError::Timeout {
+        operation: "acquiring a pooled database connection",
+        seconds: 5,
+    }))
+    .context("striking the anvil")
+}
+
+#[tokio::test]
+async fn work_a_lost_connection_interrupts_goes_to_its_recovery_instead_of_failing() {
+    within(async {
+        let db = TestDb::new().await;
+        let runtime = replica(&db).await;
+        let runs = Arc::new(AtomicUsize::new(0));
+        let (stop, join) = start(&runtime, {
+            let runs = runs.clone();
+            move |ctx| {
+                let runs = runs.clone();
+                async move {
+                    let mode = ctx.task().request["mode"].as_str().unwrap_or_default();
+                    match mode {
+                        // The first run loses its connection; the second finishes.
+                        "interrupt_once" if runs.fetch_add(1, Ordering::SeqCst) == 0 => {
+                            Err(lost_connection())
+                        }
+                        "interrupt_always" => Err(lost_connection()),
+                        _ => Ok(struck()),
+                    }
+                }
+            }
+        });
+
+        // A resumable Task runs again from its recovery and finishes.
+        let resumable = create(&runtime, "interrupt_once", RecoveryClass::Resume).await;
+        let finished =
+            stored_until(&db, &runtime, resumable, |snapshot| snapshot.is_terminal()).await;
+        assert_eq!(finished.status, TaskStatus::Succeeded, "{finished:?}");
+        assert_eq!(runs.load(Ordering::SeqCst), 2);
+
+        // A Task of the other recovery class ends as interrupted, not as failed work.
+        let indeterminate = create(
+            &runtime,
+            "interrupt_always",
+            RecoveryClass::InterruptedIndeterminate,
+        )
+        .await;
+        let interrupted = stored_until(&db, &runtime, indeterminate, |snapshot| {
+            snapshot.is_terminal()
+        })
+        .await;
+        assert_eq!(interrupted.status, TaskStatus::Failed);
+        assert_eq!(
+            interrupted.error.map(|error| error.code),
+            Some("interrupted_indeterminate".to_owned())
+        );
+        stop.cancel();
+        join.await.unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_worker_ends_once_its_login_is_removed() {
+    within(async {
+        let db = TestDb::new().await;
+        let runtime = replica(&db).await;
+        let stop = CancellationToken::new();
+        let worker = TaskWorker::new(runtime.clone());
+        let join = tokio::spawn({
+            let stop = stop.clone();
+            async move {
+                worker
+                    .run(|_ctx| async { Ok::<_, anyhow::Error>(struck()) }, stop)
+                    .await
+            }
+        });
+        let task = create(&runtime, "strike", RecoveryClass::Resume).await;
+        stored_until(&db, &runtime, task, |snapshot| {
+            snapshot.status == TaskStatus::Succeeded
+        })
+        .await;
+
+        // The Gateway removed the server's registration and dropped its login.
+        db.remove_login(runtime.platform_store()).await;
+        let ended = tokio::time::timeout(DEADLINE, join)
+            .await
+            .expect("the worker ended once its login was removed")
+            .unwrap();
+        assert!(
+            matches!(ended, Err(TaskError::Store(StoreError::InstanceLost))),
+            "{ended:?}"
+        );
+        assert!(runtime.instance().is_lost());
     })
     .await;
 }

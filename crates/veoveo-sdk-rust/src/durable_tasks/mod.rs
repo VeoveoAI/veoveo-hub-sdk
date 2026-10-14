@@ -17,5 +17,6 @@ pub use service::{
 };
 pub use work::{
     CallbackUrlError, CallbackUrls, DEFAULT_CANCELLATION, DEFAULT_DRAIN, OperationDispatch,
-    OperationStep, TaskClientError, TaskContext, TaskStop, TaskWorkError, TaskWorker,
+    OperationStep, SETTLE_RETRY_FIRST_DELAY, SETTLE_RETRY_MAX_DELAY, SETTLE_RETRY_WINDOW,
+    TaskClientError, TaskContext, TaskStop, TaskWorkError, TaskWorker,
 };

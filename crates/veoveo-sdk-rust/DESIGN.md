@@ -592,9 +592,22 @@ keeps a genuine failure; `TaskWorker::cancellation(task_type, policy)` names
 no success from a Task whose cancellation was requested, so no policy keeps one. A
 handler error that is a parked Task releases it, one that reports the Task lost to
 another instance leaves it alone, a requested cancellation settles the Task as
-`Cancelled`, and any other error fails it with `task_error`; `TaskWorkError` reads these
-from `TaskError`, `TaskStop` and `anyhow::Error`. `ctx.update` records progress through
-the same settlement.
+`Cancelled`, and any other error fails it with `task_error`. An error that a lost or
+unavailable database connection caused says nothing about the Task: the worker releases
+the Task to its recovery, which queues a `resume` Task to run again from its finished
+steps and ends any other as interrupted. `TaskWorkError` reads these from `TaskError`,
+`TaskStop` and `anyhow::Error`, whose whole chain it searches for a connection error of
+the runtime, the store or the driver. An outcome that cannot be recorded while the
+connection is down is tried again for up to 60 seconds, waiting 100 milliseconds and
+doubling to at most 5 seconds, before the Task goes to its recovery the same way.
+`ctx.update` records progress through the same settlement.
+
+A worker keeps running while the database connection is down. Its instance
+[reconnects](https://github.com/VeoveoAI/veoveo-core/blob/60b65e5c2af221bd92f814c98e7558a088413920/docs/DATABASE.md#process-instances)
+and keeps the Tasks it owns, or continues as a new instance once a reaper moved them to
+recovery, and its work stream claims again once the connection is back. `run` returns
+an error only when the instance ended, as it does once the database refuses the
+server's login after the Gateway removed the registration.
 
 A process stops its worker with the token `run` takes. The worker claims nothing more
 and waits up to its drain time, 30 seconds by default, for its running Tasks. The stop

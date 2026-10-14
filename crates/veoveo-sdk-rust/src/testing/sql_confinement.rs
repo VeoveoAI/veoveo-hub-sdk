@@ -349,12 +349,28 @@ impl Checker<'_> {
             }
         };
         for raw in &parsed.protobuf.stmts {
-            let start = first_token(sql, usize::try_from(raw.stmt_location).unwrap_or(0));
-            let length = usize::try_from(raw.stmt_len).unwrap_or(0);
-            let text = match length {
-                0 => sql.get(start..).unwrap_or(sql),
-                length => sql.get(start..start + length).unwrap_or(sql),
+            // A statement spans `stmt_len` bytes from its location, or the rest of the SQL
+            // when the length is 0. Its text starts at its first token, past the comments
+            // that precede it, and never runs into the next statement.
+            let location = usize::try_from(raw.stmt_location).unwrap_or(0);
+            let end = match usize::try_from(raw.stmt_len).unwrap_or(0) {
+                0 => sql.len(),
+                length => location.saturating_add(length),
             };
+            let Some(statement) = sql.get(location..end) else {
+                self.push(
+                    origin,
+                    origin.line_at(sql, location.min(sql.len())),
+                    SqlProblem::Unparsed {
+                        reason: format!(
+                            "the parser placed a statement at bytes {location}..{end}, outside the SQL"
+                        ),
+                    },
+                );
+                continue;
+            };
+            let start = first_token(sql, location).min(end);
+            let text = sql.get(start..end).unwrap_or(statement);
             let tree = match serde_json::to_value(&raw.stmt) {
                 Ok(tree) => tree,
                 Err(error) => {
@@ -691,6 +707,9 @@ impl Statement<'_, '_, '_> {
 
     /// A PL/pgSQL function definition: every SQL statement and expression in its body.
     fn plpgsql(&mut self, definition: &str) {
+        if let Err(reason) = plpgsql_definition(definition) {
+            return self.push(None, SqlProblem::Unparsed { reason });
+        }
         match pg_query::parse_plpgsql(definition) {
             Ok(tree) => self.plpgsql_walk(&tree),
             Err(error) => self.push(
@@ -763,6 +782,57 @@ impl Statement<'_, '_, '_> {
             );
         };
         self.checker.sql(readable, &origin);
+    }
+}
+
+/// Whether libpg_query's PL/pgSQL parser may read `definition`. That parser compiles every
+/// function its input creates, and libpg_query aborts the process on a function whose body
+/// is not a string, such as a SQL-standard `RETURN` or `BEGIN ATOMIC` body. So it reads
+/// only a single PL/pgSQL `CREATE FUNCTION` whose body is a string.
+fn plpgsql_definition(definition: &str) -> Result<(), String> {
+    let parsed = pg_query::parse(definition).map_err(|error| error.to_string())?;
+    let [statement] = parsed.protobuf.stmts.as_slice() else {
+        return Err(format!(
+            "{} statements where one PL/pgSQL function was expected",
+            parsed.protobuf.stmts.len()
+        ));
+    };
+    let tree = serde_json::to_value(&statement.stmt).map_err(|error| error.to_string())?;
+    let Some(function) = inner(&tree).get("CreateFunctionStmt") else {
+        return Err(
+            "a statement other than CREATE FUNCTION where a PL/pgSQL function was expected".into(),
+        );
+    };
+    if function.get("sql_body").is_some_and(|body| !body.is_null()) {
+        return Err(
+            "a function with a SQL-standard body where a PL/pgSQL body was expected".into(),
+        );
+    }
+    let mut language = None;
+    let mut string_body = false;
+    for option in nodes(function.get("options")) {
+        let Some(element) = option.get("DefElem") else {
+            continue;
+        };
+        match text_field(element, "defname").as_str() {
+            "language" => {
+                language = element
+                    .get("arg")
+                    .map(inner)
+                    .and_then(|arg| arg.get("String"))
+                    .map(|text| text_field(text, "sval"));
+            }
+            "as" => string_body = !strings(element.get("arg").and_then(list_items)).is_empty(),
+            _ => {}
+        }
+    }
+    match (language.as_deref(), string_body) {
+        (Some("plpgsql"), true) => Ok(()),
+        (Some("plpgsql"), false) => Err("a PL/pgSQL function without a string body".into()),
+        (other, _) => Err(format!(
+            "a function in language `{}` where a PL/pgSQL function was expected",
+            other.unwrap_or("sql")
+        )),
     }
 }
 
@@ -1001,7 +1071,11 @@ mod tests {
         }
 
         fn findings(&self) -> Vec<SqlFinding> {
-            check_sql_confined(&self.0, "media")
+            self.findings_in("media")
+        }
+
+        fn findings_in(&self, own_schema: &str) -> Vec<SqlFinding> {
+            check_sql_confined(&self.0, own_schema)
         }
     }
 
@@ -1024,6 +1098,92 @@ mod tests {
             })
             .collect()
     }
+
+    /// Artifact's `artifact.effective_level`, a SQL-standard `RETURN` function, then its
+    /// PL/pgSQL `artifact.track_upload_usage`, each after its comments, and the trigger
+    /// that follows them in Artifact's first migration.
+    const ARTIFACT_FUNCTIONS: &str = r#"-- The caller's level on `target` at `as_of`, as a rank: 0 none, 1 read, 2 write, 3 admin.
+-- An artifact of another tenant, one being deleted, one past its retention, and one
+-- carrying a label outside the caller's labels give 0 whatever the grants say.
+-- Otherwise the level is the highest of ownership, the caller's unexpired principal
+-- grants, its unexpired group grants each capped by its role in the group, and its
+-- membership in the artifact's Work Context while that is the caller's selected one.
+-- `groups` and `group_levels` pair each of the caller's groups with its role there.
+CREATE FUNCTION artifact.effective_level(
+    target artifact.artifact,
+    tenant uuid,
+    caller uuid,
+    caller_key text,
+    groups text[],
+    group_levels text[],
+    work_context text,
+    membership text,
+    labels text[],
+    as_of timestamptz
+) RETURNS smallint
+LANGUAGE sql STABLE PARALLEL SAFE
+SET search_path = pg_catalog, pg_temp
+RETURN CASE
+    WHEN target.tenant IS DISTINCT FROM effective_level.tenant
+        OR target.state = 'deleting'
+        OR (target.retain_until IS NOT NULL AND target.retain_until <= as_of)
+        OR NOT (target.labels <@ coalesce(effective_level.labels, '{}'))
+        THEN 0::smallint
+    ELSE greatest(
+        CASE WHEN target.owner = caller THEN 3 ELSE 0 END,
+        CASE WHEN target.work_context = effective_level.work_context
+            THEN coalesce(artifact.membership_rank(membership), 0) ELSE 0 END,
+        coalesce((
+            SELECT max(artifact.level_rank(g.level))
+            FROM artifact.grant AS g
+            WHERE g.tenant = target.tenant
+                AND g.artifact_id = target.artifact_id
+                AND g.subject_kind = 'principal'
+                AND g.subject = caller_key
+                AND (g.expires_at IS NULL OR g.expires_at > as_of)
+        ), 0),
+        coalesce((
+            SELECT max(least(artifact.level_rank(g.level), artifact.level_rank(m.level)))
+            FROM unnest(groups, group_levels) AS m (grp, level)
+            JOIN artifact.grant AS g
+                ON g.tenant = target.tenant
+                AND g.artifact_id = target.artifact_id
+                AND g.subject_kind = 'group'
+                AND g.subject = m.grp
+            WHERE g.expires_at IS NULL OR g.expires_at > as_of
+        ), 0)
+    )::smallint
+END;
+
+-- Storage usage follows the rows. An open upload reserves its bytes and counts against
+-- the open-upload limit until it ends; an artifact's bytes count from completion until
+-- its row goes.
+CREATE FUNCTION artifact.track_upload_usage() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+    IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.state = 'open' THEN
+        UPDATE artifact.storage_usage
+        SET reserved_bytes = reserved_bytes - OLD.reserved_bytes,
+            open_uploads = open_uploads - 1
+        WHERE tenant = OLD.tenant;
+    END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') AND NEW.state = 'open' THEN
+        INSERT INTO artifact.storage_usage AS u (tenant, stored_bytes, reserved_bytes, open_uploads)
+        VALUES (NEW.tenant, 0, NEW.reserved_bytes, 1)
+        ON CONFLICT (tenant) DO UPDATE
+        SET reserved_bytes = u.reserved_bytes + excluded.reserved_bytes,
+            open_uploads = u.open_uploads + 1;
+    END IF;
+    RETURN NULL;
+END
+$$;
+
+CREATE TRIGGER track_usage AFTER INSERT OR UPDATE OF state, reserved_bytes OR DELETE
+    ON artifact.upload FOR EACH ROW EXECUTE FUNCTION artifact.track_upload_usage();
+
+"#;
 
     const OWN_MIGRATION: &str = r#"-- Media's tables. Tasks live in core; Media reads them through the SDK, never
 -- through tasks.task or kernel.instance.
@@ -1283,5 +1443,56 @@ DROP POLICY prediction_owner ON media.prediction;
     fn the_assertion_names_the_way_to_core_state() {
         let fixture = Fixture::new(&[("src/store/by_task.sql", "SELECT * FROM tasks.task\n")]);
         assert_sql_confined(&fixture.0, "media");
+    }
+
+    /// The two functions end the SQL in one file and precede a trigger in the other, so a
+    /// statement after its comments ends at the end of the SQL and at the next statement.
+    #[test]
+    fn functions_after_their_comments_read_as_written() {
+        let through_functions = ARTIFACT_FUNCTIONS.split("\nCREATE TRIGGER").next().unwrap();
+        let fixture = Fixture::new(&[
+            ("migrations/0001_functions.sql", through_functions),
+            ("migrations/0002_with_trigger.sql", ARTIFACT_FUNCTIONS),
+        ]);
+        assert_eq!(fixture.findings_in("artifact"), Vec::new());
+
+        // The PL/pgSQL body after the SQL-standard function is still read.
+        let reaching = ARTIFACT_FUNCTIONS.replace(
+            "UPDATE artifact.storage_usage",
+            "UPDATE tasks.task SET status = 'failed';\n        UPDATE artifact.storage_usage",
+        );
+        let fixture = Fixture::new(&[("migrations/0003_reaching.sql", reaching.as_str())]);
+        assert_eq!(
+            foreign(&fixture.findings_in("artifact")),
+            [("migrations/0003_reaching.sql".into(), 57, "tasks".into())]
+        );
+    }
+
+    #[test]
+    fn a_definition_the_plpgsql_parser_cannot_take_fails_closed() {
+        // libpg_query's PL/pgSQL parser aborts the process on a SQL-standard body.
+        let standard = "CREATE FUNCTION media.one() RETURNS int LANGUAGE sql RETURN 1";
+        assert!(plpgsql_definition(standard).is_err());
+        let two = "CREATE FUNCTION media.a() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;\n\
+                   CREATE FUNCTION media.b() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$";
+        assert!(plpgsql_definition(two).is_err());
+        assert!(
+            plpgsql_definition(
+                "CREATE FUNCTION media.a() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$"
+            )
+            .is_ok()
+        );
+
+        let fixture = Fixture::new(&[(
+            "migrations/0007_broken.sql",
+            "-- A body the PL/pgSQL parser refuses.\n\
+             CREATE FUNCTION media.broken() RETURNS void LANGUAGE plpgsql AS $$\n\
+             BEGIN\n    SELEC 1;\nEND\n$$;\n",
+        )]);
+        let findings = fixture.findings();
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].path, Path::new("migrations/0007_broken.sql"));
+        assert_eq!(findings[0].line, 2);
+        assert!(matches!(findings[0].problem, SqlProblem::Unparsed { .. }));
     }
 }

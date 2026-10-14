@@ -494,7 +494,10 @@ migrations, the SQL literal of every sqlx query macro, of every `sqlx` query fun
 and of every executor method called with a string, and the file every `query_file`
 macro names. PostgreSQL's parser from libpg_query reads each statement, so comments and
 string literals never count. The check reads PL/pgSQL function bodies and `DO` blocks
-with libpg_query's PL/pgSQL parser and SQL-language bodies as SQL. It skips `target` and
+with libpg_query's PL/pgSQL parser and SQL-language bodies as SQL. That parser compiles
+every function in its input, and libpg_query aborts the process on a function without a
+string body, such as a SQL-standard `RETURN` body, so the check hands it one PL/pgSQL
+`CREATE FUNCTION` at a time, cut at the statement's own bounds. It skips `target` and
 every hidden directory, such as the `.sqlx` offline metadata that holds core's own
 queries.
 

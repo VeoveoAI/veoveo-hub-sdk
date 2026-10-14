@@ -458,6 +458,39 @@ async fn cancelling_a_parked_cast_carries_it_to_kiln_and_keeps_the_receipt() {
 }
 
 #[tokio::test]
+async fn a_caller_cancelling_a_parked_cast_over_mcp_carries_it_to_kiln() {
+    within(async {
+        let harness = harness().await;
+        let task = harness.cast("gong").await;
+        let runtime = harness.runtime();
+        let job = harness.parked(&runtime, &task).await;
+
+        // The caller's `tasks/cancel` leaves the parked cast for a claim, whose wait
+        // cancels Kiln's job.
+        let answer = harness.mesh.cancel_task("foundry", &task).await;
+        assert!(
+            answer.get("error").is_none(),
+            "tasks/cancel failed: {answer}"
+        );
+        let cancelled = harness
+            .until(&task, |view| view["status"] == "cancelled")
+            .await;
+        assert_eq!(cancelled["status"], "cancelled");
+        assert_eq!(harness.kiln.cancelled(), std::slice::from_ref(&job));
+        let operation = runtime
+            .operation(TaskId::parse(task.as_str()).unwrap(), &cast_operation().key)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            operation.cancel_receipt,
+            Some(json!({"job": job, "cancelled": true}))
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn an_event_on_the_providers_fixed_url_settles_the_cast_its_job_names() {
     within(async {
         let harness = harness().await;

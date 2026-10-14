@@ -284,6 +284,27 @@ impl RunningMesh {
         json_body(response).await
     }
 
+    /// Cancels a Task of `server` as the test user, through MCP `tasks/cancel`.
+    pub async fn cancel_task(&self, server: &str, task: &str) -> serde_json::Value {
+        let server = ServerSlug::parse(server).expect("a server slug");
+        let caller = user_caller();
+        let body = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tasks/cancel",
+            "params": {"taskId": task, "_meta": meta(true)}
+        });
+        let response = forward(
+            &self.shared,
+            &server,
+            &caller,
+            None,
+            "tasks/cancel",
+            None,
+            body,
+        )
+        .await;
+        json_body(response).await
+    }
+
     async fn call_with(
         &self,
         server: &str,

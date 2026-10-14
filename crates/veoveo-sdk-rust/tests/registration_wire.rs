@@ -830,7 +830,7 @@ fn plain_http_is_allowed_only_for_local_hosts() {
         "http://time.localhost:8800/mcp",
         "http://127.0.0.1:8800/mcp",
         "http://[::1]:8800/mcp",
-        "http://host.openshell.internal:8800/mcp",
+        "http://vv-mcp-time.internal:8800/mcp",
     ] {
         assert!(
             ServerEndpoint::new(url::Url::parse(local).unwrap()).is_ok(),
@@ -849,8 +849,7 @@ fn plain_http_is_allowed_only_for_local_hosts() {
         );
         assert!(ResourceIndicator::parse(remote).is_err(), "{remote}");
     }
-    let local_issuer =
-        veoveo_types::TokenIssuer::parse("http://host.openshell.internal:8080").unwrap();
+    let local_issuer = veoveo_types::TokenIssuer::parse("http://vv-gateway.internal:8080").unwrap();
     assert!(issuer_url(&local_issuer).is_ok());
     let remote_issuer = veoveo_types::TokenIssuer::parse("http://gateway.example").unwrap();
     assert!(issuer_url(&remote_issuer).is_err());

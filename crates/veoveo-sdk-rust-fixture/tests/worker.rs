@@ -166,6 +166,18 @@ async fn hold(
                 Err(stop) => return Err(stop.into()),
             }
         },
+        // Finish the work, then wait until a cancellation request arrives before the
+        // worker records the outcome.
+        "finish_then_cancelled" => {
+            let id = ctx.task_id();
+            loop {
+                let current = ctx.runtime().get(id).await?.expect("the Task");
+                if current.status == TaskStatus::CancelRequested {
+                    return Ok(struck());
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        }
         other => anyhow::bail!("no strike mode {other}"),
     }
 }
@@ -374,6 +386,50 @@ async fn each_task_kind_settles_a_pending_cancellation_by_its_own_policy() {
             stored_until(&db, &other, replaced, |snapshot| snapshot.is_terminal()).await;
         assert_eq!(cancelled.status, TaskStatus::Cancelled);
         assert!(cancelled.error.is_none());
+        stop.cancel();
+        join.await.unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_finished_outcome_survives_a_later_cancellation_under_preserve_outcome() {
+    within(async {
+        let db = TestDb::new().await;
+        let first = replica(&db).await;
+        // Tempering keeps what finished; strikes keep the default policy, under which a
+        // pending cancellation replaces a success.
+        let kept = create_kind(
+            &first,
+            TEMPER,
+            "finish_then_cancelled",
+            RecoveryClass::Resume,
+        )
+        .await;
+        let replaced = create_kind(
+            &first,
+            STRIKE,
+            "finish_then_cancelled",
+            RecoveryClass::Resume,
+        )
+        .await;
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let worker = TaskWorker::new(first.clone())
+            .cancellation(TEMPER, ResumeCancellationPolicy::PreserveOutcome);
+        let (stop, join) = start_worker(worker, move |ctx| hold(ctx, sender.clone()));
+        started(&mut receiver, 2).await;
+
+        // The worker's own runtime records both cancellations, so each Task's token hears
+        // its request too.
+        first.cancel(kept).await.unwrap();
+        first.cancel(replaced).await.unwrap();
+        let succeeded = stored_until(&db, &first, kept, |snapshot| snapshot.is_terminal()).await;
+        assert_eq!(succeeded.status, TaskStatus::Succeeded);
+        assert_eq!(succeeded.result, Some(json!({ "piece": "a horseshoe" })));
+        let cancelled =
+            stored_until(&db, &first, replaced, |snapshot| snapshot.is_terminal()).await;
+        assert_eq!(cancelled.status, TaskStatus::Cancelled);
+        assert!(cancelled.result.is_none());
         stop.cancel();
         join.await.unwrap();
     })

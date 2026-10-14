@@ -255,15 +255,14 @@ impl TaskContext {
     }
 
     /// Record a transition of the Task while its work runs, such as its progress. A
-    /// `resume` Task records it through resumable settlement with the Task's
-    /// cancellation and its kind's cancellation policy, so a stopping process records
-    /// no success.
+    /// `resume` Task records it through resumable settlement with its kind's
+    /// cancellation policy, so a stopping process records no success.
     pub async fn update(&self, transition: TaskTransition) -> Result<TaskSnapshot, TaskError> {
         record(
             &self.inner.runtime,
             &self.inner.snapshot,
             transition,
-            &self.inner.cancellation,
+            &self.inner.stop,
             self.inner.policy,
         )
         .await
@@ -494,7 +493,9 @@ impl TaskWorker {
 
     /// How a pending cancellation settles the outcome of `resume` Tasks of `task_type`,
     /// [`DEFAULT_CANCELLATION`] for kinds not named. `CancellationWins` turns any
-    /// outcome into `Cancelled`; `PreserveFailure` keeps a genuine failure.
+    /// outcome into `Cancelled`; `PreserveFailure` keeps a genuine failure;
+    /// `PreserveOutcome` keeps a success or a genuine failure, for work whose finished
+    /// result a later cancellation must not undo.
     pub fn cancellation(
         mut self,
         task_type: TaskTypeName,
@@ -588,7 +589,6 @@ where
     let task_id = context.task_id();
     let claimed = context.task().clone();
     let policy = context.inner.policy;
-    let cancellation = context.inner.cancellation.clone();
     let stop = context.inner.stop.clone();
     let transition = match handler(context).await {
         Ok(transition) => transition,
@@ -640,7 +640,7 @@ where
     let mut delay = SETTLE_RETRY_FIRST_DELAY;
     let deadline = tokio::time::Instant::now() + SETTLE_RETRY_WINDOW;
     loop {
-        match record(runtime, &claimed, transition.clone(), &cancellation, policy).await {
+        match record(runtime, &claimed, transition.clone(), &stop, policy).await {
             Ok(_) => return,
             Err(error) if error.is_connection() && tokio::time::Instant::now() < deadline => {
                 tracing::debug!(%task_id, %error, "recording the Task's outcome waits for the database");
@@ -693,18 +693,21 @@ async fn release(runtime: &TaskRuntime, task_id: TaskId) {
 }
 
 /// Record `transition` of the claimed Task: a `resume` Task through resumable
-/// settlement with its cancellation and `policy`, any other through a plain transition.
+/// settlement with `policy`, any other through a plain transition. A success is
+/// withheld only while the process `stop`s. A cancellation request reaches the outcome
+/// through the Task's state, where `policy` decides what it keeps, so a request that
+/// arrives after the work finished replaces the outcome only when the policy says so.
 async fn record(
     runtime: &TaskRuntime,
     claimed: &TaskSnapshot,
     transition: TaskTransition,
-    cancellation: &CancellationToken,
+    stop: &CancellationToken,
     policy: ResumeCancellationPolicy,
 ) -> Result<TaskSnapshot, TaskError> {
     match claimed.recovery_class {
         RecoveryClass::Resume => {
             runtime
-                .transition_resumable(claimed.task_id, transition, policy, Some(cancellation))
+                .transition_resumable(claimed.task_id, transition, policy, Some(stop))
                 .await
         }
         RecoveryClass::InterruptedIndeterminate => {

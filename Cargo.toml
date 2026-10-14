@@ -12,14 +12,14 @@ publish = false
 
 [workspace.dependencies]
 # veoveo-core, pinned to one revision for every core crate.
-veoveo-audit-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
-veoveo-platform-store = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
-veoveo-task-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
-veoveo-task-runtime = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
-veoveo-test-fixtures = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
-veoveo-types = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
-veoveo-usage = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
-veoveo-usage-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "d5353ac1c4bba0cea6e115c734a000e598055aa6" }
+veoveo-audit-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
+veoveo-platform-store = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
+veoveo-task-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
+veoveo-task-runtime = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
+veoveo-test-fixtures = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
+veoveo-types = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
+veoveo-usage = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
+veoveo-usage-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "60b65e5c2af221bd92f814c98e7558a088413920" }
 
 veoveo-sdk-rust = { path = "crates/veoveo-sdk-rust", default-features = false }
 veoveo-sdk-rust-fixture = { path = "crates/veoveo-sdk-rust-fixture" }

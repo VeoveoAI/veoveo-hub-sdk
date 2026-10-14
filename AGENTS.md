@@ -6,7 +6,7 @@ These rules apply to veoveo-sdk-rust.
   configuration. The rmcp fork pin in `Cargo.toml` records why it exists and when it
   goes.
 - Every name, identifier, format, wire field and protocol element follows a published
-  standard, [veoveo-core's conventions](https://github.com/VeoveoAI/veoveo-core/blob/d5353ac1c4bba0cea6e115c734a000e598055aa6/docs/CONVENTIONS.md) or this repository's
+  standard, [veoveo-core's conventions](https://github.com/VeoveoAI/veoveo-core/blob/60b65e5c2af221bd92f814c98e7558a088413920/docs/CONVENTIONS.md) or this repository's
   [MCP conventions](docs/CONVENTIONS.md). Extend a standard only through its own
   extension mechanism.
 - Prefer strong types: typed structs, enums and domain identifiers over raw strings and

@@ -7,7 +7,7 @@
 //!
 //! - protocol versions and `get_info` from the checked setup;
 //! - authenticated, paged `resources/list`, `resources/templates/list` and
-//!   `tools/list`, with the JSON type of every tool input subschema declared;
+//!   `tools/list`, with every tool argument declaring one JSON type;
 //! - `{scheme}://docs` and `{scheme}://contract` reads, and `doc_id` completion;
 //! - `prompts/list` and `prompts/get` from the domain's prompts;
 //! - address admission: an unparseable URI is Invalid Params (-32602), as the
@@ -36,7 +36,7 @@ use veoveo_types::{ResourceAddress, ResourceUri};
 
 use crate::GatewayInternalIdentity;
 
-use super::{auth::gateway_identity, listing::Listing, schema::declare_types};
+use super::{auth::gateway_identity, listing::Listing, schema::publish_input_schema};
 use crate::{
     final_protocol_versions, private_resource_response,
     server_contract::{McpServerContract, McpServerSetup},
@@ -339,11 +339,11 @@ impl<D: DomainServer, T> Hosted<D, T> {
         D::setup()
     }
 
-    /// A routed tool as discovery shows it: described by the domain, with the JSON
-    /// type of every input subschema declared.
+    /// A routed tool as discovery shows it: described by the domain, with its input
+    /// schema published so that every argument declares one JSON type.
     fn published(&self, tool: Tool) -> Tool {
         let mut tool = self.domain.describe_tool(tool);
-        declare_types(std::sync::Arc::make_mut(&mut tool.input_schema));
+        publish_input_schema(std::sync::Arc::make_mut(&mut tool.input_schema));
         tool
     }
 }

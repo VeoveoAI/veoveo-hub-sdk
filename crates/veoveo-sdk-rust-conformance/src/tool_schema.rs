@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow, bail, ensure};
 use rmcp::model::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use veoveo_sdk_rust::hosting::undeclared_types;
+use veoveo_sdk_rust::hosting::{ambiguous_arguments, undeclared_types};
 
 pub const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_SCHEMA_DEPTH: usize = 64;
@@ -55,6 +55,15 @@ pub fn validate_tool_input_schema(tool: &Tool) -> Result<SchemaStats> {
             tool.name,
             undeclared.types,
             undeclared.pointer
+        );
+    }
+    if let Some(argument) = ambiguous_arguments(&schema).first() {
+        bail!(
+            "tool `{}` argument `{}` must declare one JSON type, not {}; an optional \
+             argument is omitted rather than `null`",
+            tool.name,
+            argument.name,
+            argument.types
         );
     }
 
@@ -473,6 +482,19 @@ mod tests {
         let stats = validate_tool_input_schema(&tool(schema)).unwrap();
         assert_eq!(stats.references, 1);
         assert_eq!(stats.composition_branches, 2);
+    }
+
+    #[test]
+    fn rejects_an_argument_that_declares_several_types() {
+        let schema = json!({"type":"object", "additionalProperties":false,
+            "properties":{"limit":{"type":["integer", "null"]}}});
+        let error = validate_tool_input_schema(&tool(schema)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("argument `limit` must declare one JSON type"),
+            "{error}"
+        );
     }
 
     #[test]

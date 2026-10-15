@@ -21,7 +21,7 @@ crate documents and in its contract resource.
 | MCP subscriptions | request-scoped `subscriptions/listen` with an authorized accepted filter; resource subscribe and unsubscribe are excluded |
 | rmcp 3.5.0 | the official Rust SDK, pinned to the `VeoveoAI/rust-sdk` fork at `917e791` for Task status subscriptions and typed HTTP rejections, with default features off so each SDK feature enables only the rmcp features it uses; the pin's comment states the removal condition |
 | Requirement catalog `https://veoveo.ai/formats/hosted-mcp-requirements` and compliance declaration `https://veoveo.ai/formats/hosted-mcp-compliance` | closed C01–C31 and C33 identifiers, complete camelCase owner profiles and deterministic manual sections; `catalog/requirements.json` and `catalog/compliance-profile.schema.json` are generated from the types and checked by tests |
-| JSON Schema 2020-12 | ordinary rmcp and Schemars generation with bounded references and composition; published tool inputs declare `type` wherever references, composition, `const` or `enum` restrict it |
+| JSON Schema 2020-12 | ordinary rmcp and Schemars generation with bounded references and composition; each published tool argument declares one `type`, an optional argument admits no `null`, and every subschema declares `type` wherever references, composition, `const` or `enum` restrict it |
 | RFC 6570 URI Templates | checked MCP setup uses the foundational ASCII-template profile and the iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
 | OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, update and remove themselves through the profile in [the server registration protocol](src/registration/DESIGN.md) |
@@ -308,14 +308,19 @@ references, external references and nested `$id` resources are outside the suppo
 checker limits document depth, node count, reference count, branch count, serialized
 size and work spent following references.
 
-Schemars writes a reference to a shared definition, and an enum as a `oneOf` of its
-variants, without a `type` beside it. A model's tool-call parser that decodes each
-argument by its declared `type` then delivers an object argument as a JSON string.
-`Hosted` publishes every tool input with `type` declared on each subschema whose
-references, composition, `const` or `enum` restrict its JSON types.
-`hosting::declare_types` infers a set that contains every type the subschema admits,
-and the published schema accepts exactly the instances the generated one accepts. The
-shared checker rejects a restricted subschema without `type`.
+Some providers turn a model's tool call into JSON arguments by decoding each argument
+as its declared `type`. Such a parser delivers an argument without a `type` as a JSON
+string and cannot read a `type` that names several types. Schemars writes a reference
+to a shared definition, and an enum as a `oneOf` of its variants, without a `type`
+beside it, and an `Option` argument admits `null` beside its value's type.
+`Hosted` publishes every tool input through `hosting::publish_input_schema`. An
+optional argument declares its value's type and admits no `null`. A caller omits it
+instead, and the server still decodes an explicit `null`. Every subschema whose
+references, composition, `const` or `enum` restrict its JSON types then declares them,
+as a set that contains every type the subschema admits. A required argument that admits
+several types keeps them, and the shared checker rejects it, as it rejects a restricted
+subschema without `type`. An unrestricted argument, such as an opaque payload, declares
+no `type`.
 
 Strong types govern every controlled shape: typed structs, enums, and explicit
 domain types wherever the shape is known or owned by this contract. Raw JSON
@@ -837,7 +842,7 @@ Their loaders perform the same semantic admission without repository reads.
 | C04 | MUST | Addressable state is exposed as resources or resource templates under the server's canonical scheme; growing collections use bounded domain-owned pages and exact reads do not scan the full collection. |
 | C05 | MUST | The server is not flattened to a tool-only convenience surface. |
 | C06 | MUST | Compatibility helpers are additive projections reusing canonical models, policy, audit, tasks, and URIs. |
-| C07 | MUST | Tool input schemas use the supported JSON Schema 2020-12 profile, close controlled argument objects, declare `type` on every subschema whose references, composition, `const` or `enum` restrict its JSON types, and pass the shared document and reference-expansion bounds. |
+| C07 | MUST | Tool input schemas use the supported JSON Schema 2020-12 profile, close controlled argument objects, give each typed argument one JSON `type` with optional arguments omitted rather than `null`, declare `type` on every subschema whose references, composition, `const` or `enum` restrict its JSON types, and pass the shared document and reference-expansion bounds. |
 | C08 | MUST | Schemas are generated through ordinary rmcp/Schemars or official SDK/Pydantic machinery. |
 | C09 | MUST | Controlled shapes use strong domain types; raw JSON only at open boundaries. |
 | C10 | MUST | Shared mechanics, including the final 8 MiB serialized JSON response cap, come from `veoveo_sdk_rust`, not reimplementation. |

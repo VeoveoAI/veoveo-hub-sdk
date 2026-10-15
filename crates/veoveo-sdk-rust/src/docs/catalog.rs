@@ -119,7 +119,7 @@ impl RequirementId {
             ),
             Self::C07 => (
                 RequirementLevel::Must,
-                "Tool input schemas use the supported JSON Schema 2020-12 profile, close controlled argument objects, declare `type` on every subschema whose references, composition, `const` or `enum` restrict its JSON types, and pass the shared document and reference-expansion bounds.",
+                "Tool input schemas use the supported JSON Schema 2020-12 profile, close controlled argument objects, give each typed argument one JSON `type` with optional arguments omitted rather than `null`, declare `type` on every subschema whose references, composition, `const` or `enum` restrict its JSON types, and pass the shared document and reference-expansion bounds.",
             ),
             Self::C08 => (
                 RequirementLevel::Must,

@@ -52,7 +52,9 @@ pub use domain::{
 };
 pub use listing::{CATALOG_PAGE_SIZE, Listing};
 pub use results::{completion, json_read, product_result, rank_completions, structured_result};
-pub use schema::{UndeclaredType, declare_types, undeclared_types};
+pub use schema::{
+    AmbiguousArgument, UndeclaredType, ambiguous_arguments, publish_input_schema, undeclared_types,
+};
 pub use server::{Deployment, HostedServer, HostedServerBuilder, Missing, Provided};
 pub use subscriptions::{
     ListenOnly, ResourceSubscriptions, ResourcesOnly, SubscriptionListener,

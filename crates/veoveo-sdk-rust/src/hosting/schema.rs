@@ -1,13 +1,18 @@
-//! Declared JSON types in published tool input schemas.
+//! Published tool input schemas that every tool-call parser reads the same way.
 //!
-//! Schemars writes a reference to a shared definition, and a Rust enum as a `oneOf` of
-//! its variants, without a `type` beside them. A model's tool-call parser that decodes
-//! each argument by its declared `type` then passes an object argument on as text.
-//! [`declare_types`] adds the `type` that each subschema's references, composition,
-//! `const` and `enum` already imply. The schema accepts the same instances, and every
-//! subschema names its JSON types where such a parser reads them.
+//! Some providers turn a model's tool call into JSON arguments by decoding each argument
+//! as its declared `type`. Such a parser passes an argument without a `type` on as text,
+//! and it cannot read a `type` that names several types. Schemars writes both shapes:
+//! a reference to a shared definition, or a Rust enum's `oneOf`, has no `type` beside
+//! it, and an `Option` argument admits `null` beside its value's type.
+//!
+//! [`publish_input_schema`] gives each optional argument its value's type and leaves
+//! `null` out, so a caller omits the argument instead. It then declares on every
+//! subschema the `type` its references, composition, `const` and `enum` already imply.
+//! The published schema accepts the generated schema's instances except a `null`
+//! optional argument, and the server still decodes one.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Map, Value};
 
@@ -20,6 +25,21 @@ pub struct UndeclaredType {
     pub types: Value,
 }
 
+/// A tool argument whose `type` names more than one JSON type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AmbiguousArgument {
+    pub name: String,
+    pub types: Value,
+}
+
+/// Publishes a tool input schema: an optional argument that admits `null` beside other
+/// types loses `null`, and every subschema whose instance types are restricted
+/// declares them.
+pub fn publish_input_schema(schema: &mut Map<String, Value>) {
+    omit_null_from_optional_arguments(schema);
+    declare_types(schema);
+}
+
 /// Every subschema of `schema` that lacks `type` although its instance types are
 /// restricted, in document order.
 pub fn undeclared_types(schema: &Value) -> Vec<UndeclaredType> {
@@ -29,18 +49,142 @@ pub fn undeclared_types(schema: &Value) -> Vec<UndeclaredType> {
     undeclared
 }
 
+/// Every argument of the tool input `schema` that declares more than one JSON type.
+pub fn ambiguous_arguments(schema: &Value) -> Vec<AmbiguousArgument> {
+    let Some(Value::Object(arguments)) = schema.get("properties") else {
+        return Vec::new();
+    };
+    arguments
+        .iter()
+        .filter_map(|(name, argument)| match argument.get("type") {
+            Some(types @ Value::Array(_)) => Some(AmbiguousArgument {
+                name: name.clone(),
+                types: types.clone(),
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Declares `type` on every subschema of `schema` that [`undeclared_types`] reports.
-pub fn declare_types(schema: &mut Map<String, Value>) {
+fn declare_types(schema: &mut Map<String, Value>) {
     let mut document = Value::Object(std::mem::take(schema));
     for declaration in undeclared_types(&document) {
         if let Some(Value::Object(subschema)) = document.pointer_mut(&declaration.pointer) {
             subschema.insert("type".to_owned(), declaration.types);
         }
     }
+    *schema = into_object(document);
+}
+
+/// How one optional argument leaves `null` out.
+struct NullOmission {
+    argument: String,
+    /// The argument's types without `null`.
+    types: Value,
+    /// The `anyOf` or `oneOf` branches that admit only `null`.
+    branches: Vec<(&'static str, Vec<usize>)>,
+}
+
+fn omit_null_from_optional_arguments(schema: &mut Map<String, Value>) {
+    let document = Value::Object(std::mem::take(schema));
+    let omissions = null_omissions(&document);
+    let mut document = into_object(document);
+    let arguments = document
+        .get_mut("properties")
+        .and_then(Value::as_object_mut);
+    if let Some(arguments) = arguments {
+        for omission in omissions {
+            if let Some(Value::Object(argument)) = arguments.get_mut(&omission.argument) {
+                omit_null(argument, omission);
+            }
+        }
+    }
+    *schema = document;
+}
+
+fn null_omissions(document: &Value) -> Vec<NullOmission> {
+    let Some(Value::Object(arguments)) = document.get("properties") else {
+        return Vec::new();
+    };
+    let required: HashSet<&str> = document
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|names| names.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let mut inference = Inference::new(document);
+    let mut omissions = Vec::new();
+    for (name, argument) in arguments {
+        let types = inference.types(argument);
+        if required.contains(name.as_str()) || types == Types::ANY || !types.admits_null() {
+            continue;
+        }
+        // An argument that admits only `null` keeps it.
+        let Some(declaration) = types.without_null().declaration() else {
+            continue;
+        };
+        let mut branches = Vec::new();
+        for keyword in ["anyOf", "oneOf"] {
+            if let Some(Value::Array(alternatives)) = argument.get(keyword) {
+                let null_only: Vec<usize> = alternatives
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, alternative)| inference.types(alternative) == Types::ONLY_NULL)
+                    .map(|(index, _)| index)
+                    .collect();
+                if !null_only.is_empty() {
+                    branches.push((keyword, null_only));
+                }
+            }
+        }
+        omissions.push(NullOmission {
+            argument: name.clone(),
+            types: declaration,
+            branches,
+        });
+    }
+    omissions
+}
+
+/// Declares the argument's types without `null` and removes what only `null` matched:
+/// a `null` member of `enum`, a `null` default and each branch that admits only `null`.
+/// A composition left with one branch becomes that branch when their keywords agree.
+fn omit_null(argument: &mut Map<String, Value>, omission: NullOmission) {
+    argument.insert("type".to_owned(), omission.types);
+    if let Some(Value::Array(values)) = argument.get_mut("enum") {
+        values.retain(|value| !value.is_null());
+    }
+    if argument.get("default") == Some(&Value::Null) {
+        argument.remove("default");
+    }
+    for (keyword, null_only) in omission.branches {
+        if let Some(Value::Array(alternatives)) = argument.get_mut(keyword) {
+            for index in null_only.into_iter().rev() {
+                alternatives.remove(index);
+            }
+        }
+        let Some(Value::Array(alternatives)) = argument.get(keyword) else {
+            continue;
+        };
+        let [Value::Object(alternative)] = alternatives.as_slice() else {
+            continue;
+        };
+        let agrees = alternative
+            .iter()
+            .all(|(key, value)| argument.get(key).is_none_or(|existing| existing == value));
+        if agrees {
+            let alternative = alternative.clone();
+            argument.remove(keyword);
+            argument.extend(alternative);
+        }
+    }
+}
+
+fn into_object(document: Value) -> Map<String, Value> {
     let Value::Object(document) = document else {
         unreachable!("the document was built from an object")
     };
-    *schema = document;
+    document
 }
 
 fn collect<'a>(
@@ -134,6 +278,7 @@ impl Types {
     const INTEGER: u8 = 1 << 5;
     const NUMBER: u8 = 1 << 6 | Self::INTEGER;
     const NONE: Self = Self(0);
+    const ONLY_NULL: Self = Self(Self::NULL);
     const ANY: Self =
         Self(Self::NULL | Self::BOOLEAN | Self::OBJECT | Self::ARRAY | Self::STRING | Self::NUMBER);
     /// Declaration order: the type names sorted, so a declaration is deterministic.
@@ -175,6 +320,14 @@ impl Types {
 
     fn and(self, other: Self) -> Self {
         Self(self.0 & other.0)
+    }
+
+    fn admits_null(self) -> bool {
+        self.0 & Self::NULL != 0
+    }
+
+    fn without_null(self) -> Self {
+        Self(self.0 & !Self::NULL)
     }
 
     fn or(self, other: Self) -> Self {
@@ -336,31 +489,43 @@ mod tests {
         let Value::Object(mut schema) = generated.clone() else {
             panic!("object schema")
         };
-        declare_types(&mut schema);
+        publish_input_schema(&mut schema);
         (generated, Value::Object(schema))
     }
 
     #[test]
-    fn declares_the_types_schemars_leaves_implicit_in_references_and_unions() {
+    fn every_argument_schemars_generates_declares_one_type() {
         let (_, schema) = published();
         let properties = &schema["properties"];
         assert_eq!(properties["expression"]["type"], "object");
         assert_eq!(properties["expression"]["$ref"], "#/$defs/Expression");
-        assert_eq!(properties["window"]["type"], json!(["null", "object"]));
+        assert_eq!(properties["window"]["type"], "object");
+        assert_eq!(properties["window"]["$ref"], "#/$defs/Window");
+        assert!(properties["window"].get("anyOf").is_none());
         assert_eq!(properties["label"]["type"], "string");
-        assert_eq!(properties["limit"]["type"], json!(["integer", "null"]));
+        assert_eq!(properties["limit"]["type"], "integer");
         assert_eq!(properties["labels"]["type"], "array");
         assert_eq!(properties["labels"]["items"]["type"], "string");
         assert!(properties["payload"].get("type").is_none());
         assert_eq!(schema["$defs"]["Expression"]["type"], "object");
         assert!(undeclared_types(&schema).is_empty());
+        assert!(ambiguous_arguments(&schema).is_empty());
     }
 
     #[test]
-    fn declared_types_accept_exactly_the_instances_the_generated_schema_accepts() {
+    fn the_published_schema_accepts_the_generated_instances_but_null_optional_arguments() {
         let (generated, published) = published();
         let generated = jsonschema::validator_for(&generated).unwrap();
         let published = jsonschema::validator_for(&published).unwrap();
+        for instance in [
+            json!({"expression":{"format":"rfc3339","value":"x"},"label":"l","window":null,
+                "labels":[],"payload":1}),
+            json!({"expression":{"format":"rfc3339","value":"x"},"label":"l","limit":null,
+                "labels":[],"payload":1}),
+        ] {
+            assert!(generated.is_valid(&instance), "{instance}");
+            assert!(!published.is_valid(&instance), "{instance}");
+        }
         for instance in [
             json!({"expression":{"format":"rfc3339","value":"2026-10-15T09:00:00Z"},
                 "label":"review","labels":[],"payload":null}),
@@ -381,6 +546,41 @@ mod tests {
                 "{instance}"
             );
         }
+    }
+
+    #[test]
+    fn required_open_and_null_only_arguments_keep_their_types() {
+        let mut schema = json!({"type":"object", "required":["at"], "properties":{
+            "at":{"type":["string", "null"]},
+            "either":{"type":["integer", "string"]},
+            "nothing":{"type":"null"},
+            "payload":true,
+            "open":{},
+            "note":{"anyOf":[{"type":"string"}, {"type":"null"}], "default":null,
+                "description":"A note."},
+            "mode":{"enum":["a", "b", null]}
+        }});
+        let Value::Object(object) = &mut schema else {
+            unreachable!()
+        };
+        publish_input_schema(object);
+        let arguments = &schema["properties"];
+        assert_eq!(
+            arguments["note"],
+            json!({"type":"string", "description":"A note."})
+        );
+        assert_eq!(
+            arguments["mode"],
+            json!({"type":"string", "enum":["a", "b"]})
+        );
+        assert_eq!(arguments["nothing"], json!({"type":"null"}));
+        assert_eq!(arguments["payload"], json!(true));
+        assert_eq!(arguments["open"], json!({}));
+        let ambiguous: Vec<String> = ambiguous_arguments(&schema)
+            .into_iter()
+            .map(|argument| argument.name)
+            .collect();
+        assert_eq!(ambiguous, ["at", "either"]);
     }
 
     #[test]

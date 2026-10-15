@@ -47,19 +47,23 @@ fn validator<D: 'static>(tool: &Tool) -> Option<Arc<jsonschema::Validator>> {
 fn violations<D: 'static>(tool: &Tool, arguments: Option<&JsonObject>) -> Option<String> {
     let validator = validator::<D>(tool)?;
     let instance = Value::Object(arguments.cloned().unwrap_or_default());
-    let violations: Vec<String> = validator
-        .iter_errors(&instance)
-        .take(MAX_VIOLATIONS)
-        .map(|error| {
-            let path = error.instance_path().to_string();
-            let at = if path.is_empty() {
-                "the arguments".to_owned()
-            } else {
-                format!("`{path}`")
-            };
-            format!("- {at}: {}", error.masked())
-        })
-        .collect();
+    let mut violations: Vec<String> = Vec::new();
+    for error in validator.iter_errors(&instance) {
+        let path = error.instance_path().to_string();
+        let at = if path.is_empty() {
+            "the arguments".to_owned()
+        } else {
+            format!("`{path}`")
+        };
+        // An argument's own `type` and its definition's report the same violation.
+        let line = format!("- {at}: {}", error.masked());
+        if !violations.contains(&line) {
+            violations.push(line);
+        }
+        if violations.len() == MAX_VIOLATIONS {
+            break;
+        }
+    }
     (!violations.is_empty()).then(|| {
         format!(
             "The arguments do not match the published input schema of `{}`:\n{}",
@@ -166,6 +170,12 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("the arguments"), "{text}");
+        assert_eq!(
+            text.matches(r#"`/expression`: value is not of type "object""#)
+                .count(),
+            1,
+            "{text}"
+        );
         assert!(!text.contains("secret-value"), "{text}");
         assert!(!text.contains("Expression"), "{text}");
     }

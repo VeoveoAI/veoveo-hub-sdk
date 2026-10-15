@@ -13,8 +13,8 @@
 //! - address admission: an unparseable URI is Invalid Params (-32602), as the
 //!   server contract requires, before any domain code runs;
 //! - the cache policy each domain read declares through [`DomainRead`];
-//! - tool dispatch after the arguments match the tool's input schema, with durable
-//!   tasks started first when the server has them;
+//! - tool dispatch, with durable tasks started first when the server has them, and the
+//!   published input schema's violations appended to a call its arguments failed;
 //! - `tasks/*` and `subscriptions/listen` through its [`TaskSupport`].
 
 use std::future::Future;
@@ -472,16 +472,20 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         mut request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        if let Some(tool) = self.domain.tool_router().get(&request.name)
-            && let Some(refused) = super::arguments::refusal::<D>(tool, request.arguments.as_ref())
-        {
-            return Ok(CallToolResponse::Complete(refused));
-        }
         if let Some(created) = self.tasks.start_task(&mut request, &context).await? {
             return Ok(created.into());
         }
+        let name = request.name.clone();
+        let arguments = request.arguments.clone();
         let call = ToolCallContext::new(&self.domain, request, context);
-        self.domain.tool_router().call(call).await
+        let mut response = self.domain.tool_router().call(call).await?;
+        if let CallToolResponse::Complete(result) = &mut response
+            && result.is_error == Some(true)
+            && let Some(tool) = self.get_tool(&name)
+        {
+            super::arguments::explain::<D>(&tool, arguments.as_ref(), result);
+        }
+        Ok(response)
     }
 
     async fn get_task(

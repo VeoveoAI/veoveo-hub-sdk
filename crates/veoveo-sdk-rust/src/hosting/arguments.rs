@@ -1,7 +1,7 @@
-//! The check of a tool call's arguments against the tool's generated input schema,
-//! before a Task starts or a handler runs. A refusal names each violation by the JSON
-//! Pointer of the argument and the JSON type or shape the schema expects, never by the
-//! Rust type that would have refused it, and it leaves the caller's values out.
+//! The explanation of a refused tool call. The tool's own decoding refuses arguments
+//! with its owner's message, which names Rust types. `Hosted` then appends the
+//! violations of the tool's published input schema: each argument's JSON Pointer and the
+//! type or shape the schema expects, without the caller's values.
 
 use std::{
     any::TypeId,
@@ -12,7 +12,7 @@ use std::{
 use rmcp::model::{CallToolResult, ContentBlock, JsonObject, Tool};
 use serde_json::Value;
 
-/// The most violations one refusal lists.
+/// The most violations one explanation lists.
 const MAX_VIOLATIONS: usize = 8;
 
 type Validators = HashMap<(TypeId, String), Option<Arc<jsonschema::Validator>>>;
@@ -33,7 +33,7 @@ fn validator<D: 'static>(tool: &Tool) -> Option<Arc<jsonschema::Validator>> {
                 Ok(validator) => Some(Arc::new(validator)),
                 Err(error) => {
                     // Conformance refuses a schema that is not valid JSON Schema; until
-                    // then the tool's own decoding is the only check.
+                    // then a refusal carries the decoding's message alone.
                     tracing::warn!(tool = %tool.name, %error, "tool input schema does not compile");
                     None
                 }
@@ -42,11 +42,9 @@ fn validator<D: 'static>(tool: &Tool) -> Option<Arc<jsonschema::Validator>> {
         .clone()
 }
 
-/// The error result that refuses `arguments`, or `None` when the schema admits them.
-pub(super) fn refusal<D: 'static>(
-    tool: &Tool,
-    arguments: Option<&JsonObject>,
-) -> Option<CallToolResult> {
+/// The violations of `tool`'s published input schema by `arguments`, or `None` when the
+/// schema admits them.
+fn violations<D: 'static>(tool: &Tool, arguments: Option<&JsonObject>) -> Option<String> {
     let validator = validator::<D>(tool)?;
     let instance = Value::Object(arguments.cloned().unwrap_or_default());
     let violations: Vec<String> = validator
@@ -62,14 +60,26 @@ pub(super) fn refusal<D: 'static>(
             format!("- {at}: {}", error.masked())
         })
         .collect();
-    if violations.is_empty() {
-        return None;
+    (!violations.is_empty()).then(|| {
+        format!(
+            "The arguments do not match the published input schema of `{}`:\n{}",
+            tool.name,
+            violations.join("\n")
+        )
+    })
+}
+
+/// Appends the published schema's violations to `refused`, the error result of a call
+/// whose arguments the tool's decoding refused. `tool` is the tool as discovery
+/// publishes it.
+pub(super) fn explain<D: 'static>(
+    tool: &Tool,
+    arguments: Option<&JsonObject>,
+    refused: &mut CallToolResult,
+) {
+    if let Some(text) = violations::<D>(tool, arguments) {
+        refused.content.push(ContentBlock::text(text));
     }
-    Some(CallToolResult::error(vec![ContentBlock::text(format!(
-        "The arguments do not match the input schema of `{}`:\n{}",
-        tool.name,
-        violations.join("\n")
-    ))]))
 }
 
 #[cfg(test)]
@@ -81,6 +91,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::hosting::publish_input_schema;
 
     #[derive(Deserialize, JsonSchema)]
     #[serde(deny_unknown_fields)]
@@ -106,57 +117,79 @@ mod tests {
         limit: Option<u32>,
     }
 
+    /// The tool as discovery publishes it.
     fn tool() -> Tool {
         let schema = schemars::generate::SchemaSettings::draft2020_12()
             .into_generator()
             .into_root_schema_for::<Arguments>();
-        let Value::Object(schema) = serde_json::to_value(schema).unwrap() else {
+        let Value::Object(mut schema) = serde_json::to_value(schema).unwrap() else {
             unreachable!()
         };
+        publish_input_schema(&mut schema);
         Tool::new("resolve", "Resolve an expression.", Arc::new(schema))
     }
 
-    fn text(result: &CallToolResult) -> &str {
-        &result.content[0].as_text().expect("text content").text
+    fn object(value: Value) -> JsonObject {
+        let Value::Object(object) = value else {
+            unreachable!()
+        };
+        object
     }
 
     #[test]
-    fn admitted_arguments_reach_the_tool() {
-        for arguments in [
-            json!({"expression": {"format": "rfc3339", "value": "2026-10-15T09:00:00Z"}}),
-            json!({"expression": {"format": "window", "value": {"start": "09:00", "minutes": 30}},
-                "limit": null}),
-        ] {
-            let Value::Object(arguments) = arguments else {
-                unreachable!()
-            };
-            assert!(refusal::<Arguments>(&tool(), Some(&arguments)).is_none());
-        }
+    fn admitted_arguments_need_no_explanation() {
+        let arguments = object(json!({
+            "expression": {"format": "window", "value": {"start": "09:00", "minutes": 30}},
+            "limit": 5
+        }));
+        assert!(violations::<Arguments>(&tool(), Some(&arguments)).is_none());
     }
 
     #[test]
-    fn a_refusal_names_each_argument_by_its_pointer_and_hides_its_value() {
-        let Value::Object(arguments) = json!({
+    fn an_explanation_names_each_argument_by_its_pointer_and_type_and_hides_its_value() {
+        let arguments = object(json!({
             "expression": "{\"format\": \"rfc3339\", \"value\": \"secret-value\"}",
             "limit": "20",
             "extra": true
-        }) else {
-            unreachable!()
-        };
-        let refused = refusal::<Arguments>(&tool(), Some(&arguments)).expect("refused");
-        assert_eq!(refused.is_error, Some(true));
-        let text = text(&refused);
-        assert!(text.contains("input schema of `resolve`"), "{text}");
-        assert!(text.contains("`/expression`"), "{text}");
-        assert!(text.contains("`/limit`"), "{text}");
+        }));
+        let text = violations::<Arguments>(&tool(), Some(&arguments)).expect("violations");
+        assert!(
+            text.contains("published input schema of `resolve`"),
+            "{text}"
+        );
+        assert!(
+            text.contains(r#"`/expression`: value is not of type "object""#),
+            "{text}"
+        );
+        assert!(
+            text.contains(r#"`/limit`: value is not of type "integer""#),
+            "{text}"
+        );
         assert!(text.contains("the arguments"), "{text}");
         assert!(!text.contains("secret-value"), "{text}");
         assert!(!text.contains("Expression"), "{text}");
     }
 
     #[test]
-    fn missing_arguments_are_checked_as_an_empty_object() {
-        let refused = refusal::<Arguments>(&tool(), None).expect("refused");
-        assert!(text(&refused).contains("expression"), "{}", text(&refused));
+    fn the_explanation_follows_the_decodings_own_refusal() {
+        let mut refused = CallToolResult::error(vec![ContentBlock::text(
+            "failed to deserialize parameters: missing field `expression`",
+        )]);
+        explain::<Arguments>(&tool(), None, &mut refused);
+        assert_eq!(refused.content.len(), 2);
+        assert!(
+            refused.content[0]
+                .as_text()
+                .unwrap()
+                .text
+                .contains("missing field")
+        );
+        assert!(
+            refused.content[1]
+                .as_text()
+                .unwrap()
+                .text
+                .contains("expression")
+        );
     }
 }

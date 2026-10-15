@@ -697,7 +697,7 @@ async fn tools_receive_the_verified_caller() {
 }
 
 #[tokio::test]
-async fn arguments_the_input_schema_refuses_never_reach_the_tool() {
+async fn a_refused_call_names_each_argument_by_its_pointer_and_type() {
     let body = gateway()
         .rpc(
             "tools/call",
@@ -705,10 +705,14 @@ async fn arguments_the_input_schema_refuses_never_reach_the_tool() {
         )
         .await;
     assert_eq!(body["result"]["isError"], true, "{body}");
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(text.contains("input schema of `echo`"), "{text}");
-    assert!(text.contains("`/text`"), "{text}");
-    assert!(!text.contains("from user-1"), "{text}");
+    let content = body["result"]["content"].as_array().unwrap();
+    let explained = content.last().unwrap()["text"].as_str().unwrap();
+    assert!(explained.contains("input schema of `echo`"), "{body}");
+    assert!(
+        explained.contains(r#"`/text`: value is not of type "string""#),
+        "{body}"
+    );
+    assert!(!body.to_string().contains("from user-1"), "{body}");
 }
 
 #[tokio::test]

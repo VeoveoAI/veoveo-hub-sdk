@@ -38,6 +38,7 @@ server = [
     "dep:axum",
     "dep:futures",
     "dep:hex",
+    "dep:jsonschema",
     "dep:jsonwebtoken",
     "dep:opentelemetry",
     "dep:opentelemetry-appender-tracing",
@@ -80,6 +81,7 @@ aws-lc-rs = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+jsonschema = { workspace = true, optional = true }
 jsonwebtoken = { workspace = true, optional = true }
 opentelemetry = { workspace = true, optional = true }
 opentelemetry-appender-tracing = { workspace = true, optional = true }

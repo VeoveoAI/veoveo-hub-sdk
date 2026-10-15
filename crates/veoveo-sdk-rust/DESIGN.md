@@ -21,7 +21,7 @@ crate documents and in its contract resource.
 | MCP subscriptions | request-scoped `subscriptions/listen` with an authorized accepted filter; resource subscribe and unsubscribe are excluded |
 | rmcp 3.5.0 | the official Rust SDK, pinned to the `VeoveoAI/rust-sdk` fork at `917e791` for Task status subscriptions and typed HTTP rejections, with default features off so each SDK feature enables only the rmcp features it uses; the pin's comment states the removal condition |
 | Requirement catalog `https://veoveo.ai/formats/hosted-mcp-requirements` and compliance declaration `https://veoveo.ai/formats/hosted-mcp-compliance` | closed C01–C31 and C33 identifiers, complete camelCase owner profiles and deterministic manual sections; `catalog/requirements.json` and `catalog/compliance-profile.schema.json` are generated from the types and checked by tests |
-| JSON Schema 2020-12 | ordinary rmcp and Schemars generation with bounded references and composition; each published tool argument declares one `type`, an optional argument admits no `null`, and every subschema declares `type` wherever references, composition, `const` or `enum` restrict it |
+| JSON Schema 2020-12 | ordinary rmcp and Schemars generation with bounded references and composition; each published tool argument declares one `type`, an optional argument admits no `null`, and every subschema declares `type` wherever references, composition, `const` or `enum` restrict it; `Hosted` validates each call's arguments against the tool's generated schema with jsonschema 0.51.0 |
 | RFC 6570 URI Templates | checked MCP setup uses the foundational ASCII-template profile and the iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
 | OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, update and remove themselves through the profile in [the server registration protocol](src/registration/DESIGN.md) |
@@ -331,8 +331,12 @@ objects. Generated schemas express the same closure, including every object vari
 of a union. Dynamic dictionaries retain their typed values; provider inputs and
 user-authored property or schema payloads retain their declared open shapes. Schema
 annotations such as examples and defaults are instance data, not additional schemas.
-The pinned RMCP router reports argument decoding failures as completed tool results
-with `isError: true`. The handler does not run for a rejected input.
+`Hosted` checks a call's arguments against the tool's generated input schema before
+a Task starts or the handler runs. A refusal is a completed tool result with
+`isError: true` that names each violation, at most eight, by the argument's JSON
+Pointer and the type or shape the schema expects, and it leaves out the caller's
+values. The tool's own decoding still applies its owner's admission to arguments the
+schema admits, and the pinned RMCP router reports a refusal there the same way.
 
 Content digests establish integrity and provenance. They do not become a
 parallel public address.

@@ -28,6 +28,7 @@
 //! [`McpServerSetup`]: crate::server_contract::McpServerSetup
 
 mod admin;
+mod arguments;
 mod auth;
 mod calls;
 mod catalog;

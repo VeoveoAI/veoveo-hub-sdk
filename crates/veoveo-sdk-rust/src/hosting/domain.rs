@@ -13,7 +13,8 @@
 //! - address admission: an unparseable URI is Invalid Params (-32602), as the
 //!   server contract requires, before any domain code runs;
 //! - the cache policy each domain read declares through [`DomainRead`];
-//! - tool dispatch, with durable tasks started first when the server has them;
+//! - tool dispatch after the arguments match the tool's input schema, with durable
+//!   tasks started first when the server has them;
 //! - `tasks/*` and `subscriptions/listen` through its [`TaskSupport`].
 
 use std::future::Future;
@@ -471,6 +472,11 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         mut request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        if let Some(tool) = self.domain.tool_router().get(&request.name)
+            && let Some(refused) = super::arguments::refusal::<D>(tool, request.arguments.as_ref())
+        {
+            return Ok(CallToolResponse::Complete(refused));
+        }
         if let Some(created) = self.tasks.start_task(&mut request, &context).await? {
             return Ok(created.into());
         }

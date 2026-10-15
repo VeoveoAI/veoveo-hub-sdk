@@ -697,6 +697,21 @@ async fn tools_receive_the_verified_caller() {
 }
 
 #[tokio::test]
+async fn arguments_the_input_schema_refuses_never_reach_the_tool() {
+    let body = gateway()
+        .rpc(
+            "tools/call",
+            serde_json::json!({"name": "echo", "arguments": {"text": 5}}),
+        )
+        .await;
+    assert_eq!(body["result"]["isError"], true, "{body}");
+    let text = body["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("input schema of `echo`"), "{text}");
+    assert!(text.contains("`/text`"), "{text}");
+    assert!(!text.contains("from user-1"), "{text}");
+}
+
+#[tokio::test]
 async fn each_read_keeps_the_cache_policy_its_domain_chose() {
     let gateway = gateway();
     let body = gateway

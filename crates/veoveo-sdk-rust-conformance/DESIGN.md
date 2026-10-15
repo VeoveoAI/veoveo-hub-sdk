@@ -79,8 +79,9 @@ contract features. Domain lifecycle smoke and database selection tests belong to
 component that owns the domain.
 
 Certification, `info`, `tools` and `apps-check` traverse their catalog pages through
-the same typed reader. Each surface permits at most 1,024 pages and 16,384 items within
-30 seconds. Repeated cursors fail the read. Required tools, schemas and App links are
+the SDK client's catalog reader, `client::catalog`. Each surface permits at most 1,024
+pages and 16,384 items within 30 seconds. Repeated cursors fail the read, and so does a
+listing whose Gateway discovery metadata names a server that did not answer. Required tools, schemas and App links are
 checked across the complete traversal, including descriptors on later pages.
 `tools` reads and validates the complete tool catalog. It does not request prompts or
 resource templates. Domain harnesses use it to require the tools their scenario calls;

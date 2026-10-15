@@ -3860,6 +3860,7 @@ dependencies = [
  "url",
  "uuid",
  "veoveo-audit-contract",
+ "veoveo-oauth-client",
  "veoveo-platform-store",
  "veoveo-task-runtime",
  "veoveo-types",

@@ -25,6 +25,9 @@ client = [
     "dep:sse-stream",
     "dep:tokio",
 ]
+# A caller's own client-credentials bearer, requested with an RFC 7523 assertion signed
+# by the caller's key, for programs that call a Gateway profile in their own name.
+client-credentials = ["client", "dep:veoveo-oauth-client"]
 # Hosting, transport, forwarded-token verification, the registration client, MCP Apps,
 # the MCP Tasks adapter over core's durable Task runtime and calls to other servers for
 # the current caller.
@@ -63,6 +66,7 @@ testing = ["server", "dep:tower", "dep:pg_query", "dep:proc-macro2", "dep:syn"]
 
 [dependencies]
 veoveo-audit-contract.workspace = true
+veoveo-oauth-client = { workspace = true, optional = true }
 veoveo-types.workspace = true
 veoveo-usage-contract.workspace = true
 base64.workspace = true

@@ -26,6 +26,7 @@ crate documents and in its contract resource.
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
 | OAuth 2.0 Dynamic Client Registration, RFC 7591 and RFC 7592 | servers register, update and remove themselves through the profile in [the server registration protocol](src/registration/DESIGN.md) |
 | JWT access tokens, RFC 9068, with Rich Authorization Requests, RFC 9396 | the Gateway-to-server identity: an EdDSA `at+jwt` token whose `iss` is the Gateway's issuer URL, `aud` the server's resource URL (RFC 8707), `client_id` the caller's OAuth client and `jti` a UUIDv7, with the Gateway in the RFC 8693 `act` claim and the calling server as its prior actor when another server made the call, granted permissions in one `https://veoveo.ai/oauth/permissions` authorization detail, and the actor, authority and request context in the `https://veoveo.ai/claims/invocation` claim; a hosted server verifies it with its registration's keys and refreshes them from the issuer's RFC 8414 `jwks_uri` when a token names an unknown key; specified in [the server registration protocol](src/registration/DESIGN.md#forwarded-identity) |
+| OAuth 2.0 client credentials, RFC 6749 section 4.4, with RFC 7523 client authentication, RFC 9728 protected resource metadata and RFC 8414 authorization server metadata | `ClientCredentialsBearer` in the `client-credentials` feature: a caller's own token for one profile, with `resource` naming the profile's MCP endpoint, RFC 8707 |
 | OAuth 2.0 Token Exchange, RFC 8693 | calls from a server to other servers for its caller: the profile of [calls between servers](src/registration/DESIGN.md#calls-between-servers), sent by `GatewayClient` over MCP Streamable HTTP to the Gateway profile's endpoint |
 | Veoveo access-token `session_family` | signed UUIDv7 refresh-family binding for browser tokens; the Gateway enforces current family revocation, and absence supplies no renewable session authority |
 | Veoveo `request_context` | signed source principal, verified access-token metadata and required audit request correlation, including the OAuth client and optional session family; it contains no bearer value and grants no independent renewal permission |
@@ -99,6 +100,7 @@ declaration consistency; hosted conformance and domain tests establish behavior.
 |---|---|---|
 | `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Gateway's client-visible metadata, the document and compliance declarations, the MCP audit vocabulary and the usage kinds and Task cost types | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
 | `client` | `GatewayClient`: typed calls, Task handles and typed resource reads and waits through a Gateway profile over MCP Streamable HTTP, with rmcp's client and Streamable HTTP client transport | rmcp's server, server transport and macros, axum, jsonwebtoken, OpenTelemetry, sqlx and core's Task runtime; `tests/contract_boundary.rs` fails when the resolved graph or rmcp's features contain them |
+| `client-credentials` | `client` plus `ClientCredentialsBearer`, a caller's own RFC 6749 client-credentials token for a profile, requested with an RFC 7523 assertion that core's OAuth client signs with the caller's key, and `caller_signer`, which reads an installation's caller key files | rmcp's server, server transport and macros, axum, OpenTelemetry, sqlx and core's Task runtime |
 | `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry, the MCP Tasks adapter over core's durable Task runtime, [Task work](#task-work) with its provider event routes, and the usage ledger | |
 | `testing` | `server` plus the in-process Gateway in `hosting::testing` for server tests and `TestMesh` for calls between servers, whose origin also delivers requests under a served server's mount to its public routes, as an ingress would, and `testing::assert_sql_confined`, the check that a server's SQL names only its own schema | |
 
@@ -592,8 +594,20 @@ failures. A request binding lasts as long as the
 forwarded token of that request, at most 60 seconds, so a wait longer than that belongs
 in a Task of the calling server.
 
-A program with its own access token for a profile builds `GatewayClient::new` with a
-`StaticBearer`. `hosting::testing::TestMesh` runs several hosted servers in process
+A program that calls a profile in its own name builds `GatewayClient::new` with a
+`StaticBearer` for a token it already holds, or with a `ClientCredentialsBearer` from
+the `client-credentials` feature. That bearer reads the profile endpoint's RFC 9728
+metadata for its authorization server and that server's RFC 8414 metadata for the
+token endpoint, and requests a new token once a third of the current one's lifetime
+remains. Such a client also calls without a provider contract:
+`GatewayClient::call_tool` calls a tool by its Gateway name with JSON arguments, waits
+for its Task like a typed call and resolves with the tool result, error results
+included. `read_resource` reads an address, and `tools`, `resources`,
+`resource_templates` and `prompts` list the profile's complete catalog through
+`client::catalog`, which follows at most 1,024 pages and 16,384 items within 30 seconds
+and reports the discovery failures the Gateway attached to any page. These profile-wide
+requests carry the caller's own bearer, which a server's calls for its caller do not
+have. `hosting::testing::TestMesh` runs several hosted servers in process
 behind a loopback token endpoint and profile, with the Gateway's exchange and
 narrowing, so a server tests its calls to another without a Gateway.
 

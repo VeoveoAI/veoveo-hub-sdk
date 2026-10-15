@@ -23,6 +23,7 @@ which holds the protocol-independent platform, and on rmcp, the official MCP Rus
 |---|---|---|
 | `contract` | Declarations and wire types a server shares with its consumers: identity, registration and authorization declarations, typed tool calls and resource reads, the token exchange, Gateway metadata, document and compliance declarations, MCP audit details, usage kinds and Task cost | veoveo-types, the audit envelope, the usage ledger's types, Serde and Schemars |
 | `client` | Typed calls, Task handles and typed resource reads and waits through a Gateway profile | rmcp's client and Streamable HTTP client transport, tokio and reqwest; no rmcp server or macros |
+| `client-credentials` | `client` plus a caller's own client-credentials bearer, discovered from the profile's metadata and requested with an assertion signed by the caller's key | core's OAuth client and its JWT signing |
 | `server` (default) | Everything a hosted server runs, including `ctx.client()` calls to other servers for the current caller, and `TaskWorker` with `ctx.step`, `ctx.operation`, `ctx.wait` and `ctx.usage` | rmcp, tokio, axum, reqwest, core's Task runtime and usage ledger |
 | `testing` | `server` plus an in-process Gateway and a mesh of in-process servers for server tests | tower |
 

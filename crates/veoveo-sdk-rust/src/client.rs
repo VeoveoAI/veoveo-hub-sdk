@@ -19,6 +19,13 @@
 //! runs as a Task has started and returns its [`TaskHandle`], which resolves with the
 //! result when the Task completes.
 //!
+//! A program that acts as one caller with its own token, such as a command-line client
+//! or an agent, uses `ClientCredentialsBearer` from the `client-credentials` feature, or
+//! a [`StaticBearer`], and the calls that need no provider contract: [`GatewayClient::call_tool`] by Gateway tool name,
+//! [`GatewayClient::read_resource`] by address, and the complete catalog listings
+//! [`GatewayClient::tools`], [`GatewayClient::resources`],
+//! [`GatewayClient::resource_templates`] and [`GatewayClient::prompts`].
+//!
 //! [`GatewayClient::read`] reads a provider resource as its contract's content. The
 //! same builder waits for the content to reach a state, or yields it each time it
 //! changes, through a `subscriptions/listen` subscription to the resource:
@@ -46,8 +53,9 @@ use rmcp::{
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams,
         ClientCapabilities, ClientConfig, ClientJsonRpcMessage, DetailedTask, GetTaskParams,
-        Implementation, JsonObject, ProtocolVersion, ReadResourceRequestParams, ReadResourceResult,
-        ResourceContents, ServerNotification, SubscriptionFilter, TaskPayload,
+        Implementation, JsonObject, Prompt, ProtocolVersion, ReadResourceRequestParams,
+        ReadResourceResult, Resource, ResourceContents, ResourceTemplate, ServerNotification,
+        SubscriptionFilter, TaskPayload, Tool,
     },
     service::{RunningService, ServiceError, Subscription},
     transport::{
@@ -60,11 +68,22 @@ use rmcp::{
 };
 use serde::de::DeserializeOwned;
 use sse_stream::Sse;
-use veoveo_types::ServerSlug;
+use veoveo_types::{ResourceUri, ServerSlug};
 
-use crate::calls::{
-    CallContractError, ProviderContract, ResourceRead, TaskToolCall, TokenErrorCode, ToolCall,
+use crate::{
+    calls::{
+        CallContractError, ProviderContract, ResourceRead, TaskToolCall, TokenErrorCode, ToolCall,
+    },
+    gateway::{GatewayToolName, GatewayToolNamespaceError},
 };
+
+pub mod catalog;
+#[cfg(feature = "client-credentials")]
+mod credentials;
+
+pub use catalog::{CatalogError, CatalogListing};
+#[cfg(feature = "client-credentials")]
+pub use credentials::{ClientCredentialsBearer, CredentialsError, caller_signer};
 
 /// A bearer token, never printed.
 #[derive(Clone, PartialEq, Eq)]
@@ -94,6 +113,16 @@ pub trait BearerSource: Send + Sync + 'static {
     fn forget(&self, provider: &ServerSlug) {
         let _ = provider;
     }
+
+    /// The bearer of the profile-wide requests a caller makes in its own name: catalog
+    /// listings and reads by address. A source whose bearers each belong to one
+    /// provider, such as a server's calls for its caller, has none.
+    fn caller_bearer(&self) -> BoxFuture<'_, Result<Bearer, CallError>> {
+        Box::pin(std::future::ready(Err(CallError::NoCallerBearer)))
+    }
+
+    /// Drops a caller bearer the Gateway no longer admits.
+    fn forget_caller(&self) {}
 }
 
 /// One bearer for every provider: a program's own access token for the profile.
@@ -108,6 +137,10 @@ impl StaticBearer {
 
 impl BearerSource for StaticBearer {
     fn bearer<'a>(&'a self, _: &'a ServerSlug) -> BoxFuture<'a, Result<Bearer, CallError>> {
+        Box::pin(std::future::ready(Ok(self.0.clone())))
+    }
+
+    fn caller_bearer(&self) -> BoxFuture<'_, Result<Bearer, CallError>> {
         Box::pin(std::future::ready(Ok(self.0.clone())))
     }
 }
@@ -154,6 +187,18 @@ pub enum CallError {
     Unsubscribed { uri: String },
     #[error(transparent)]
     Contract(#[from] CallContractError),
+    /// A call by name named no `{server}__{tool}` Gateway tool.
+    #[error("`{name}` is no Gateway tool name: {error}")]
+    ToolName {
+        name: GatewayToolName,
+        error: GatewayToolNamespaceError,
+    },
+    /// The bearer source holds no bearer of its own for profile-wide requests.
+    #[error("this client holds no caller bearer for profile-wide requests")]
+    NoCallerBearer,
+    /// A catalog listing broke its paging bounds.
+    #[error(transparent)]
+    Catalog(#[from] CatalogError),
     /// The transport or the protocol failed before an answer arrived.
     #[error("the call failed: {0}")]
     Transport(String),
@@ -181,6 +226,30 @@ impl From<ServiceError> for CallError {
 
 type Service = RunningService<RoleClient, ClientConfig>;
 
+/// Whose bearer a connection carries: one provider's, for calls of that provider's
+/// tools and reads of its resources, or the caller's own, for profile-wide requests.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Route {
+    Caller,
+    Provider(ServerSlug),
+}
+
+impl Route {
+    async fn bearer(&self, bearers: &dyn BearerSource) -> Result<Bearer, CallError> {
+        match self {
+            Self::Caller => bearers.caller_bearer().await,
+            Self::Provider(provider) => bearers.bearer(provider).await,
+        }
+    }
+
+    fn forget(&self, bearers: &dyn BearerSource) {
+        match self {
+            Self::Caller => bearers.forget_caller(),
+            Self::Provider(provider) => bearers.forget(provider),
+        }
+    }
+}
+
 /// The MCP connection for calls to one provider: it carries that provider's bearer.
 struct Connection {
     service: Service,
@@ -197,7 +266,7 @@ struct Inner {
     http: reqwest::Client,
     bearers: Arc<dyn BearerSource>,
     implementation: Implementation,
-    connections: tokio::sync::Mutex<BTreeMap<ServerSlug, Arc<Connection>>>,
+    connections: tokio::sync::Mutex<BTreeMap<Route, Arc<Connection>>>,
 }
 
 impl std::fmt::Debug for GatewayClient {
@@ -278,18 +347,85 @@ impl GatewayClient {
         &self,
         task: impl Into<String>,
     ) -> Result<TaskHandle<R::Output>, CallError> {
-        let connection = self.connection(&R::Provider::slug()).await?;
+        let connection = self
+            .connection(&Route::Provider(R::Provider::slug()))
+            .await?;
         Ok(TaskHandle::started(connection, task.into()))
     }
 
-    async fn connection(&self, provider: &ServerSlug) -> Result<Arc<Connection>, CallError> {
+    /// Calls a tool by its Gateway name, `{server}__{tool}`, with JSON arguments and
+    /// resolves with its result, waiting for its Task when the tool runs as one. An
+    /// error result is a result: the tool or the server's argument check reported it.
+    /// The call carries the bearer of the server the name namespaces.
+    pub fn call_tool(&self, name: GatewayToolName, arguments: JsonObject) -> CallByName {
+        CallByName {
+            client: self.clone(),
+            name,
+            arguments,
+            timeout: None,
+        }
+    }
+
+    /// Reads a resource by its address with the caller's bearer.
+    pub async fn read_resource(&self, uri: &ResourceUri) -> Result<ReadResourceResult, CallError> {
+        let params = ReadResourceRequestParams::new(uri.as_str());
+        let (_, result) = self
+            .request(&Route::Caller, |connection| {
+                let params = params.clone();
+                async move { connection.service.read_resource(params).await }
+            })
+            .await?;
+        Ok(result)
+    }
+
+    /// Every tool the caller sees, across every page, with the caller's bearer.
+    pub async fn tools(&self) -> Result<CatalogListing<Tool>, CallError> {
+        self.list(catalog::tools).await
+    }
+
+    /// Every resource the caller sees, across every page.
+    pub async fn resources(&self) -> Result<CatalogListing<Resource>, CallError> {
+        self.list(catalog::resources).await
+    }
+
+    /// Every resource template the caller sees, across every page.
+    pub async fn resource_templates(&self) -> Result<CatalogListing<ResourceTemplate>, CallError> {
+        self.list(catalog::resource_templates).await
+    }
+
+    /// Every prompt the caller sees, across every page.
+    pub async fn prompts(&self) -> Result<CatalogListing<Prompt>, CallError> {
+        self.list(catalog::prompts).await
+    }
+
+    /// One complete listing through the caller's connection. A bearer the Gateway
+    /// stopped admitting is replaced once, as for every other request.
+    async fn list<T, F>(&self, listing: F) -> Result<CatalogListing<T>, CallError>
+    where
+        F: for<'a> Fn(
+            &'a rmcp::service::Peer<RoleClient>,
+        ) -> BoxFuture<'a, Result<CatalogListing<T>, CatalogError>>,
+    {
+        let connection = self.connection(&Route::Caller).await?;
+        match listing(connection.service.peer()).await {
+            Err(CatalogError::Request { error, .. }) if unauthorized(&error) => {
+                Route::Caller.forget(&*self.inner.bearers);
+                self.inner.connections.lock().await.remove(&Route::Caller);
+                let connection = self.connection(&Route::Caller).await?;
+                Ok(listing(connection.service.peer()).await?)
+            }
+            listed => Ok(listed?),
+        }
+    }
+
+    async fn connection(&self, route: &Route) -> Result<Arc<Connection>, CallError> {
         // The bearer comes first, so a refusal reaches the caller as its OAuth error.
-        self.inner.bearers.bearer(provider).await?;
+        route.bearer(&*self.inner.bearers).await?;
         let mut connections = self.inner.connections.lock().await;
-        if let Some(connection) = connections.get(provider) {
+        if let Some(connection) = connections.get(route) {
             return Ok(connection.clone());
         }
-        let service = match self.connect(provider).await {
+        let service = match self.connect(route).await {
             Ok(service) => service,
             // The source's bearer is no longer admitted; the next one shows why.
             Err(error)
@@ -299,28 +435,28 @@ impl GatewayClient {
                         if auth_required(error)
                 ) =>
             {
-                self.inner.bearers.forget(provider);
-                self.inner.bearers.bearer(provider).await?;
-                self.connect(provider)
+                route.forget(&*self.inner.bearers);
+                route.bearer(&*self.inner.bearers).await?;
+                self.connect(route)
                     .await
                     .map_err(|error| CallError::Transport(error.to_string()))?
             }
             Err(error) => return Err(CallError::Transport(error.to_string())),
         };
         let connection = Arc::new(Connection { service });
-        connections.insert(provider.clone(), connection.clone());
+        connections.insert(route.clone(), connection.clone());
         Ok(connection)
     }
 
     async fn connect(
         &self,
-        provider: &ServerSlug,
+        route: &Route,
     ) -> Result<Service, Box<rmcp::service::ClientInitializeError>> {
         let transport = StreamableHttpClientTransport::with_client(
             BearerHttp {
                 http: self.inner.http.clone(),
                 bearers: self.inner.bearers.clone(),
-                provider: provider.clone(),
+                route: route.clone(),
             },
             StreamableHttpClientTransportConfig::with_uri(self.inner.endpoint.as_str()),
         );
@@ -355,7 +491,7 @@ impl GatewayClient {
             }
         };
         let params = CallToolRequestParams::new(name.to_string()).with_arguments(arguments);
-        self.request(&R::Provider::slug(), |connection| {
+        self.request(&Route::Provider(R::Provider::slug()), |connection| {
             let params = params.clone();
             async move { connection.service.call_tool_once(params).await }
         })
@@ -366,7 +502,7 @@ impl GatewayClient {
     async fn read_text(&self, provider: &ServerSlug, uri: &str) -> Result<String, CallError> {
         let params = ReadResourceRequestParams::new(uri);
         let (_, result) = self
-            .request(provider, |connection| {
+            .request(&Route::Provider(provider.clone()), |connection| {
                 let params = params.clone();
                 async move { connection.service.read_resource(params).await }
             })
@@ -374,25 +510,25 @@ impl GatewayClient {
         json_text(uri, result)
     }
 
-    /// Sends one request to `provider` through its connection. A bearer the Gateway
-    /// stopped admitting, such as one whose Task ended, is replaced once, so the caller
-    /// sees why the Gateway refuses another.
+    /// Sends one request through the route's connection. A bearer the Gateway stopped
+    /// admitting, such as one whose Task ended, is replaced once, so the caller sees
+    /// why the Gateway refuses another.
     async fn request<T, F, Fut>(
         &self,
-        provider: &ServerSlug,
+        route: &Route,
         send: F,
     ) -> Result<(Arc<Connection>, T), CallError>
     where
         F: Fn(Arc<Connection>) -> Fut,
         Fut: Future<Output = Result<T, ServiceError>>,
     {
-        let connection = self.connection(provider).await?;
+        let connection = self.connection(route).await?;
         match send(connection.clone()).await {
             Ok(answer) => Ok((connection, answer)),
             Err(error) if unauthorized(&error) => {
-                self.inner.bearers.forget(provider);
-                self.inner.connections.lock().await.remove(provider);
-                let connection = self.connection(provider).await?;
+                route.forget(&*self.inner.bearers);
+                self.inner.connections.lock().await.remove(route);
+                let connection = self.connection(route).await?;
                 let answer = send(connection.clone()).await?;
                 Ok((connection, answer))
             }
@@ -693,7 +829,7 @@ async fn subscribe(
         .resource_subscriptions([uri.to_owned()])
         .build();
     let (_, subscription) = client
-        .request(provider, |connection| {
+        .request(&Route::Provider(provider.clone()), |connection| {
             let filter = filter.clone();
             async move { connection.service.listen(filter).await }
         })
@@ -757,6 +893,62 @@ impl<R: ToolCall> IntoFuture for Call<R> {
                 (_, CallToolResponse::Complete(result)) => decode(result),
                 (connection, CallToolResponse::Task(created)) => {
                     TaskHandle::<R::Output>::started(connection, created.task.task_id).await
+                }
+                (_, CallToolResponse::InputRequired(_)) => Err(CallError::InputRequired),
+                (_, _) => Err(CallError::Transport(
+                    "unexpected tools/call response".into(),
+                )),
+            }
+        };
+        Box::pin(within(timeout, call))
+    }
+}
+
+/// A call of a tool by its Gateway name, which runs when awaited.
+#[must_use = "a call runs when it is awaited"]
+pub struct CallByName {
+    client: GatewayClient,
+    name: GatewayToolName,
+    arguments: JsonObject,
+    timeout: Option<Duration>,
+}
+
+impl CallByName {
+    /// Fails the call with [`CallError::Timeout`] when no result arrives in time,
+    /// including the time its Task runs.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+}
+
+impl IntoFuture for CallByName {
+    type Output = Result<CallToolResult, CallError>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        let CallByName {
+            client,
+            name,
+            arguments,
+            timeout,
+        } = self;
+        let call = async move {
+            let (provider, _) = name.parts().map_err(|error| CallError::ToolName {
+                name: name.clone(),
+                error,
+            })?;
+            let params = CallToolRequestParams::new(name.to_string()).with_arguments(arguments);
+            let answer = client
+                .request(&Route::Provider(provider), |connection| {
+                    let params = params.clone();
+                    async move { connection.service.call_tool_once(params).await }
+                })
+                .await?;
+            match answer {
+                (_, CallToolResponse::Complete(result)) => Ok(result),
+                (connection, CallToolResponse::Task(created)) => {
+                    task_result(&connection, &created.task.task_id).await
                 }
                 (_, CallToolResponse::InputRequired(_)) => Err(CallError::InputRequired),
                 (_, _) => Err(CallError::Transport(
@@ -883,39 +1075,45 @@ impl<O: DeserializeOwned + Send + 'static> TaskHandle<O> {
             return finished;
         }
         let task = self.task.expect("an unfinished handle names its Task");
-        let filter = SubscriptionFilter::builder().task_id(&task).build();
-        // A subscription first delivers the Task's current status, so a reopened one
-        // misses no outcome. Three openings without one end the wait.
-        for _ in 0..3 {
-            let mut subscription = self.connection.service.listen(filter.clone()).await?;
-            if subscription
-                .acknowledged()
-                .task_ids
-                .as_ref()
-                .is_none_or(|ids| !ids.contains(&task))
-            {
-                return Err(CallError::Transport(format!(
-                    "the Gateway did not acknowledge a subscription to Task {task}"
-                )));
+        task_result(&self.connection, &task).await.and_then(decode)
+    }
+}
+
+/// The tool result of `task` once it finishes, delivered through a Task status
+/// subscription on `connection`.
+async fn task_result(connection: &Connection, task: &str) -> Result<CallToolResult, CallError> {
+    let filter = SubscriptionFilter::builder().task_id(task).build();
+    // A subscription first delivers the Task's current status, so a reopened one
+    // misses no outcome. Three openings without one end the wait.
+    for _ in 0..3 {
+        let mut subscription = connection.service.listen(filter.clone()).await?;
+        if subscription
+            .acknowledged()
+            .task_ids
+            .as_ref()
+            .is_none_or(|ids| !ids.iter().any(|id| id == task))
+        {
+            return Err(CallError::Transport(format!(
+                "the Gateway did not acknowledge a subscription to Task {task}"
+            )));
+        }
+        while let Some(notification) = subscription.next().await? {
+            let ServerNotification::TaskStatusNotification(notification) = notification else {
+                continue;
+            };
+            let detailed = notification.params.task;
+            if detailed.task.task_id != task {
+                continue;
             }
-            while let Some(notification) = subscription.next().await? {
-                let ServerNotification::TaskStatusNotification(notification) = notification else {
-                    continue;
-                };
-                let detailed = notification.params.task;
-                if detailed.task.task_id != task {
-                    continue;
-                }
-                if let Some(outcome) = outcome(&task, detailed) {
-                    let _ = subscription.cancel().await;
-                    return outcome;
-                }
+            if let Some(outcome) = outcome(task, detailed) {
+                let _ = subscription.cancel().await;
+                return outcome;
             }
         }
-        Err(CallError::Transport(format!(
-            "the subscription to Task {task} kept ending before it finished"
-        )))
     }
+    Err(CallError::Transport(format!(
+        "the subscription to Task {task} kept ending before it finished"
+    )))
 }
 
 impl<O: DeserializeOwned + Send + 'static> IntoFuture for TaskHandle<O> {
@@ -940,17 +1138,13 @@ fn state(task: &DetailedTask) -> TaskState {
     }
 }
 
-/// The result of a finished Task, or `None` while it runs.
-fn outcome<O: DeserializeOwned>(
-    task: &str,
-    detailed: DetailedTask,
-) -> Option<Result<O, CallError>> {
+/// The tool result of a finished Task, or `None` while it runs.
+fn outcome(task: &str, detailed: DetailedTask) -> Option<Result<CallToolResult, CallError>> {
     match detailed.payload {
         TaskPayload::Working | TaskPayload::InputRequired { .. } => None,
         TaskPayload::Completed { result } => Some(
             serde_json::from_value::<CallToolResult>(serde_json::Value::Object(result))
-                .map_err(CallError::from)
-                .and_then(decode),
+                .map_err(CallError::from),
         ),
         TaskPayload::Failed { error } => Some(Err(CallError::Task {
             task: task.to_owned(),
@@ -999,19 +1193,19 @@ async fn within<T>(
     }
 }
 
-/// The HTTP client of one provider's connection: every request carries the bearer the
-/// source holds for that provider at the time it is sent.
+/// The HTTP client of one connection: every request carries the bearer the source
+/// holds for the connection's route at the time it is sent.
 #[derive(Clone)]
 struct BearerHttp {
     http: reqwest::Client,
     bearers: Arc<dyn BearerSource>,
-    provider: ServerSlug,
+    route: Route,
 }
 
 impl BearerHttp {
     async fn bearer(&self) -> Result<String, StreamableHttpError<reqwest::Error>> {
-        self.bearers
-            .bearer(&self.provider)
+        self.route
+            .bearer(&*self.bearers)
             .await
             .map(|bearer| bearer.0)
             .map_err(|error| {

@@ -19,7 +19,7 @@ use veoveo_sdk_rust_fixture::{
     foundry::{self, FoundryDomain, FoundryTasks, FoundryUsage, Furnace, cast_operation},
     kiln::{Kiln, KilnEvent},
 };
-use veoveo_task_runtime::{Instance, OperationState, ProviderName, TaskRuntime, TaskStatus};
+use veoveo_task::{Instance, OperationState, ProviderName, TaskRuntime, TaskStatus};
 use veoveo_test_fixtures::store::TestDb;
 use veoveo_types::{PermissionName, ServerSlug, TaskId};
 
@@ -169,8 +169,8 @@ impl Harness {
         &self,
         runtime: &TaskRuntime,
         task: &str,
-        done: impl Fn(&veoveo_task_runtime::TaskSnapshot) -> bool,
-    ) -> veoveo_task_runtime::TaskSnapshot {
+        done: impl Fn(&veoveo_task::TaskSnapshot) -> bool,
+    ) -> veoveo_task::TaskSnapshot {
         let id = TaskId::parse(task).unwrap();
         tokio::time::timeout(DEADLINE, async {
             loop {
@@ -356,7 +356,7 @@ async fn a_callback_for_no_operation_answers_not_found() {
         let body = serde_json::to_vec(&done("job-1", "0.05")).unwrap();
         let signature = veoveo_sdk_rust_fixture::kiln::sign(SECRET, &body);
         let http = reqwest::Client::new();
-        let wrong = veoveo_task_runtime::CallbackToken::parse(&"A".repeat(43)).unwrap();
+        let wrong = veoveo_task::CallbackToken::parse(&"A".repeat(43)).unwrap();
         for url in [
             harness
                 .callbacks

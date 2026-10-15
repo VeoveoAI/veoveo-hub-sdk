@@ -13,7 +13,7 @@ use rmcp::{
     service::{RequestContext, SubscriptionContext, SubscriptionSendError},
 };
 
-use veoveo_task_runtime::{OwnerTaskQuery, TaskError, TaskRetentionPin, TaskRuntime, TaskSnapshot};
+use veoveo_task::{OwnerTaskQuery, TaskError, TaskRetentionPin, TaskRuntime, TaskSnapshot};
 
 use super::mcp::project_snapshot;
 
@@ -162,7 +162,7 @@ pub async fn authorized_snapshot(
     query: &OwnerTaskQuery,
     task_id: &str,
 ) -> Result<TaskSnapshot, McpError> {
-    let task_id = veoveo_task_runtime::parse_task_id(task_id)
+    let task_id = veoveo_task::parse_task_id(task_id)
         .map_err(|_| McpError::invalid_params("unknown task id", None))?;
     query
         .get(task_id)
@@ -207,7 +207,7 @@ pub async fn update_durable_task(
 }
 
 pub async fn cancel_durable_task(query: &OwnerTaskQuery, task_id: String) -> Result<(), McpError> {
-    let task_id = veoveo_task_runtime::parse_task_id(&task_id)
+    let task_id = veoveo_task::parse_task_id(&task_id)
         .map_err(|_| McpError::invalid_params("unknown task id", None))?;
     query.cancel(task_id).await.map_err(task_error)?;
     Ok(())
@@ -245,7 +245,7 @@ pub async fn subscribe_durable_tasks(
 pub async fn subscribe_authorized_snapshots(
     query: &OwnerTaskQuery,
     task_ids: Vec<String>,
-) -> Result<veoveo_task_runtime::OwnerTaskSubscription, McpError> {
+) -> Result<veoveo_task::OwnerTaskSubscription, McpError> {
     if task_ids.len() > 256 {
         return Err(McpError::invalid_params(
             "at most 256 Task IDs per subscription",
@@ -254,7 +254,7 @@ pub async fn subscribe_authorized_snapshots(
     }
     let ids = task_ids
         .iter()
-        .filter_map(|id| veoveo_task_runtime::parse_task_id(id).ok())
+        .filter_map(|id| veoveo_task::parse_task_id(id).ok())
         .collect::<Vec<_>>();
     query.subscribe(&ids).await.map_err(task_error)
 }

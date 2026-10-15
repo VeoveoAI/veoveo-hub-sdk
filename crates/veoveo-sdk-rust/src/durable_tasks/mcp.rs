@@ -6,7 +6,7 @@ use rmcp::model::{
 };
 use serde_json::{Value, json};
 
-use veoveo_task_runtime::{TaskError, TaskRuntime, TaskSnapshot, TaskStatus};
+use veoveo_task::{TaskError, TaskRuntime, TaskSnapshot, TaskStatus};
 
 /// Projects durable metadata into the seed returned by `CreateTaskResult`. A waiting
 /// Task is working in the seed: it asks for input only while it holds outstanding input
@@ -126,13 +126,13 @@ fn task_status(status: TaskStatus) -> McpTaskStatus {
 pub fn mcp_task_completion(
     message: impl Into<String>,
     result: rmcp::model::CallToolResult,
-) -> Result<veoveo_task_runtime::TaskTransition, TaskError> {
+) -> Result<veoveo_task::TaskTransition, TaskError> {
     let result_uri = crate::task_completion::result_uri(&result).map_err(|_| {
         TaskError::InvalidRecord("invalid MCP Task completion product address".into())
     })?;
     let result = serde_json::to_value(result)
         .map_err(|_| TaskError::InvalidRecord("MCP Task completion serialization failed".into()))?;
-    Ok(veoveo_task_runtime::TaskTransition::Succeeded {
+    Ok(veoveo_task::TaskTransition::Succeeded {
         message: message.into(),
         result,
         result_uri,

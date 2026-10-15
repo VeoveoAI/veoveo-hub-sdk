@@ -47,8 +47,8 @@ mod ledger {
     use std::future::{Future, IntoFuture};
     use std::pin::Pin;
 
-    use veoveo_platform_store::PlatformStore;
-    use veoveo_task_runtime::{OperationKey, TaskError, TaskRuntime, TaskSnapshot};
+    use veoveo_store::PlatformStore;
+    use veoveo_task::{OperationKey, TaskError, TaskRuntime, TaskSnapshot};
     use veoveo_types::TaskId;
     use veoveo_usage::{UsageStore, UsageWrite};
     use veoveo_usage_contract::{UsageActor, UsageDraft};

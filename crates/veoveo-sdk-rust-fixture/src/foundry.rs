@@ -48,7 +48,7 @@ use veoveo_sdk_rust::{
         UsageKindDeclaration, UsageKinds, UsageUnit,
     },
 };
-use veoveo_task_runtime::{
+use veoveo_task::{
     CheckObservation, CreateTask, ExternalJobId, Operation, OperationCalls, OperationEventId,
     OperationKey, OperationSpec, ProviderName, RecoveryClass, StepDispatch, StepOperationId,
     Submission, TaskError, TaskFailure, TaskOwner, TaskRuntime, TaskSurface, TaskTransition,
@@ -249,8 +249,8 @@ impl FoundryTasks {
         Ok(TaskOwner {
             principal_key: identity.actor.id.clone(),
             principal_kind: match identity.actor.kind {
-                PrincipalKind::User => veoveo_task_runtime::PrincipalKind::User,
-                PrincipalKind::Service => veoveo_task_runtime::PrincipalKind::Service,
+                PrincipalKind::User => veoveo_task::PrincipalKind::User,
+                PrincipalKind::Service => veoveo_task::PrincipalKind::Service,
             },
             issuer: identity.actor.issuer.clone(),
             subject: identity.actor.subject.clone(),

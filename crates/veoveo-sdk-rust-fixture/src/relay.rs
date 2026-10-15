@@ -34,7 +34,7 @@ use veoveo_sdk_rust::{
     registration::{AuthorizationBuilder, AuthorizationDeclaration, DeclarationError},
     server_contract::{McpServerContract, McpServerSetup},
 };
-use veoveo_task_runtime::{
+use veoveo_task::{
     CreateTask, RecoveryClass, ResumeCancellationPolicy, TaskFailure, TaskOwner, TaskRuntime,
     TaskSnapshot, TaskSurface, TaskTransition,
 };
@@ -316,8 +316,8 @@ impl RelayTasks {
         Ok(TaskOwner {
             principal_key: identity.actor.id.clone(),
             principal_kind: match identity.actor.kind {
-                PrincipalKind::User => veoveo_task_runtime::PrincipalKind::User,
-                PrincipalKind::Service => veoveo_task_runtime::PrincipalKind::Service,
+                PrincipalKind::User => veoveo_task::PrincipalKind::User,
+                PrincipalKind::Service => veoveo_task::PrincipalKind::Service,
             },
             issuer: identity.actor.issuer.clone(),
             subject: identity.actor.subject.clone(),

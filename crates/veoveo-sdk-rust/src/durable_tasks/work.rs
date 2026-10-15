@@ -28,7 +28,7 @@ use tokio_util::{
     task::TaskTracker,
 };
 use veoveo_audit_contract::AuditRequest;
-use veoveo_task_runtime::{
+use veoveo_task::{
     CallbackToken, Operation, OperationCalls, OperationKey, OperationSpec, RecoveryClass,
     ResumeCancellationPolicy, StepAttempt, StepDispatch, StepKey, StepOperationId, Submission,
     TaskError, TaskFailure, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition, WaitOutcome,

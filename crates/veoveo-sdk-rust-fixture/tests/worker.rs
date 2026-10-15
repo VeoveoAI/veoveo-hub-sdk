@@ -18,9 +18,9 @@ use std::{
 use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use veoveo_platform_store::StoreError;
 use veoveo_sdk_rust::durable_tasks::{TaskContext, TaskStop, TaskWorker};
-use veoveo_task_runtime::{
+use veoveo_store::StoreError;
+use veoveo_task::{
     CreateTask, Instance, PrincipalKind, RecoveryClass, ResumeCancellationPolicy, TaskError,
     TaskFailure, TaskOwner, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition,
 };

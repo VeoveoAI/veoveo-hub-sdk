@@ -14,7 +14,7 @@ use reqwest::{
     header::{ACCEPT, CONTENT_TYPE},
 };
 use serde::Deserialize;
-use veoveo_oauth_client::{
+use veoveo_oauth::{
     AssertionError, CLIENT_ASSERTION_TYPE, ClientAssertionKeyId, ClientAssertionSigner,
 };
 use veoveo_types::{OAuthClientId, ScopeName, ServerSlug};

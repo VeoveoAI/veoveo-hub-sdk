@@ -24,7 +24,7 @@ use axum::{
     routing::post,
 };
 use serde_json::Value;
-use veoveo_task_runtime::{
+use veoveo_task::{
     CallbackToken, Delivery, EventTarget, ExternalJobId, OperationEvent, OperationEventId,
     ProviderName, StepOperationId, TaskRuntime,
 };

@@ -22,8 +22,8 @@ const SERVER_PACKAGES: [&str; 9] = [
     "opentelemetry_sdk",
     "tracing-opentelemetry",
     "sqlx",
-    "veoveo-task-runtime",
-    "veoveo-platform-store",
+    "veoveo-task",
+    "veoveo-store",
 ];
 
 /// rmcp features that belong to a server.

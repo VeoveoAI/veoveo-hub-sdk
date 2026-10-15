@@ -26,7 +26,7 @@ use reqwest::{
 };
 use rmcp::{ErrorData, RoleServer, service::RequestContext};
 use secrecy::ExposeSecret;
-use veoveo_task_runtime::TaskSnapshot;
+use veoveo_task::TaskSnapshot;
 use veoveo_types::{OAuthClientId, PermissionName, ServerSlug, TaskId};
 
 use super::auth::ForwardedBearer;

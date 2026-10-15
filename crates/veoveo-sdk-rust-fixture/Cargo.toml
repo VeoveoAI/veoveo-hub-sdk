@@ -60,7 +60,7 @@ veoveo-task = { workspace = true, optional = true }
 [dev-dependencies]
 rustls.workspace = true
 veoveo-store.workspace = true
-veoveo-test-fixtures = { workspace = true, features = ["store"] }
+veoveo-fixtures = { workspace = true, features = ["store"] }
 veoveo-sdk-rust = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["full"] }
 

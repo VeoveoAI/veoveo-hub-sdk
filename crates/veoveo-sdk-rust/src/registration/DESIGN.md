@@ -32,7 +32,7 @@ other servers, described under [Calls Between Servers](#calls-between-servers).
 | Authorization server metadata, RFC 8414 | A server reads `issuer`, `registration_endpoint`, `token_endpoint` and `jwks_uri` from the Gateway's well-known metadata. The issuer is the forwarded tokens' `iss`, and the JWK Set at `jwks_uri` holds the keys that verify them. |
 | MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
 | JSON Schema 2020-12 | Schemas for every request, response and declaration are generated from the Rust types by Schemars 1.2. |
-| PostgreSQL connection URIs and role names | `veoveo_database` names the installation database as a `postgres://` URL and the server's login as an unquoted PostgreSQL role name. The [database design](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/docs/DATABASE.md) describes the roles and schemas. |
+| PostgreSQL connection URIs and role names | `veoveo_database` names the installation database as a `postgres://` URL and the server's login as an unquoted PostgreSQL role name. The [database design](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/docs/DATABASE.md) describes the roles and schemas. |
 
 Every Veoveo addition uses the extension point of the standard it extends:
 
@@ -69,7 +69,7 @@ its MCP endpoint as `veoveo_mcp_endpoint`. MCP Discover advertises the same valu
 
 The version holds 1 to 64 ASCII letters, digits, dots, underscores, plus signs or
 hyphens. The endpoint uses `https`, or `http` on a local host as the
-[conventions](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/docs/CONVENTIONS.md#http-paths) allow, names a host and carries no
+[conventions](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/docs/CONVENTIONS.md#http-paths) allow, names a host and carries no
 credentials, query or fragment.
 
 ### Authorization
@@ -271,7 +271,7 @@ token, and the client adopts the returned one. An update never extends a registr
 
 A registration lasts until the server deletes it or its process ends. The server
 connects with the login its registration granted and holds a kernel instance on that
-login while it serves, as the [database design](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/docs/DATABASE.md#process-instances)
+login while it serves, as the [database design](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/docs/DATABASE.md#process-instances)
 describes. The Gateway removes a registration whose login has held no live instance for
 the installation's grace period, 60 seconds by default, and drops the login. It then
 answers the registration access token with HTTP 401.

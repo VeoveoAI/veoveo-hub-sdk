@@ -7,6 +7,7 @@ use std::{future::Future, sync::Arc, time::Duration};
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
+use veoveo_fixtures::store::TestDb;
 use veoveo_sdk_rust::{
     durable_tasks::{CallbackUrls, TaskWorker},
     hosting::{
@@ -20,7 +21,6 @@ use veoveo_sdk_rust_fixture::{
     kiln::{Kiln, KilnEvent},
 };
 use veoveo_task::{Instance, OperationState, ProviderName, TaskRuntime, TaskStatus};
-use veoveo_test_fixtures::store::TestDb;
 use veoveo_types::{PermissionName, ServerSlug, TaskId};
 
 const SECRET: &[u8] = b"kiln shared secret";

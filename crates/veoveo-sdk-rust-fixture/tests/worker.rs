@@ -18,13 +18,13 @@ use std::{
 use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use veoveo_fixtures::store::TestDb;
 use veoveo_sdk_rust::durable_tasks::{TaskContext, TaskStop, TaskWorker};
 use veoveo_store::StoreError;
 use veoveo_task::{
     CreateTask, Instance, PrincipalKind, RecoveryClass, ResumeCancellationPolicy, TaskError,
     TaskFailure, TaskOwner, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition,
 };
-use veoveo_test_fixtures::store::TestDb;
 use veoveo_types::{
     AccessSubject, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
     ServerSlug, TaskId, TaskTypeName, TenantId, WorkContextId, WorkContextMembershipLevel,

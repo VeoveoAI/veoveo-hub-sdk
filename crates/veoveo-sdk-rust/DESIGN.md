@@ -31,11 +31,11 @@ crate documents and in its contract resource.
 | Veoveo access-token `session_family` | signed UUIDv7 refresh-family binding for browser tokens; the Gateway enforces current family revocation, and absence supplies no renewable session authority |
 | Veoveo `request_context` | signed source principal, verified access-token metadata and required audit request correlation, including the OAuth client and optional session family; it contains no bearer value and grants no independent renewal permission |
 | MCP Apps, SEP-1865 | `ui://` App resources and tool links, specified in [MCP Apps](src/apps/DESIGN.md) |
-| [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/platform/audit/contract/DESIGN.md), after NIST SP 800-53 Rev. 5 AU-3 and mapped to OCSF 1.9 | the classes `mcp.discovery` and `mcp.read` (OCSF API Activity Read) and `mcp.tool_admission` and `mcp.tool_completion` (API Activity Other), which an MCP producer declares under the owner `mcp`; targets are `veoveo://` URIs built by the shared resource URI builder; the acting server and Task travel in the envelope's `via`, and the OAuth client, delegating principal, policy revision, scopes and data labels in each detail's `invocation` |
-| [Veoveo durable Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/platform/task/DESIGN.md) | durable steps, and operations whose outcome arrives through provider events or a bounded check schedule, run through `TaskWorker` and `TaskContext` |
+| [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/audit/contract/DESIGN.md), after NIST SP 800-53 Rev. 5 AU-3 and mapped to OCSF 1.9 | the classes `mcp.discovery` and `mcp.read` (OCSF API Activity Read) and `mcp.tool_admission` and `mcp.tool_completion` (API Activity Other), which an MCP producer declares under the owner `mcp`; targets are `veoveo://` URIs built by the shared resource URI builder; the acting server and Task travel in the envelope's `via`, and the OAuth client, delegating principal, policy revision, scopes and data labels in each detail's `invocation` |
+| [Veoveo durable Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/task/DESIGN.md) | durable steps, and operations whose outcome arrives through provider events or a bounded check schedule, run through `TaskWorker` and `TaskContext` |
 | Provider webhooks over HTTP | `POST {mount}/operations/{operation_id}/{token}` and `POST {mount}/providers/{provider}/events` on a server's public routes; the server's parser checks the provider's signature, and the route answers 204 only after the Task runtime stored the event |
 | PostgreSQL SQL and PL/pgSQL, through libpg_query 17-6.2.5 (`pg_query` 6.2.1) | the `testing` feature's SQL confinement check parses a server's query files, migrations, sqlx macro literals and function bodies with PostgreSQL 17's grammar; SQL only PostgreSQL 18 accepts fails the check instead of passing unread |
-| FOCUS 1.4 and ISO 4217, through [core's usage ledger](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/platform/usage/DESIGN.md) | usage kinds a server declares under its slug, estimates and actual usage of a Task, and the Task's cost under the `ai.veoveo/usage` `_meta` key of its result and of `tasks/get` |
+| FOCUS 1.4 and ISO 4217, through [core's usage ledger](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/usage/DESIGN.md) | usage kinds a server declares under its slug, estimates and actual usage of a Task, and the Task's cost under the `ai.veoveo/usage` `_meta` key of its result and of `tasks/get` |
 
 A hosted server declares its MCP endpoint when it registers with the Gateway and keeps
 its registration while its process holds a live kernel instance on the login the
@@ -83,7 +83,7 @@ URIs, and fixed discovery literals and URI templates require agreement tests wit
 builders.
 
 Task-backed resource addresses may implement the foundational `TaskResourceAddress`
-trait. The [Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/platform/task/DESIGN.md) can then deliver
+trait. The [Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/task/DESIGN.md) can then deliver
 requested Task status and resource invalidations from one authorized watch.
 
 `McpServerSetup` checks implementation and document identity, required document
@@ -683,7 +683,7 @@ doubling to at most 5 seconds, before the Task goes to its recovery the same way
 `ctx.update` records progress through the same settlement.
 
 A worker keeps running while the database connection is down. Its instance
-[reconnects](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/docs/DATABASE.md#process-instances)
+[reconnects](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/docs/DATABASE.md#process-instances)
 and keeps the Tasks it owns, or continues as a new instance once a reaper moved them to
 recovery, and its work stream claims again once the connection is back. `run` returns
 an error only when the instance ended, as it does once the database refuses the
@@ -801,7 +801,7 @@ then calls the shared `embedded_document!` proc macro and admits the adjacent
 `contract-compliance.json`. Admission checks the server identity and the generated
 manual section against the profile. Its manifest-relative document
 selection must expand in the calling crate, as declared in the
-[shared macro catalog](https://github.com/VeoveoAI/veoveo-core/blob/af12a7f52e5e7a445bfc4dca7bac853d5c3bebc9/platform/macros/DESIGN.md#macro-catalog-and-enforcement).
+[shared macro catalog](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/macros/DESIGN.md#macro-catalog-and-enforcement).
 
 The Console renders these resources generically; the gateway generates an
 installation llms.txt from the catalog. Neither requires per-server work.

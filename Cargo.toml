@@ -34,7 +34,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["serde", "c
 clap = { version = "4.6.6", features = ["derive", "env"] }
 futures = "0.3.34"
 hex = "=0.4.3"
-jsonschema = { version = "=0.51.0", default-features = false }
+jsonschema = { version = "=0.58.6", default-features = false }
 # AWS-LC provides constant-time RSA; the RustCrypto backend carries RUSTSEC-2023-0071.
 jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 oauth2 = { version = "=5.0.0", default-features = false }

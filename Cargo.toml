@@ -23,7 +23,6 @@ veoveo-usage = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "c0c8254
 veoveo-usage-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "c0c8254f4a1f532a7c8bb5123639d9997700b105" }
 
 veoveo-sdk-rust = { path = "crates/veoveo-sdk-rust", default-features = false }
-veoveo-sdk-rust-conformance = { path = "crates/veoveo-sdk-rust-conformance" }
 veoveo-sdk-rust-fixture = { path = "crates/veoveo-sdk-rust-fixture" }
 
 anyhow = "=1.0.104"

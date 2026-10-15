@@ -5,13 +5,17 @@ use clap::{Args, Parser, Subcommand};
 use rmcp::model::JsonObject;
 use serde_json::Value;
 use url::Url;
+use veoveo_sdk_rust::{
+    GatewayProfileId,
+    client::{CatalogListing, GatewayClient},
+    gateway::GatewayToolName,
+};
 use veoveo_sdk_rust_cli::{
     agent::{self, Limits, Step, Stop},
     gateway::GatewayAccess,
-    mcp::Session,
     model::ChatModel,
 };
-use veoveo_types::{OAuthClientId, ScopeName};
+use veoveo_types::{OAuthClientId, ResourceUri, ScopeName};
 
 /// A command-line MCP client for a Veoveo installation's Gateway.
 #[derive(Parser)]
@@ -115,31 +119,29 @@ async fn main() -> Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cli = Cli::parse();
     let json = cli.gateway.json;
-    let mut session = Session::open(cli.gateway.access()?).await?;
-    let outcome = run(&mut session, cli.command, json).await;
-    let _ = session.close().await;
-    outcome
+    let client = cli.gateway.access()?.client().await?;
+    run(&client, cli.command, json).await
 }
 
 impl GatewayArgs {
     fn access(&self) -> Result<GatewayAccess> {
         Ok(GatewayAccess {
-            issuer: self.gateway.clone(),
+            gateway: self.gateway.clone(),
             connect: self.connect,
             keys: self.keys.clone().context(
                 "name the callers' key directory with --keys or VEOVEO_CLI_KEY_DIRECTORY",
             )?,
             caller: OAuthClientId::parse(&self.caller)?,
-            profile: self.profile.clone(),
+            profile: GatewayProfileId::parse(&self.profile)?,
             scope: ScopeName::parse(&self.scope)?,
         })
     }
 }
 
-async fn run(session: &mut Session, command: Command, json: bool) -> Result<()> {
+async fn run(client: &GatewayClient, command: Command, json: bool) -> Result<()> {
     match command {
         Command::Tools => {
-            let tools = session.tools().await?;
+            let tools = listed(client.tools().await?);
             if json {
                 return print_json(&tools);
             }
@@ -157,8 +159,8 @@ async fn run(session: &mut Session, command: Command, json: bool) -> Result<()> 
             Ok(())
         }
         Command::Resources => {
-            let resources = session.resources().await?;
-            let templates = session.resource_templates().await?;
+            let resources = listed(client.resources().await?);
+            let templates = listed(client.resource_templates().await?);
             if json {
                 return print_json(
                     &serde_json::json!({ "resources": resources, "templates": templates }),
@@ -181,7 +183,7 @@ async fn run(session: &mut Session, command: Command, json: bool) -> Result<()> 
             Ok(())
         }
         Command::Prompts => {
-            let prompts = session.prompts().await?;
+            let prompts = listed(client.prompts().await?);
             if json {
                 return print_json(&prompts);
             }
@@ -194,7 +196,7 @@ async fn run(session: &mut Session, command: Command, json: bool) -> Result<()> 
             }
             Ok(())
         }
-        Command::Read { uri } => print_json(&session.read_resource(&uri).await?),
+        Command::Read { uri } => print_json(&client.read_resource(&ResourceUri::new(uri)?).await?),
         Command::Call {
             tool,
             arguments,
@@ -202,8 +204,9 @@ async fn run(session: &mut Session, command: Command, json: bool) -> Result<()> 
         } => {
             let arguments: JsonObject =
                 serde_json::from_str(&arguments).context("the arguments must be a JSON object")?;
-            let result = session
-                .call(&tool, arguments, Duration::from_secs(timeout_seconds))
+            let result = client
+                .call_tool(GatewayToolName::parse(tool.as_str())?, arguments)
+                .timeout(Duration::from_secs(timeout_seconds))
                 .await?;
             let value = agent::result_value(&result);
             print_json(&value)?;
@@ -212,11 +215,22 @@ async fn run(session: &mut Session, command: Command, json: bool) -> Result<()> 
             }
             Ok(())
         }
-        Command::Ask(args) => ask(session, args, json).await,
+        Command::Ask(args) => ask(client, args, json).await,
     }
 }
 
-async fn ask(session: &mut Session, args: AskArgs, json: bool) -> Result<()> {
+/// A listing's items, after telling the reader which servers it misses.
+fn listed<T>(listing: CatalogListing<T>) -> Vec<T> {
+    for failure in &listing.degradation.failures {
+        eprintln!(
+            "the Gateway could not list the {:?} of `{}`: {:?}",
+            failure.surface, failure.server, failure.code
+        );
+    }
+    listing.items
+}
+
+async fn ask(client: &GatewayClient, args: AskArgs, json: bool) -> Result<()> {
     let token = model_token(&args.model_token_env, args.env_file.as_deref())?;
     let mut base = args.model_url.clone();
     if !base.path().ends_with('/') {
@@ -233,7 +247,7 @@ async fn ask(session: &mut Session, args: AskArgs, json: bool) -> Result<()> {
         max_turns: args.max_turns,
         tool_deadline: Duration::from_secs(args.tool_timeout_seconds),
     };
-    let transcript = agent::ask(session, &model, &args.request, limits, |step: &Step| {
+    let transcript = agent::ask(client, &model, &args.request, limits, |step: &Step| {
         if !json {
             println!("→ {} {}", step.tool, step.arguments);
             let marker = if step.is_error { "✗" } else { "←" };

@@ -1,5 +1,5 @@
 //! The `ask` loop: a chat model works on a request with the Gateway's tools, as the
-//! session's caller, until it answers or reaches the step limit. Every tool call goes
+//! client's caller, until it answers or reaches the step limit. Every tool call goes
 //! through the Gateway, which authorizes it as for any other client.
 
 use std::time::Duration;
@@ -8,11 +8,9 @@ use anyhow::Result;
 use rmcp::model::{CallToolResult, ContentBlock, JsonObject};
 use serde::Serialize;
 use serde_json::{Value, json};
+use veoveo_sdk_rust::{client::GatewayClient, gateway::GatewayToolName};
 
-use crate::{
-    mcp::Session,
-    model::{ChatModel, Message, function},
-};
+use crate::model::{ChatModel, Message, function};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
@@ -66,16 +64,16 @@ fn instructions() -> String {
     )
 }
 
-/// Work on `request` with every tool the session's caller sees. `observe` receives each
+/// Work on `request` with every tool the client's caller sees. `observe` receives each
 /// step as it completes.
 pub async fn ask(
-    session: &mut Session,
+    client: &GatewayClient,
     model: &ChatModel,
     request: &str,
     limits: Limits,
     mut observe: impl FnMut(&Step),
 ) -> Result<Transcript> {
-    let tools = session.tools().await?;
+    let tools = client.tools().await?.items;
     let functions: Vec<Value> = tools.iter().map(function).collect();
     let mut messages = vec![Message::system(instructions()), Message::user(request)];
     let mut transcript = Transcript {
@@ -102,9 +100,8 @@ pub async fn ask(
             return Ok(transcript);
         }
         for call in calls {
-            session.refresh().await?;
             let step = run(
-                session,
+                client,
                 &call.function.name,
                 &call.function.arguments,
                 limits,
@@ -120,7 +117,7 @@ pub async fn ask(
 
 /// Run one tool call. A refusal, a malformed argument string and a failed Task all come
 /// back as an error result for the model to read.
-async fn run(session: &Session, tool: &str, arguments: &str, limits: Limits) -> Step {
+async fn run(client: &GatewayClient, tool: &str, arguments: &str, limits: Limits) -> Step {
     let parsed = if arguments.trim().is_empty() {
         Ok(JsonObject::new())
     } else {
@@ -129,7 +126,7 @@ async fn run(session: &Session, tool: &str, arguments: &str, limits: Limits) -> 
     let (arguments, outcome) = match parsed {
         Ok(object) => (
             Value::Object(object.clone()),
-            session.call(tool, object, limits.tool_deadline).await,
+            call(client, tool, object, limits).await,
         ),
         Err(error) => (
             Value::String(arguments.to_owned()),
@@ -152,6 +149,19 @@ async fn run(session: &Session, tool: &str, arguments: &str, limits: Limits) -> 
             result: json!({ "isError": true, "error": format!("{error:#}") }),
         },
     }
+}
+
+async fn call(
+    client: &GatewayClient,
+    tool: &str,
+    arguments: JsonObject,
+    limits: Limits,
+) -> Result<CallToolResult> {
+    let name = GatewayToolName::parse(tool)?;
+    Ok(client
+        .call_tool(name, arguments)
+        .timeout(limits.tool_deadline)
+        .await?)
 }
 
 /// A tool result as the model reads it: its text, its structured content, and each

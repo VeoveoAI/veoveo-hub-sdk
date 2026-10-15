@@ -3883,8 +3883,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
- "veoveo-oauth-client",
- "veoveo-sdk-rust-conformance",
+ "veoveo-sdk-rust",
  "veoveo-types",
 ]
 

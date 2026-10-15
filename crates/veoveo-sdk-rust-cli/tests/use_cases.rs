@@ -11,33 +11,36 @@
 //! cargo nextest run -p veoveo-sdk-rust-cli --test use_cases --run-ignored only
 //! ```
 
-use std::{net::SocketAddr, path::PathBuf, time::Duration};
+use std::{collections::BTreeMap, net::SocketAddr, path::PathBuf, time::Duration};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use rmcp::model::ResourceContents;
 use serde_json::Value;
 use url::Url;
+use veoveo_sdk_rust::{GatewayProfileId, client::GatewayClient};
 use veoveo_sdk_rust_cli::{
     agent::{self, Limits, Stop, Transcript},
     gateway::GatewayAccess,
-    mcp::Session,
     model::ChatModel,
 };
-use veoveo_types::{OAuthClientId, ScopeName};
+use veoveo_types::{OAuthClientId, ResourceTemplateUri, ResourceUri, ScopeName};
 
 const LIMITS: Limits = Limits {
     max_turns: 12,
     tool_deadline: Duration::from_secs(600),
 };
 
+/// The template Time declares for one event.
+const EVENT_TEMPLATE: &str = "time://events/{event_id}";
+
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|value| !value.is_empty())
 }
 
-fn access(caller: &str) -> Result<GatewayAccess> {
+async fn client(caller: &str) -> Result<GatewayClient> {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    Ok(GatewayAccess {
-        issuer: Url::parse(
+    GatewayAccess {
+        gateway: Url::parse(
             &env("VEOVEO_CLI_GATEWAY")
                 .unwrap_or_else(|| "http://vv-gateway.internal:8080".to_owned()),
         )?,
@@ -49,9 +52,11 @@ fn access(caller: &str) -> Result<GatewayAccess> {
                 .context("VEOVEO_CLI_KEY_DIRECTORY names the callers' keys")?,
         ),
         caller: OAuthClientId::parse(caller)?,
-        profile: "local".to_owned(),
+        profile: GatewayProfileId::parse("local")?,
         scope: ScopeName::parse("mcp")?,
-    })
+    }
+    .client()
+    .await
 }
 
 fn model() -> Result<ChatModel> {
@@ -73,17 +78,17 @@ fn model() -> Result<ChatModel> {
 }
 
 /// Work on `request` as `caller` and return what happened.
-async fn ask(caller: &str, request: &str) -> Result<(Session, Transcript)> {
-    let mut session = Session::open(access(caller)?).await?;
-    let transcript = agent::ask(&mut session, &model()?, request, LIMITS, |_| {}).await?;
-    Ok((session, transcript))
+async fn ask(caller: &str, request: &str) -> Result<(GatewayClient, Transcript)> {
+    let client = client(caller).await?;
+    let transcript = agent::ask(&client, &model()?, request, LIMITS, |_| {}).await?;
+    Ok((client, transcript))
 }
 
-/// A resource whose first content is JSON text, as Time and Artifact serve their records.
-async fn read_json(session: &Session, uri: &str) -> Result<Value> {
-    let read = session.read_resource(uri).await?;
+/// A resource whose content is JSON text, as Time and Artifact serve their records.
+async fn read_json(client: &GatewayClient, uri: &ResourceUri) -> Result<Value> {
+    let read = client.read_resource(uri).await?;
     let Some(ResourceContents::TextResourceContents { text, .. }) = read.contents.first() else {
-        anyhow::bail!("`{uri}` served no text");
+        bail!("{uri} served no text");
     };
     Ok(serde_json::from_str(text)?)
 }
@@ -101,7 +106,7 @@ fn results<'a>(transcript: &'a Transcript, tool: &'a str) -> impl Iterator<Item 
 #[ignore = "needs a running installation and a model endpoint"]
 async fn a_member_schedules_an_event_that_time_then_serves() -> Result<()> {
     let title = format!("Use case review {}", uuid::Uuid::now_v7().simple());
-    let (session, transcript) = ask(
+    let (client, transcript) = ask(
         "acceptance-member",
         &format!(
             "Create an event named '{title}' for tomorrow at 09:00 UTC, then tell me what time that is in Tokyo."
@@ -112,27 +117,31 @@ async fn a_member_schedules_an_event_that_time_then_serves() -> Result<()> {
     let created = results(&transcript, "time__create_event")
         .find(|event| event["name"] == title)
         .context("the model created no event with the requested name")?;
-    // Time lists each event with the address it serves the event at.
-    let listing = read_json(&session, "time://events").await?;
-    let uri = listing["items"]
-        .as_array()
-        .context("the event listing holds items")?
-        .iter()
-        .find(|item| item["title"] == title)
-        .and_then(|item| item["uri"].as_str())
-        .context("Time does not list the event the model created")?;
-    let event = read_json(&session, uri).await?;
+    let event_id = created["eventId"].as_str().context("eventId")?;
+    // Address the event through the template Time advertises for it.
+    let advertised = client.resource_templates().await?.items;
+    ensure!(
+        advertised
+            .iter()
+            .any(|template| template.uri_template == EVENT_TEMPLATE),
+        "Time does not advertise {EVENT_TEMPLATE}"
+    );
+    let uri = ResourceTemplateUri::new(EVENT_TEMPLATE)?.expand_scalars(&BTreeMap::from([(
+        "event_id".to_owned(),
+        event_id.to_owned(),
+    )]))?;
+    let event = read_json(&client, &uri).await?;
     ensure!(
         event["eventId"] == created["eventId"] && event["name"] == title,
         "Time serves another event at {uri}: {event}"
     );
-    session.close().await
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs a running installation, its fake media provider and a model endpoint"]
 async fn an_admin_generates_an_image_that_artifact_stores() -> Result<()> {
-    let (session, transcript) = ask(
+    let (client, transcript) = ask(
         "acceptance-admin",
         "Generate an image of a red circle on a white background with the fake text-to-image model, and tell me where it is stored.",
     )
@@ -144,18 +153,18 @@ async fn an_admin_generates_an_image_that_artifact_stores() -> Result<()> {
     let artifact = generation["artifacts"][0]["artifactUri"]
         .as_str()
         .context("the generation stored no artifact")?;
-    let stored = read_json(&session, artifact).await?;
+    let stored = read_json(&client, &ResourceUri::new(artifact)?).await?;
     ensure!(
         stored["artifact"]["mediaType"] == "image/png",
         "Artifact does not hold the generated image as image/png: {stored}"
     );
-    session.close().await
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs a running installation and a model endpoint"]
 async fn a_member_cannot_run_a_billed_generation() -> Result<()> {
-    let (session, transcript) = ask(
+    let (_, transcript) = ask(
         "acceptance-member",
         "Generate an image of a red circle with the fake text-to-image model.",
     )
@@ -164,5 +173,5 @@ async fn a_member_cannot_run_a_billed_generation() -> Result<()> {
         results(&transcript, "media__run").next().is_none(),
         "the member ran a billed generation"
     );
-    session.close().await
+    Ok(())
 }

@@ -15,8 +15,7 @@ name = "veoveo-sdk-rust-cli"
 path = "src/main.rs"
 
 [dependencies]
-veoveo-oauth-client.workspace = true
-veoveo-sdk-rust-conformance.workspace = true
+veoveo-sdk-rust = { workspace = true, features = ["client-credentials"] }
 veoveo-types.workspace = true
 anyhow.workspace = true
 chrono.workspace = true

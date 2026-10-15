@@ -3781,6 +3781,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "veoveo-oauth-client"
+version = "0.1.0"
+source = "git+https://github.com/VeoveoAI/veoveo-core?rev=c0c8254f4a1f532a7c8bb5123639d9997700b105#c0c8254f4a1f532a7c8bb5123639d9997700b105"
+dependencies = [
+ "jsonwebtoken",
+ "schemars",
+ "serde",
+ "thiserror 2.0.21",
+ "url",
+ "uuid",
+ "veoveo-types",
+ "zeroize",
+]
+
+[[package]]
 name = "veoveo-platform-store"
 version = "0.1.0"
 source = "git+https://github.com/VeoveoAI/veoveo-core?rev=c0c8254f4a1f532a7c8bb5123639d9997700b105#c0c8254f4a1f532a7c8bb5123639d9997700b105"
@@ -3850,6 +3865,26 @@ dependencies = [
  "veoveo-types",
  "veoveo-usage",
  "veoveo-usage-contract",
+]
+
+[[package]]
+name = "veoveo-sdk-rust-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "reqwest",
+ "rmcp",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "uuid",
+ "veoveo-oauth-client",
+ "veoveo-sdk-rust-conformance",
+ "veoveo-types",
 ]
 
 [[package]]

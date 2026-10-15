@@ -15,6 +15,7 @@ which holds the protocol-independent platform, and on rmcp, the official MCP Rus
 | `veoveo-sdk-rust` | The library: the [hosted MCP server contract](crates/veoveo-sdk-rust/DESIGN.md), hosting, forwarded identity, [registration](crates/veoveo-sdk-rust/src/registration/DESIGN.md), [calls to other servers](crates/veoveo-sdk-rust/DESIGN.md#calls-to-other-servers), [MCP Apps](crates/veoveo-sdk-rust/src/apps/DESIGN.md), the MCP Tasks adapter, [Task work](crates/veoveo-sdk-rust/DESIGN.md#task-work) with steps, operations and usage, and the MCP audit vocabulary |
 | `veoveo-sdk-rust-conformance` | The [conformance suite](crates/veoveo-sdk-rust-conformance/DESIGN.md) and its `conformance` and `certify` binaries, which certify a running server over MCP |
 | `veoveo-sdk-rust-fixture` | The [Observatory test server](crates/veoveo-sdk-rust-fixture/DESIGN.md), Ledger and Relay for calls between servers, Foundry and its fake provider Kiln for operations and usage, and the tool-input fixtures servers use in their tests |
+| `veoveo-sdk-rust-cli` | The [Gateway client](crates/veoveo-sdk-rust-cli/DESIGN.md) `veoveo-sdk-rust-cli`, which lists, reads and calls what one installation caller sees, lets a chat model work on a request with those tools, and runs use-case tests against a running installation |
 
 ## Features
 

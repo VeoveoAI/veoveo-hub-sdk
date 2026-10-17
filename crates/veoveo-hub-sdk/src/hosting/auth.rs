@@ -1,0 +1,174 @@
+//! Hub internal authentication for hosted servers.
+//!
+//! The middleware verifies the Hub's forwarded access token on every request,
+//! refreshing the issuer's keys when the token names one the server does not hold, and
+//! places the verified [`HubInternalIdentity`] and the raw [`ForwardedBearer`] into
+//! the request extensions. Handlers read them back with [`hub_identity`],
+//! and [`forwarded_bearer`]. A request that reached a handler without
+//! the middleware fails closed with [`HUB_ROUTING_REQUIRED`].
+
+use std::{fmt, sync::Arc};
+
+use axum::{
+    extract::{Request, State},
+    http::{
+        HeaderMap, StatusCode,
+        header::{AUTHORIZATION, WWW_AUTHENTICATE},
+    },
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+use rmcp::{ErrorData, RoleServer, service::RequestContext};
+
+use crate::{ForwardedTokenVerifier, HUB_ROUTING_REQUIRED, HubInternalIdentity, ServerSlug};
+
+/// The Hub bearer this server received. A server presents it as the subject token
+/// when it calls another server through the Hub; it is never logged or displayed.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ForwardedBearer(String);
+
+impl ForwardedBearer {
+    /// Wraps a bearer the middleware did not produce, such as a test fixture.
+    pub fn new(token: impl Into<String>) -> Self {
+        Self(token.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Debug for ForwardedBearer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ForwardedBearer(<redacted>)")
+    }
+}
+
+/// Middleware state: the verifier bound to this server's audience, and the calls to
+/// other servers that `ctx.client()` makes for a verified caller.
+#[derive(Clone)]
+pub(super) struct InternalAuth {
+    pub(super) verifier: Arc<ForwardedTokenVerifier>,
+    pub(super) slug: ServerSlug,
+    pub(super) calls: Option<super::ServerCalls>,
+}
+
+pub(super) async fn authenticate(
+    State(auth): State<InternalAuth>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let (identity, bearer) = match verify(&auth.verifier, request.headers()).await {
+        Ok(verified) => verified,
+        Err(reason) => {
+            tracing::warn!(server = auth.slug.as_str(), reason, "rejected MCP request");
+            // RFC 6750 §3: name the Bearer scheme, and the error once a token was sent.
+            let challenge = if request.headers().contains_key(AUTHORIZATION) {
+                r#"Bearer error="invalid_token""#
+            } else {
+                "Bearer"
+            };
+            return (
+                StatusCode::UNAUTHORIZED,
+                [(WWW_AUTHENTICATE, challenge)],
+                "invalid hub authorization",
+            )
+                .into_response();
+        }
+    };
+    request.extensions_mut().insert(bearer);
+    request.extensions_mut().insert(identity);
+    if let Some(calls) = &auth.calls {
+        request.extensions_mut().insert(calls.clone());
+    }
+    next.run(request).await
+}
+
+async fn verify(
+    verifier: &ForwardedTokenVerifier,
+    headers: &HeaderMap,
+) -> Result<(HubInternalIdentity, ForwardedBearer), &'static str> {
+    let header = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or("missing internal authorization")?;
+    let token = bearer_token(header)?;
+    let identity = verifier
+        .verify(token)
+        .await
+        .map_err(|_| "internal authorization did not verify")?;
+    Ok((identity, ForwardedBearer(token.to_owned())))
+}
+
+fn bearer_token(header: &str) -> Result<&str, &'static str> {
+    let Some((scheme, token)) = header.split_once(' ') else {
+        return Err("missing bearer token");
+    };
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return Err("authorization scheme must be Bearer");
+    }
+    if token.is_empty() || token.chars().any(char::is_whitespace) {
+        return Err("bearer token contains invalid whitespace");
+    }
+    Ok(token)
+}
+
+fn routing_required() -> ErrorData {
+    ErrorData::invalid_request(HUB_ROUTING_REQUIRED, None)
+}
+
+fn http_parts(
+    context: &RequestContext<RoleServer>,
+) -> Result<&axum::http::request::Parts, ErrorData> {
+    context
+        .extensions
+        .get::<axum::http::request::Parts>()
+        .ok_or_else(routing_required)
+}
+
+/// The verified hub identity for this request.
+pub fn hub_identity(
+    context: &RequestContext<RoleServer>,
+) -> Result<HubInternalIdentity, ErrorData> {
+    http_parts(context)?
+        .extensions
+        .get::<HubInternalIdentity>()
+        .cloned()
+        .ok_or_else(routing_required)
+}
+
+/// The Hub bearer for this request, the subject token of a call to another server.
+pub fn forwarded_bearer(
+    context: &RequestContext<RoleServer>,
+) -> Result<ForwardedBearer, ErrorData> {
+    http_parts(context)?
+        .extensions
+        .get::<ForwardedBearer>()
+        .cloned()
+        .ok_or_else(routing_required)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bearer_token;
+
+    #[test]
+    fn bearer_tokens_require_the_bearer_scheme_and_no_whitespace() {
+        assert_eq!(bearer_token("Bearer abc"), Ok("abc"));
+        assert_eq!(bearer_token("bearer abc"), Ok("abc"));
+        assert!(bearer_token("Basic abc").is_err());
+        assert!(bearer_token("Bearer").is_err());
+        assert!(bearer_token("Bearer a b").is_err());
+        assert!(bearer_token("Bearer ").is_err());
+    }
+
+    #[test]
+    fn forwarded_bearers_never_print_their_value() {
+        let bearer = super::ForwardedBearer("secret".into());
+        assert_eq!(format!("{bearer:?}"), "ForwardedBearer(<redacted>)");
+    }
+}

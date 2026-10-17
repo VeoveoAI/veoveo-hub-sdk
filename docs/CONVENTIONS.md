@@ -1,6 +1,6 @@
 # MCP Naming Conventions
 
-These conventions extend [veoveo-core's naming and format conventions](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/docs/CONVENTIONS.md)
+These conventions extend [veoveo-core's naming and format conventions](https://github.com/VeoveoAI/veoveo-core/blob/0e4f26ab0f15b27509bdf6a3796df2f8041cbfb0/docs/CONVENTIONS.md)
 for MCP. Where a standard governs a name, the standard wins.
 
 ## Standards And Protocols
@@ -33,14 +33,14 @@ A concept has one noun across every surface, and each surface spells it in its o
 | Resource type | `<slug>.<singular>` | `time.event` |
 | Permission | `<slug>.<plural>.<verb>` | `time.events.write` |
 
-A server's URI scheme equals its slug. The Gateway projects a tool as `<slug>__<tool>`
+A server's URI scheme equals its slug. The Hub projects a tool as `<slug>__<tool>`
 when it lists tools from several servers. Resource templates use RFC 6570 simple
 expansion, and lists page through MCP cursors.
 
 ## Errors
 
 JSON-RPC errors use MCP's codes, plus Veoveo codes from `-31999` to `-31000`, outside the
-range JSON-RPC 2.0 reserves. `veoveo_sdk_rust::jsonrpc_codes` lists them.
+range JSON-RPC 2.0 reserves. `veoveo_hub_sdk::jsonrpc_codes` lists them.
 
 ## HTTP Paths
 

@@ -1,12 +1,12 @@
 # Agent Instructions
 
-These rules apply to veoveo-sdk-rust.
+These rules apply to veoveo-hub-sdk.
 
 - Use upstream runtimes and libraries unmodified and adapt through supported
   configuration. The rmcp fork pin in `Cargo.toml` records why it exists and when it
   goes.
 - Every name, identifier, format, wire field and protocol element follows a published
-  standard, [veoveo-core's conventions](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/docs/CONVENTIONS.md) or this repository's
+  standard, [veoveo-core's conventions](https://github.com/VeoveoAI/veoveo-core/blob/0e4f26ab0f15b27509bdf6a3796df2f8041cbfb0/docs/CONVENTIONS.md) or this repository's
   [MCP conventions](docs/CONVENTIONS.md). Extend a standard only through its own
   extension mechanism.
 - Prefer strong types: typed structs, enums and domain identifiers over raw strings and
@@ -16,7 +16,7 @@ These rules apply to veoveo-sdk-rust.
 - The `contract` feature carries declarations and wire types only.
   `tests/contract_boundary.rs` fails when it pulls in rmcp, tokio, axum, reqwest or sqlx;
   gate the dependencies themselves, not only the modules.
-- `crates/veoveo-sdk-rust/src/hosting` and `crates/veoveo-sdk-rust/src/durable_tasks` are
+- `crates/veoveo-hub-sdk/src/hosting` and `crates/veoveo-hub-sdk/src/durable_tasks` are
   protected: changes to them need the repository owner's review.
 - The SDK owns no queries. Tests that need a database run on a private cluster from
   core's store fixture, with PostgreSQL 18.6 from the dev image.

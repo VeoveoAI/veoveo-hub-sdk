@@ -31,13 +31,20 @@ pub fn json_read<T: Serialize + ?Sized>(
     ]))
 }
 
-/// A tool result with a short text summary and typed structured content.
+/// A tool result with a short summary and the same typed output in structured
+/// content and a JSON text block, as MCP recommends for clients consuming text.
 pub fn structured_result<T: Serialize + ?Sized>(
     summary: impl Into<String>,
     output: &T,
 ) -> Result<CallToolResult, ErrorData> {
-    let mut result = CallToolResult::success(vec![ContentBlock::text(summary.into())]);
-    result.structured_content = Some(serialize(output)?);
+    let output = serialize(output)?;
+    let json = serde_json::to_string(&output)
+        .map_err(|_| ErrorData::internal_error("result serialization failed", None))?;
+    let mut result = CallToolResult::success(vec![
+        ContentBlock::text(summary.into()),
+        ContentBlock::text(json),
+    ]);
+    result.structured_content = Some(output);
     Ok(result)
 }
 
@@ -50,11 +57,9 @@ pub fn product_result<T: Serialize>(
     link: Resource,
     output: &T,
 ) -> Result<CallToolResult, ErrorData> {
-    let mut result = CallToolResult::success(vec![
-        ContentBlock::text(status.into()),
-        ContentBlock::ResourceLink(link),
-    ]);
-    result.structured_content = Some(serialize(output)?);
+    let mut result = structured_result(status, output)?;
+    // Keep the product link immediately after its summary; JSON follows it.
+    result.content.insert(1, ContentBlock::ResourceLink(link));
     if !matches!(crate::task_completion::result_uri(&result), Ok(Some(_))) {
         return Err(ErrorData::internal_error(
             "product resultUri must match its resource link",
@@ -122,7 +127,15 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(result.content.len(), 2);
+        assert_eq!(result.content.len(), 3);
+        assert!(matches!(
+            &result.content[1],
+            ContentBlock::ResourceLink(resource) if resource.uri == link.uri
+        ));
+        assert_eq!(
+            json_text(&result),
+            *result.structured_content.as_ref().unwrap()
+        );
         assert_eq!(
             crate::task_completion::result_uri(&result)
                 .unwrap()
@@ -159,6 +172,62 @@ mod tests {
                 "{output}"
             );
         }
+    }
+
+    /// Model-facing text must carry the full output, including nested values a
+    /// caller needs for its next operation, rather than only a status summary.
+    fn json_text(result: &CallToolResult) -> serde_json::Value {
+        result
+            .content
+            .iter()
+            .find_map(|content| match content {
+                ContentBlock::Text(text) => serde_json::from_str(&text.text).ok(),
+                _ => None,
+            })
+            .expect("a result includes its serialized JSON in text content")
+    }
+
+    #[test]
+    fn text_only_consumers_receive_the_complete_structured_output() {
+        #[derive(Serialize)]
+        struct Transfer {
+            method: &'static str,
+            url: &'static str,
+            headers: std::collections::BTreeMap<&'static str, &'static str>,
+        }
+        let output = Transfer {
+            method: "GET",
+            url: "https://storage.example/file?signature=fixture&part=1",
+            headers: std::collections::BTreeMap::from([("x-fixture", "unchanged")]),
+        };
+        let result = structured_result("ready", &output).unwrap();
+        assert!(matches!(&result.content[0], ContentBlock::Text(text) if text.text == "ready"));
+        let text = json_text(&result);
+        assert_eq!(text, serde_json::to_value(&output).unwrap());
+        assert_eq!(text, *result.structured_content.as_ref().unwrap());
+        // The generic serializer also admits all JSON values, without changing
+        // their shape when constructing the text representation.
+        for output in [
+            serde_json::json!([1, {"nested": true}]),
+            serde_json::Value::Null,
+        ] {
+            let result = structured_result("ready", &output).unwrap();
+            assert_eq!(json_text(&result), output);
+            assert_eq!(result.structured_content, Some(output));
+        }
+    }
+
+    #[test]
+    fn output_serialization_failure_keeps_diagnostics_payload_free() {
+        struct Invalid;
+        impl Serialize for Invalid {
+            fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("fixture-private-payload"))
+            }
+        }
+        let error = structured_result("ready", &Invalid).unwrap_err();
+        assert_eq!(error.message, "result serialization failed");
+        assert!(error.data.is_none());
     }
 
     #[test]

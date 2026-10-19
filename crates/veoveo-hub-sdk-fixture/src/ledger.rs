@@ -9,73 +9,38 @@ use std::{
 
 use rmcp::{
     ErrorData, RoleServer,
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolRequestParams, CallToolResult, CancelTaskParams, ContentBlock, CreateTaskResult,
-        DetailedTask, GetTaskParams, GetTaskResult, ReadResourceRequestParams, ResourceTemplate,
-        ServerCapabilities, ServerConfig, SubscriptionFilter, Task, TaskPayload, UpdateTaskParams,
+        CallToolRequestParams, CancelTaskParams, CreateTaskResult, DetailedTask, GetTaskParams,
+        GetTaskResult, ServerCapabilities, ServerConfig, SubscriptionFilter, Task, TaskPayload,
+        UpdateTaskParams,
     },
     service::{RequestContext, SubscriptionContext},
-    tool, tool_router,
 };
-use serde::Serialize;
 use tokio::sync::broadcast;
 use veoveo_hub_sdk::{
-    HubInternalIdentity, ServerSlug,
-    hosting::{
-        DomainAddress, DomainRead, DomainServer, Hosted, TaskSupport, hub_identity, json_read,
-    },
-    registration::{AuthorizationBuilder, AuthorizationDeclaration, DeclarationError},
-    server_contract::{McpResource, McpResourceTemplate, McpServerContract, McpServerSetup},
+    HubInternalIdentity,
+    hosting::{DomainServer, Hosted, TaskSupport, hub_identity},
+    registration::{AuthorizationDeclaration, DeclarationError},
+    server_contract::{McpServerContract, McpServerSetup},
 };
-use veoveo_types::{
-    IdentifierError, ResourceAddress, ResourceScheme, ResourceTemplateUri, ResourceUri,
-};
+use veoveo_types::{ResourceAddress, ResourceScheme};
 
 use crate::calls::{
-    ENTRY_TEMPLATE, Entry, EntryName, EntryState, Inspection, LedgerAddress, LedgerPermission,
-    OpenEntry, Seal, Tallied, Tally,
+    Entry, EntryName, EntryState, Inspection, LedgerAddress, LedgerPermission, OpenEntry, Seal,
+    Tallied, Tally,
 };
-use crate::calls_support::{CallsResource, NoScope, contract_config, docs, require};
+use crate::calls_support::{NoScope, contract_config, docs, require};
 
 pub struct LedgerContract;
 
-static DOCS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> =
-    LazyLock::new(|| docs("ledger", include_str!("../testdata/ledger-compliance.json")));
+static DOCS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> = LazyLock::new(|| docs("ledger"));
 static SETUP: LazyLock<McpServerSetup<LedgerContract>> =
     LazyLock::new(|| McpServerSetup::new().expect("Ledger setup"));
 
-/// The addresses Ledger serves: the host's documents and contract, and its entries.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LedgerResource {
-    Host(CallsResource<LedgerContract>),
-    Entry(EntryName),
-}
-
-impl ResourceAddress for LedgerResource {
-    type Error = IdentifierError;
-    fn parse(uri: &ResourceUri) -> Result<Self, Self::Error> {
-        match LedgerAddress::parse(uri) {
-            Ok(LedgerAddress::Entry(entry)) => Ok(Self::Entry(entry)),
-            Err(_) => CallsResource::parse(uri).map(Self::Host),
-        }
-    }
-    fn to_uri(&self) -> Result<ResourceUri, Self::Error> {
-        match self {
-            Self::Host(address) => address.to_uri(),
-            Self::Entry(entry) => LedgerAddress::Entry(entry.clone())
-                .to_uri()
-                .map_err(|_| IdentifierError::new(entry.as_str(), "invalid entry address")),
-        }
-    }
-}
-
 impl McpServerContract for LedgerContract {
+    type Server = LedgerDomain;
     type Scope = NoScope;
-    type Resource = LedgerResource;
-    fn slug() -> ServerSlug {
-        ServerSlug::parse("ledger").unwrap()
-    }
+    type Provider = crate::calls::Ledger;
     fn scheme() -> ResourceScheme {
         ResourceScheme::parse("ledger").unwrap()
     }
@@ -96,35 +61,16 @@ impl McpServerContract for LedgerContract {
                 .build(),
         )
     }
-    fn resources()
-    -> Result<Vec<McpResource<Self::Resource>>, veoveo_hub_sdk::server_contract::McpSetupError>
-    {
-        CallsResource::declared_as(LedgerResource::Host)
-    }
-    fn resource_templates()
-    -> Result<Vec<McpResourceTemplate>, veoveo_hub_sdk::server_contract::McpSetupError> {
-        let mut templates = CallsResource::<Self>::templates()?;
-        templates.push(McpResourceTemplate::new(entry_template(), |uri| {
-            ResourceTemplate::new(uri, "entry")
-        })?);
-        Ok(templates)
-    }
-}
-
-fn entry_template() -> ResourceTemplateUri {
-    ResourceTemplateUri::new(ENTRY_TEMPLATE).expect("the entry template is valid")
 }
 
 /// Ledger's declaration: each tool and the entry template require one Ledger permission.
 pub fn authorization() -> Result<AuthorizationDeclaration, DeclarationError> {
-    let tool = |name: &str| veoveo_hub_sdk::LocalToolName::parse(name).unwrap();
-    AuthorizationBuilder::<LedgerPermission>::new()
-        .tool(tool("inspect"), LedgerPermission::EntriesRead)
-        .tool(tool("read_seal"), LedgerPermission::SealsRead)
-        .tool(tool("tally"), LedgerPermission::EntriesRead)
-        .tool(tool("open_entry"), LedgerPermission::EntriesWrite)
-        .resource_template(entry_template(), LedgerPermission::EntriesRead)
-        .build(&LedgerContract::slug(), &LedgerContract::scheme())
+    let declaration = ROUTES.authorization();
+    declaration.check(
+        &veoveo_hub_sdk::server_contract::provider_slug::<LedgerContract>(),
+        &LedgerContract::scheme(),
+    )?;
+    Ok(declaration)
 }
 
 /// What Ledger reports about the call that reached it.
@@ -132,120 +78,83 @@ pub fn inspection(identity: &HubInternalIdentity) -> Inspection {
     crate::calls_support::inspection(identity)
 }
 
-fn structured<T: Serialize>(text: &str, value: &T) -> Result<CallToolResult, ErrorData> {
-    let mut result = CallToolResult::success(vec![ContentBlock::text(text)]);
-    result.structured_content = Some(
-        serde_json::to_value(value)
-            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?,
-    );
-    Ok(result)
-}
-
 #[derive(Clone)]
 pub struct LedgerDomain {
-    tool_router: ToolRouter<Self>,
     state: LedgerTasks,
 }
-
 impl Default for LedgerDomain {
     fn default() -> Self {
         Self::new()
     }
 }
-
-#[tool_router]
 impl LedgerDomain {
     pub fn new() -> Self {
         Self::with_state(LedgerTasks::default())
     }
-
-    /// Ledger over shared state: its Tasks and entries.
     pub fn with_state(state: LedgerTasks) -> Self {
-        Self {
-            tool_router: Self::tool_router(),
-            state,
-        }
-    }
-
-    #[tool(description = "Open an entry, which closes after the given number of milliseconds.")]
-    async fn open_entry(
-        &self,
-        Parameters(request): Parameters<OpenEntry>,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        require(&context, LedgerPermission::EntriesWrite)?;
-        let entry = self
-            .state
-            .open(request.entry, Duration::from_millis(request.close_after_ms))
-            .await;
-        structured("opened", &entry)
-    }
-
-    #[tool(description = "Report the identity this call carries.")]
-    async fn inspect(
-        &self,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let identity = require(&context, LedgerPermission::EntriesRead)?;
-        structured("inspected", &inspection(&identity))
-    }
-
-    #[tool(description = "Read the ledger's seal, a sensitive value.")]
-    async fn read_seal(
-        &self,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        require(&context, LedgerPermission::SealsRead)?;
-        structured(
-            "sealed",
-            &Seal {
-                value: "seal-7".into(),
-            },
-        )
-    }
-
-    #[tool(description = "Count entries in a Task.")]
-    async fn tally(
-        &self,
-        Parameters(request): Parameters<Tally>,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let identity = require(&context, LedgerPermission::EntriesRead)?;
-        structured(
-            "tallied",
-            &Tallied {
-                entries: request.entries,
-                inspection: inspection(&identity),
-            },
-        )
+        Self { state }
     }
 }
-
+static ROUTES: LazyLock<veoveo_hub_sdk::hosting::Routes<LedgerDomain>> = LazyLock::new(|| {
+    use veoveo_hub_sdk::hosting::{ReadCache, ResourceBuilder, RoutePolicy, Routes};
+    let policy = |permission| RoutePolicy::permission(permission).expect("fixture permission");
+    Routes::<LedgerDomain>::builder(RoutePolicy::Authenticated)
+        .tool::<crate::calls::Inspect, _, _>(
+            "Inspect caller identity",
+            policy(LedgerPermission::EntriesRead),
+            |_domain, _, context| async move { Ok(inspection(&hub_identity(&context)?)) },
+        )
+        .tool::<crate::calls::ReadSeal, _, _>(
+            "Read seal",
+            policy(LedgerPermission::SealsRead),
+            |_domain, _, _| async move {
+                Ok(Seal {
+                    value: "seal-7".into(),
+                })
+            },
+        )
+        .tool::<OpenEntry, _, _>(
+            "Open entry",
+            policy(LedgerPermission::EntriesWrite),
+            |domain, request, _| async move {
+                Ok(domain
+                    .state
+                    .open(request.entry, Duration::from_millis(request.close_after_ms))
+                    .await)
+            },
+        )
+        .task::<Tally, _, _>(
+            "Count entries",
+            policy(LedgerPermission::EntriesRead),
+            |_domain, request, context| async move {
+                Ok(Tallied {
+                    entries: request.entries,
+                    inspection: inspection(&hub_identity(&context)?),
+                })
+            },
+        )
+        .template::<crate::calls::ReadEntry, _, _>(
+            ResourceBuilder::new("Entry")
+                .reader(
+                    |domain: LedgerDomain, request: crate::calls::ReadEntry, _| async move {
+                        domain
+                            .state
+                            .entry(&request.entry)
+                            .ok_or_else(|| ErrorData::resource_not_found("no such entry", None))
+                    },
+                )
+                .policy(policy(LedgerPermission::EntriesRead))
+                .cache(ReadCache::NoStore),
+        )
+        .build()
+});
 impl DomainServer for LedgerDomain {
     type Contract = LedgerContract;
     fn setup() -> &'static McpServerSetup<LedgerContract> {
         &SETUP
     }
-    fn tool_router(&self) -> &ToolRouter<Self> {
-        &self.tool_router
-    }
-    async fn read(
-        &self,
-        address: DomainAddress<LedgerContract>,
-        request: &ReadResourceRequestParams,
-        context: &RequestContext<RoleServer>,
-    ) -> Result<DomainRead, ErrorData> {
-        match address {
-            LedgerResource::Host(_) => Err(veoveo_hub_sdk::hosting::served_by_host()),
-            LedgerResource::Entry(name) => {
-                require(context, LedgerPermission::EntriesRead)?;
-                let entry = self
-                    .state
-                    .entry(&name)
-                    .ok_or_else(|| ErrorData::resource_not_found("no such entry", None))?;
-                Ok(DomainRead::no_store(json_read(&request.uri, &entry)?))
-            }
-        }
+    fn routes() -> &'static veoveo_hub_sdk::hosting::Routes<Self> {
+        &ROUTES
     }
 }
 
@@ -381,13 +290,10 @@ impl TaskSupport for LedgerTasks {
                 payload: TaskPayload::Working,
             },
         );
-        let result = structured(
-            "tallied",
-            &Tallied {
-                entries: tally.entries,
-                inspection: inspection(&identity),
-            },
-        )?;
+        let result = veoveo_hub_sdk::hosting::task_result::<Tally>(&Tallied {
+            entries: tally.entries,
+            inspection: inspection(&identity),
+        })?;
         let tasks = self.clone();
         let delay = self.delay;
         tokio::spawn(async move {

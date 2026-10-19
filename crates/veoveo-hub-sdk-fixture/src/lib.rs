@@ -1,7 +1,7 @@
 //! The Observatory test server, the calls fixture and the shared tool-input fixtures.
 //!
 //! Observatory is an independent server vocabulary that the Hub registers as its
-//! test peer and that MCP conformance certifies. The calls fixture is two servers:
+//! test peer. The calls fixture is two servers:
 //! Ledger, a provider whose `calls` contract a consumer depends on, and Relay, which
 //! calls Ledger for its own caller. Foundry, the operations fixture, hands its casts to
 //! Kiln, a fake provider, and parks its Tasks until Kiln's signed callbacks settle them.
@@ -25,4 +25,4 @@ pub mod relay;
 pub mod tool_inputs;
 
 #[cfg(feature = "server")]
-pub use calls_support::{CallsResource, NoScope};
+pub use calls_support::NoScope;

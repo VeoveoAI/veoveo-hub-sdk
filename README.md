@@ -13,20 +13,23 @@ which holds the protocol-independent platform, and on rmcp, the official MCP Rus
 | Crate | Purpose |
 |---|---|
 | `veoveo-hub-sdk` | The library: the [hosted MCP server contract](crates/veoveo-hub-sdk/DESIGN.md), hosting, forwarded identity, [registration](crates/veoveo-hub-sdk/src/registration/DESIGN.md), [calls to other servers](crates/veoveo-hub-sdk/DESIGN.md#calls-to-other-servers), [MCP Apps](crates/veoveo-hub-sdk/src/apps/DESIGN.md), the MCP Tasks adapter, [Task work](crates/veoveo-hub-sdk/DESIGN.md#task-work) with steps, operations and usage, and the MCP audit vocabulary |
-| `veoveo-hub-sdk-conformance` | The [conformance suite](crates/veoveo-hub-sdk-conformance/DESIGN.md) and its `conformance` and `certify` binaries, which certify a running server over MCP |
 | `veoveo-hub-sdk-fixture` | The [Observatory test server](crates/veoveo-hub-sdk-fixture/DESIGN.md), Ledger and Relay for calls between servers, Foundry and its fake provider Kiln for operations and usage, and the tool-input fixtures servers use in their tests |
 | `veoveo-hub-sdk-cli` | The [Hub client](crates/veoveo-hub-sdk-cli/DESIGN.md) `veoveo-hub-sdk-cli`, which lists, reads and calls what one installation caller sees, lets a chat model work on a request with those tools, and runs use-case tests against a running installation |
 
-C04 now requires measured domain paging evidence. Generic CLI/legacy runner calls
-report `VV-MCP-PAGING-001` as `Incomplete` until an owner harness supplies actual
-resource/tool fetch adapters through `run_hosted_server_conformance_with_paging`.
-See the [paging contract and migration](crates/veoveo-hub-sdk-conformance/DESIGN.md#domain-paging-inspection).
+Resources and tools are authored as typed declarations. `ResourceRead` binds an
+address to its content, `ToolCall` binds input to a single output, and collection
+routes use Core's `Collection`, `Pager` and immutable `Page<C>`. The shared route
+builder supplies descriptors, authorization requirements, dispatch and schemas from
+those associations. Thin attributes generate ordinary trait implementations.
+The previous conformance crate, certification commands and per-rule owner profiles
+have been removed. Dynamic authorization, transport and database behavior remain
+ordinary implementation tests.
 
 ## Features
 
 | Feature of `veoveo-hub-sdk` | Gives | Pulls in |
 |---|---|---|
-| `contract` | Declarations and wire types a server shares with its consumers: identity, registration and authorization declarations, typed tool calls and resource reads, the token exchange, Hub metadata, document and compliance declarations, MCP audit details, usage kinds and Task cost | veoveo-types, the audit envelope, the usage ledger's types, Serde and Schemars |
+| `contract` | Declarations and wire types a server shares with its consumers: identity, registration and authorization declarations, typed tool calls and resource reads, the token exchange, Hub metadata, document and contract declarations, MCP audit details, usage kinds and Task cost | veoveo-types, the audit envelope, the usage ledger's types, Serde and Schemars |
 | `client` | Typed calls, Task handles and typed resource reads and waits through a Hub profile | rmcp's client and Streamable HTTP client transport, tokio and reqwest; no rmcp server or macros |
 | `client-credentials` | `client` plus a caller's own client-credentials bearer, discovered from the profile's metadata and requested with an assertion signed by the caller's key | core's OAuth client and its JWT signing |
 | `server` (default) | Everything a hosted server runs, including `ctx.client()` calls to other servers for the current caller, and `TaskWorker` with `ctx.step`, `ctx.operation`, `ctx.wait` and `ctx.usage` | rmcp, tokio, axum, reqwest, core's Task runtime and usage ledger |

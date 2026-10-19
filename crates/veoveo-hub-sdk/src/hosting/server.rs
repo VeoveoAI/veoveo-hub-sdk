@@ -291,7 +291,8 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         deployment: &PublicDeployment,
         allow_loopback_hosts: bool,
     ) -> anyhow::Result<HostedServerBuilder<D, Provided<Deployment>, Trust, H>> {
-        let endpoint = deployment.server(D::Contract::slug().as_str())?;
+        let endpoint =
+            deployment.server(crate::server_contract::provider_slug::<D::Contract>().as_str())?;
         let allowed_hosts = public_allowed_hosts(deployment, allow_loopback_hosts);
         Ok(self.with_deployment(Mount::Public(endpoint), allowed_hosts))
     }
@@ -303,7 +304,10 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         self,
         allowed_hosts: impl IntoIterator<Item = String>,
     ) -> HostedServerBuilder<D, Provided<Deployment>, Trust, H> {
-        let mount = Mount::Internal(format!("/{}", D::Contract::slug().as_str()));
+        let mount = Mount::Internal(format!(
+            "/{}",
+            crate::server_contract::provider_slug::<D::Contract>().as_str()
+        ));
         self.with_deployment(mount, allowed_hosts.into_iter().collect())
     }
 
@@ -327,7 +331,11 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         trust: &AccessTokenTrust,
         http: reqwest::Client,
     ) -> anyhow::Result<HostedServerBuilder<D, Dep, Provided<Arc<ForwardedTokenVerifier>>, H>> {
-        let verifier = ForwardedTokenVerifier::new(trust, D::Contract::slug(), http)?;
+        let verifier = ForwardedTokenVerifier::new(
+            trust,
+            crate::server_contract::provider_slug::<D::Contract>(),
+            http,
+        )?;
         Ok(self.with_verifier(verifier))
     }
 
@@ -442,7 +450,7 @@ where
 {
     /// Assembles the router. Every hosted server has the same routes and layers.
     pub fn build(self) -> HostedServer {
-        let slug = D::Contract::slug();
+        let slug = crate::server_contract::provider_slug::<D::Contract>();
         let Provided(Deployment {
             mount,
             mut allowed_hosts,
@@ -455,18 +463,9 @@ where
         let cancel = CancellationToken::new();
 
         let factory = Arc::new(factory);
-        let authorize: admin::DocumentAuthorizer = {
-            let factory = factory.clone();
-            Arc::new(move |identity, address| {
-                let hosted = factory();
-                Box::pin(async move {
-                    hosted
-                        .domain()
-                        .authorize_documents(&identity, &address)
-                        .await
-                })
-            })
-        };
+        let authorize: admin::DocumentAuthorizer = Arc::new(move |identity, _address| {
+            Box::pin(async move { D::routes().authorize_documents_identity(&identity) })
+        });
         let mut transport = canonical_streamable_http_server_config()
             .with_allowed_hosts(allowed_hosts.iter().cloned())
             .with_cancellation_token(cancel.child_token());

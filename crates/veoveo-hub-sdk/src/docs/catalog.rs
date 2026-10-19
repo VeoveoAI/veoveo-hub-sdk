@@ -107,7 +107,7 @@ impl RequirementId {
             ),
             Self::C04 => (
                 RequirementLevel::Must,
-                "Addressable state is exposed as resources or resource templates under the server's canonical scheme; growing collections, including pageable tool results, satisfy the Domain Collection Paging contract: bounded pages, opaque scoped continuation, deterministic complete traversal on unchanged data, current authorization and explicit mutation semantics. Exact reads do not scan the full collection.",
+                "Addressable state is exposed as resources or resource templates under the server's canonical scheme. Growing resource collections and every collection-returning tool, including bounded or fixed listings, use the collection request/page contract: bounded pages, opaque scoped continuation, deterministic complete traversal on unchanged data, current authorization and explicit mutation semantics. Embedded arrays and batch action results remain parts of single output records. Exact reads do not scan the full collection.",
             ),
             Self::C05 => (
                 RequirementLevel::Must,
@@ -213,7 +213,7 @@ impl RequirementId {
             ),
             Self::C33 => (
                 RequirementLevel::Must,
-                "Discovery identifiers, controlled DTO fields and values, adopted extension metadata and selected owner schema evidence satisfy the naming classes; narrow owner, JWT, frozen and external declarations require source review.",
+                "Discovery identifiers, controlled DTO fields and values, and adopted extension metadata derive from typed naming declarations; narrow owner, JWT, frozen and external declarations require source review.",
             ),
         };
         RequirementMetadata {

@@ -7,27 +7,25 @@ use veoveo_types::{
     ScopeName, UriAuthority, UriSegment,
 };
 
-use crate::{
-    ServerSlug,
-    docs::{DOC_ID_AGENTS, DOC_ID_DESIGN, ServerDocs},
-};
+use crate::docs::{DOC_ID_AGENTS, DOC_ID_DESIGN, ServerDocs};
 
 /// MCP associations implemented in a server's MCP feature, above its pure contract.
 /// An empty scope vocabulary is valid. This trait establishes API structure, not
 /// authentication, domain authorization, recovery, or behavioral compliance.
-pub trait McpServerContract {
+pub trait McpServerContract: Sized + 'static {
+    type Server: crate::hosting::DomainServer<Contract = Self>;
+    type Provider: crate::calls::ProviderContract;
     type Scope: ScopeDefinition + 'static;
-    type Resource: ResourceAddress + Eq;
 
-    fn slug() -> ServerSlug;
     fn scheme() -> ResourceScheme;
     fn scopes() -> &'static [Self::Scope];
     fn documents() -> &'static ServerDocs;
     fn server_config() -> ServerConfig;
-    fn resources() -> Result<Vec<McpResource<Self::Resource>>, McpSetupError>;
-    /// Fixed protocol declarations. Owners qualify template expansion against
-    /// their typed parser; the generic policy matcher is not an RFC 6570 engine.
-    fn resource_templates() -> Result<Vec<McpResourceTemplate>, McpSetupError>;
+}
+
+/// The provider identity shared by typed requests and their hosted routes.
+pub fn provider_slug<C: McpServerContract>() -> veoveo_types::ServerSlug {
+    <C::Provider as crate::calls::ProviderContract>::slug()
 }
 
 /// One protocol descriptor bound to its domain address. The builder can reuse
@@ -38,13 +36,16 @@ pub trait McpServerContract {
 /// McpResource::new("example://items", |uri| Resource::new(uri, "items"));
 /// ```
 #[derive(Debug, Clone)]
-pub struct McpResource<A> {
-    address: A,
+pub struct McpResource {
+    address: veoveo_types::ResourceUri,
     descriptor: Resource,
 }
 
-impl<A: ResourceAddress + Eq> McpResource<A> {
-    pub fn new(address: A, describe: impl FnOnce(&str) -> Resource) -> Result<Self, McpSetupError> {
+impl McpResource {
+    pub(crate) fn new<A: ResourceAddress + Eq>(
+        address: A,
+        describe: impl FnOnce(&str) -> Resource,
+    ) -> Result<Self, McpSetupError> {
         let uri = address
             .to_uri()
             .map_err(|_| McpSetupError::InvalidResource)?;
@@ -61,12 +62,21 @@ impl<A: ResourceAddress + Eq> McpResource<A> {
             return Err(McpSetupError::MissingResourceName);
         }
         Ok(Self {
-            address,
+            address: uri,
             descriptor,
         })
     }
 
-    pub fn address(&self) -> &A {
+    fn host(address: veoveo_types::ResourceUri, name: &str) -> Result<Self, McpSetupError> {
+        address
+            .components()
+            .map_err(|_| McpSetupError::InvalidResource)?;
+        Ok(Self {
+            descriptor: Resource::new(address.as_str(), name.to_owned()),
+            address,
+        })
+    }
+    pub fn address(&self) -> &veoveo_types::ResourceUri {
         &self.address
     }
 
@@ -90,7 +100,7 @@ pub struct McpResourceTemplate {
 }
 
 impl McpResourceTemplate {
-    pub fn new(
+    pub(crate) fn new(
         template: ResourceTemplateUri,
         describe: impl FnOnce(&str) -> ResourceTemplate,
     ) -> Result<Self, McpSetupError> {
@@ -119,7 +129,7 @@ impl McpResourceTemplate {
 /// Resource reads and tool handlers still enforce the caller's current policy.
 pub struct McpServerSetup<C: McpServerContract> {
     info: ServerConfig,
-    resources: Vec<McpResource<C::Resource>>,
+    resources: Vec<McpResource>,
     templates: Vec<McpResourceTemplate>,
     scopes: BTreeSet<ScopeName>,
     documents: &'static ServerDocs,
@@ -128,19 +138,58 @@ pub struct McpServerSetup<C: McpServerContract> {
 
 impl<C: McpServerContract> McpServerSetup<C> {
     pub fn new() -> Result<Self, McpSetupError> {
-        let slug = C::slug();
+        let slug = provider_slug::<C>();
         let scheme = C::scheme();
-        let info = C::server_config();
+        let mut info = C::server_config();
         let documents = C::documents();
         if info.server_info.name != slug.as_str() || documents.server() != slug.as_str() {
             return Err(McpSetupError::IdentityMismatch);
         }
+        let native = rmcp::model::ServerCapabilities::builder()
+            .enable_resources()
+            .enable_completions()
+            .enable_tools()
+            .enable_prompts()
+            .build();
         if info.capabilities.resources.is_none() {
-            return Err(McpSetupError::MissingResourcesCapability);
+            info.capabilities.resources = native.resources;
         }
-        // Every server declares the docs member template, whose `doc_id` completes.
         if info.capabilities.completions.is_none() {
-            return Err(McpSetupError::MissingCompletionsCapability);
+            info.capabilities.completions = native.completions;
+        }
+        use crate::hosting::DomainServer;
+        if C::Server::routes().has_tools() {
+            if info.capabilities.tools.is_none() {
+                info.capabilities.tools = native.tools;
+            }
+        } else {
+            info.capabilities.tools = None;
+        }
+        if C::Server::routes().has_prompts() {
+            if info.capabilities.prompts.is_none() {
+                info.capabilities.prompts = native.prompts;
+            }
+        } else {
+            info.capabilities.prompts = None;
+        }
+        if C::Server::routes().has_tasks() {
+            info.capabilities.extensions.get_or_insert_default().insert(
+                rmcp::model::TASKS_EXTENSION_ID.to_owned(),
+                rmcp::model::JsonObject::new(),
+            );
+        }
+        let extensions = info.capabilities.extensions.get_or_insert_default();
+        extensions.remove(crate::registration::AUTHORIZATION_EXTENSION_ID);
+        if extensions.contains_key(crate::registration::REGISTRATION_EXTENSION_ID) {
+            extensions.insert(
+                crate::registration::AUTHORIZATION_EXTENSION_ID.to_owned(),
+                match serde_json::to_value(C::Server::routes().authorization())
+                    .expect("typed route authorization serializes")
+                {
+                    serde_json::Value::Object(object) => object,
+                    _ => unreachable!("authorization is an object"),
+                },
+            );
         }
         let mut scopes = BTreeSet::new();
         for scope in C::scopes() {
@@ -148,7 +197,20 @@ impl<C: McpServerContract> McpServerSetup<C> {
                 return Err(McpSetupError::DuplicateScope);
             }
         }
-        let mut resources = C::resources()?;
+        let mut resources = C::Server::routes().resources();
+        for (root, name) in [("docs", "Documents"), ("contract", "Contract")] {
+            let uri = well_known_builder(&scheme, root)?
+                .build()
+                .map_err(|_| McpSetupError::InvalidDocument)?;
+            resources.push(McpResource::host(uri, name)?);
+        }
+        for doc in documents.iter() {
+            let uri = well_known_builder(&scheme, "docs")?
+                .segment(UriSegment::new(doc.id).map_err(|_| McpSetupError::InvalidDocument)?)
+                .build()
+                .map_err(|_| McpSetupError::InvalidDocument)?;
+            resources.push(McpResource::host(uri, doc.title)?);
+        }
         resources.sort_by(|a, b| a.descriptor.uri.cmp(&b.descriptor.uri));
         let mut addresses = BTreeSet::new();
         for resource in &resources {
@@ -164,17 +226,6 @@ impl<C: McpServerContract> McpServerSetup<C> {
                 return Err(McpSetupError::MissingDocument);
             }
         }
-        documents
-            .admitted_profile()
-            .map_err(|_| McpSetupError::InvalidComplianceProfile)?;
-        for root in ["docs", "contract"] {
-            let uri = well_known_builder(&scheme, root)?
-                .build()
-                .map_err(|_| McpSetupError::InvalidDocument)?;
-            if !addresses.contains(uri.as_str()) {
-                return Err(McpSetupError::MissingWellKnownResource);
-            }
-        }
         let mut document_ids = BTreeSet::new();
         for doc in documents.iter() {
             if doc.body.trim().is_empty() {
@@ -183,22 +234,12 @@ impl<C: McpServerContract> McpServerSetup<C> {
             if !document_ids.insert(doc.id) {
                 return Err(McpSetupError::InvalidDocument);
             }
-            let uri = well_known_builder(&scheme, "docs")?
-                .segment(UriSegment::new(doc.id).map_err(|_| McpSetupError::InvalidDocument)?)
-                .build()
-                .map_err(|_| McpSetupError::InvalidDocument)?;
-            if !addresses.contains(uri.as_str()) {
-                return Err(McpSetupError::MissingWellKnownResource);
-            }
         }
-        let mut templates = C::resource_templates()?;
-        let docs_template = crate::docs::docs_member_template(&scheme);
-        if !templates
-            .iter()
-            .any(|template| template.template == docs_template)
-        {
-            return Err(McpSetupError::MissingDocumentTemplate);
-        }
+        let mut templates = C::Server::routes().templates();
+        templates.push(McpResourceTemplate::new(
+            crate::docs::docs_member_template(&scheme),
+            |uri| ResourceTemplate::new(uri, "Document"),
+        )?);
         templates.sort_by(|a, b| a.template.cmp(&b.template));
         let mut declared_templates = BTreeSet::new();
         for template in &templates {
@@ -219,7 +260,7 @@ impl<C: McpServerContract> McpServerSetup<C> {
     pub fn server_config(&self) -> &ServerConfig {
         &self.info
     }
-    pub fn resources(&self) -> &[McpResource<C::Resource>] {
+    pub fn resources(&self) -> &[McpResource] {
         &self.resources
     }
     pub fn resource_templates(&self) -> &[McpResourceTemplate] {
@@ -310,8 +351,6 @@ fn well_known_builder(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpSetupError {
     IdentityMismatch,
-    MissingResourcesCapability,
-    MissingCompletionsCapability,
     InvalidResource,
     ResourceRoundTrip,
     DescriptorAddressMismatch,
@@ -320,12 +359,9 @@ pub enum McpSetupError {
     DuplicateScope,
     MissingDocument,
     InvalidDocument,
-    InvalidComplianceProfile,
-    MissingWellKnownResource,
     InvalidTemplate,
     DescriptorTemplateMismatch,
     DuplicateTemplate,
-    MissingDocumentTemplate,
 }
 
 impl fmt::Display for McpSetupError {
@@ -333,10 +369,6 @@ impl fmt::Display for McpSetupError {
         f.write_str(match self {
             Self::IdentityMismatch => {
                 "server slug, implementation name and document owner must agree"
-            }
-            Self::MissingResourcesCapability => "hosted server setup requires resource capability",
-            Self::MissingCompletionsCapability => {
-                "hosted server setup requires completion capability for document ids"
             }
             Self::InvalidResource => "resource address must build and parse as a concrete URI",
             Self::ResourceRoundTrip => {
@@ -351,13 +383,7 @@ impl fmt::Display for McpSetupError {
             Self::MissingDocument => {
                 "hosted server requires agent and design documents and nonempty document bodies"
             }
-            Self::InvalidComplianceProfile => {
-                "owner compliance profile and embedded manual must agree"
-            }
             Self::InvalidDocument => "document identifiers must be unique valid URI path segments",
-            Self::MissingWellKnownResource => {
-                "resource discovery must include docs, contract, and every embedded document"
-            }
             Self::InvalidTemplate => {
                 "resource template requires valid absolute RFC 6570 syntax and a nonblank name"
             }
@@ -365,7 +391,6 @@ impl fmt::Display for McpSetupError {
                 "resource metadata builder changed the typed template"
             }
             Self::DuplicateTemplate => "resource discovery contains a duplicate template",
-            Self::MissingDocumentTemplate => "resource discovery requires the docs member template",
         })
     }
 }

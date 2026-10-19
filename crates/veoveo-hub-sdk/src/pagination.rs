@@ -5,7 +5,7 @@ use rmcp::model::PaginatedRequestParams;
 const CURSOR_PREFIX: &str = "v1:";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Page<T> {
+pub struct CatalogPage<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
 }
@@ -38,7 +38,7 @@ pub fn paginate<T>(
     items: Vec<T>,
     request: Option<&PaginatedRequestParams>,
     page_size: usize,
-) -> Result<Page<T>, PaginationError> {
+) -> Result<CatalogPage<T>, PaginationError> {
     if page_size == 0 {
         return Err(PaginationError::EmptyPage);
     }
@@ -53,7 +53,7 @@ pub fn paginate<T>(
     let next_cursor = (next_offset < total).then(|| encode_cursor(next_offset));
     let page_items = items.into_iter().skip(start).take(page_size).collect();
 
-    Ok(Page {
+    Ok(CatalogPage {
         items: page_items,
         next_cursor,
     })

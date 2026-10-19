@@ -20,7 +20,7 @@ crate documents and in its contract resource.
 | MCP multi-round requests, SEP-2322 | `input_required`, protected opaque `requestState`, and retry `inputResponses`; server-initiated elicitation is excluded |
 | MCP subscriptions | request-scoped `subscriptions/listen` with an authorized accepted filter; resource subscribe and unsubscribe are excluded |
 | rmcp 3.5.0 | the official Rust SDK, pinned to the `VeoveoAI/rust-sdk` fork at `917e791` for Task status subscriptions and typed HTTP rejections, with default features off so each SDK feature enables only the rmcp features it uses; the pin's comment states the removal condition |
-| Requirement catalog `https://veoveo.ai/formats/hosted-mcp-requirements` and compliance declaration `https://veoveo.ai/formats/hosted-mcp-compliance` | closed C01–C31 and C33 identifiers, complete camelCase owner profiles and deterministic manual sections; `catalog/requirements.json` and `catalog/compliance-profile.schema.json` are generated from the types and checked by tests |
+| Requirement catalog `https://veoveo.ai/formats/hosted-mcp-requirements` | C01–C31 and C33 document architectural requirements; the catalog is generated from native types. No owner compliance status or runtime certification is recorded. |
 | JSON Schema 2020-12 | ordinary rmcp and Schemars generation with bounded references and composition; each published tool argument declares one `type`, an optional argument admits no `null`, and every subschema declares `type` wherever references, composition, `const` or `enum` restrict it; `Hosted` explains a refused call's arguments against the published schema with jsonschema 0.58.6 |
 | RFC 6570 URI Templates | checked MCP setup uses the foundational ASCII-template profile and the iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses |
 | W3C Trace Context and Baggage | `traceparent`, `tracestate`, and `baggage` in MCP request metadata with the authenticated HTTP boundary as the trust gate |
@@ -92,13 +92,13 @@ discovery. It provides sorted resources and templates and compares typed permiss
 against an authenticated grant set. `McpResourceTemplate` binds metadata to the
 foundational `ResourceTemplateUri`, which uses the RFC 6570 parser, and its builder
 rejects a descriptor that changes the admitted template. Setup establishes API and
-declaration consistency; hosted conformance and domain tests establish behavior.
+declaration consistency; ordinary implementation tests establish dynamic behavior.
 
 ### Library Features
 
 | Feature | Contains | Excludes |
 |---|---|---|
-| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Hub's client-visible metadata, the document and compliance declarations, the MCP audit vocabulary and the usage kinds and Task cost types | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
+| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Hub's client-visible metadata, the document and contract declarations, the MCP audit vocabulary and the usage kinds and Task cost types | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
 | `client` | `HubClient`: typed calls, Task handles and typed resource reads and waits through a Hub profile over MCP Streamable HTTP, with rmcp's client and Streamable HTTP client transport | rmcp's server, server transport and macros, axum, jsonwebtoken, OpenTelemetry, sqlx and core's Task runtime; `tests/contract_boundary.rs` fails when the resolved graph or rmcp's features contain them |
 | `client-credentials` | `client` plus `ClientCredentialsBearer`, a caller's own RFC 6749 client-credentials token for a profile, requested with an RFC 7523 assertion that core's OAuth client signs with the caller's key, and `caller_signer`, which reads an installation's caller key files | rmcp's server, server transport and macros, axum, OpenTelemetry, sqlx and core's Task runtime |
 | `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry, the MCP Tasks adapter over core's durable Task runtime, [Task work](#task-work) with its provider event routes, and the usage ledger | |
@@ -183,25 +183,28 @@ tool results. Each owner MUST document and test these observable guarantees:
   deletes, reorderings and authorization changes, and restart/expiry behavior.
   Request-local snapshots do not imply cross-request snapshot consistency.
 
-Owners keep their cursor encodings, caps, page DTOs and consistency policies.
-Core supplies transport-neutral bounds and cursor primitives; this SDK owns MCP
-wire conventions and conformance. No domain type, MCP field or server registry is
-introduced into Core. MCP catalog methods (`tools/list`, `resources/list`,
-`resources/templates/list`, `prompts/list`) retain the protocol's pagination
-semantics rather than adopting a domain cursor codec. In particular a catalog
-client follows any non-null cursor, including an empty string.
-Finite immutable SDK documentation indexes keep their existing document-position
-cursor contract; they are not growing domain collections and do not acquire
-tenant/keyset codecs through this requirement.
+Core owns one protocol-neutral `Page<C: Collection>` with private items, limit and
+continuation. `Pager<C>` admits the contextual cursor, owns bounded lookahead and
+checks the collection's total ordering before issuing continuation. The selected
+keyset consistency policy hashes filters, tenant and limit (plus revision where
+required). A received page's deserialization checks observable bounds; it does not
+turn the token into contextual authority. The owner supplies the indexed query
+and current authorization.
 
-Executable evidence includes multi-page traversal of a known unchanged selection,
-empty and exact-boundary cases, malformed and foreign cursors, changed filters and
-limits, and tests of the declared mutation and current-authorization behavior.
-Cross-replica continuation is tested when multiple replicas are supported. The
-SDK's reusable probe measures traversal only; owners execute domain scope,
-mutation, authorization and replica scenarios in their own tests. Missing owner
-evidence leaves C04 incomplete; successful selected probes still require review
-of coverage, policy and the trusted adapter's connection to the selected server.
+MCP catalog methods retain protocol pagination in `CatalogPage<T>`, including
+following any non-null cursor token, even an empty string. Finite immutable SDK
+documentation indexes keep their document-position cursors.
+
+`CollectionRequest<C>` owns limit/cursor selection for both `List<T>` tools and
+`ReadCollection<R>` resources. Resource owners map only path/filter parameters;
+parent and principal identities belong in `Collection::Filters` when they affect
+the listing. `collection_template` merges the shared paging query variables into
+the owner's trailing optional query expression, or adds one. Discovery and
+registration authorization use that one admitted template.
+
+Owners test query ordering, multi-page traversal, exact boundaries, mutation,
+current authorization and replica behavior where supported. There is no runtime
+conformance inspector, evidence registry or owner self-attestation.
 
 An agent reads resources through a governed current-profile adapter rather than an
 unrestricted protocol peer. The adapter admits absolute domain resource URIs and
@@ -445,27 +448,31 @@ A Rust server is hosted through `veoveo_hub_sdk::hosting` and writes no
 `impl ServerHandler`, router, authentication middleware, or host check. It
 supplies three things:
 
-1. **A checked setup.** Implement `McpServerContract` with the server's scope enum,
-   typed resource address, documents and resource declarations, and force its
-   `McpServerSetup` before Store or engine initialization. The setup must declare
-   the resources and completions capabilities, because every server serves the docs
-   member template and completes its `doc_id`; startup fails without them.
-2. **A domain.** Implement `DomainServer`: `tool_router` for the tools,
-   `describe_tool` to adjust descriptors such as App links, and `read` for one
-   admitted address. `prompts`, `get_prompt` and `complete` are optional; their
-   defaults declare no prompts and offer no completions. `list_tools`,
-   `list_resources` and `list_resource_templates` receive the default list and the
-   caller, and return a `Listing`. A server overrides them to require a scope, hide
-   entries the caller cannot use, or add instance resources. `Listing::all` lets the
-   host sort and page the list, `Listing::page` returns one page of a remote catalog
-   with its own cursor, and `no_store` marks a list whose visibility follows current
-   authority. The host authenticates first in every case. `authorize_documents`
-   decides each read of the documents or contract, over MCP, `doc_id` completion
-   and the admin routes; the default admits every authenticated caller. `read` receives a parsed
-   address and returns a `DomainRead` that names its cache policy:
-   `DomainRead::private` for ordinary content, or `DomainRead::no_store` for content
-   whose access or freshness can change between reads. There is no default. Documents and contract variants answer
-   `served_by_host()`, because the host serves them first.
+1. **Provider identity and setup.** Implement `McpServerContract` with its
+   `Provider`, `Server`, scope vocabulary, scheme, documents and native server
+   metadata. The provider is the same type named by its consumer requests and
+   resource reads. Force `McpServerSetup` before Store or engine initialization.
+   Setup derives resources, templates, host document capabilities and route
+   authorization from the ready routes. It retains owner task/subscription and
+   extension metadata. Route initialization uses direct contract types and never
+   calls `setup()` recursively.
+2. **Ready typed routes.** Implement `DomainServer::routes` and `setup`; optional
+   `complete` handles non-document completion. `Routes::<MyDomain>::builder` starts
+   with an explicit document access policy. `.tool<R>` accepts that provider's
+   `ToolCall`, a policy and a handler returning its associated `SingleOutput`.
+   `.task<R>` additionally requires `TaskToolCall`; `.collection<T>` admits only
+   the generated `List<T>` selection and the collection's immutable `Page<C>`.
+   `Checked<T>` forwards the call association while its decoder admits cross-field
+   invariants. No arbitrary serialized value is a single-output declaration.
+   Register each singleton/member/collection reader through `ResourceBuilder<R>`
+   after supplying its typed reader, access policy and cache policy. The reader
+   returns `ResourceRead::Content`; its own associated address parser stays bound
+   through dispatch. `.collection_resource` shares `CollectionRequest` selection
+   parsing and the paging-template constructor with list tools. A fixed collection
+   root is optional for nested paths. `.prompt` registers one native descriptor,
+   admitted name, explicit policy and render closure. Discovery and registration
+   derive from these same ready entries; there are no owner catalog-list hooks or
+   second descriptor/permission tables.
 3. **Optional task support.** A server with durable tasks wraps its
    `DurableTaskService` in `veoveo_hub_sdk::durable_tasks::DurableTasks::tasks_only`. A server
    that also publishes resource changes implements `ResourceSubscriptions` and uses
@@ -515,11 +522,12 @@ after its response starts. Admin routes join the
 document routes under `{mount}/admin` behind hub authentication, and a server
 layers any administrative scope check onto them. Public routes carry no hub authentication, so they serve
 only endpoints that verify their own callers, such as a signed provider webhook.
-Inside a domain method, `hub_identity` and `forwarded_bearer`
-return the verified caller. `json_read`, `structured_result`, `product_result`,
-`completion` and `rank_completions` build the common results. `product_result`
-rejects output whose `resultUri` differs from its resource link (C02), and
-`completion` omits `total` when it cuts candidates at 100 values.
+Inside a typed handler, `hub_identity` and `forwarded_bearer` return the verified
+caller. Handlers return typed outputs; the internal transport adapter serializes
+resource JSON and structured tool results. `Product<T>` supplies canonical
+`resultUri` and typed metadata, and the adapter derives its matching resource link
+from that same value. `completion` and `rank_completions` build native completion
+results; `completion` omits `total` when it cuts candidates at 100 values.
 
 The host gives every server the same behavior:
 
@@ -528,12 +536,12 @@ The host gives every server the same behavior:
 | Routes | `/livez` and optional `/readyz` at the listener root, whatever the mount; `{mount}/admin/docs/*` and `{mount}/mcp` |
 | Authentication | Hub RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug, with the Hub's keys refreshed as [key refresh](src/registration/DESIGN.md#key-refresh) describes; a rejection is 401 with `WWW-Authenticate: Bearer` |
 | Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts: the deployment host, the installation's public origin when the deployment names one, and loopback only when asked |
-| Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` after the domain's list hooks, sorted, 100 per page, private, five-second cache |
+| Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` from ready routes filtered by current route policy, sorted, 100 per page, private, five-second cache |
 | Well-known reads | `{scheme}://docs` routes and `{scheme}://contract` |
 | Completion | `doc_id` on the document template; other references go to the domain |
 | Address admission | An unparseable read or subscribed URI is Invalid Params (-32602) before domain code runs |
-| Read cache | The policy each `DomainRead` names: one second private, or no reuse; continuation reads are never reused |
-| Tools | Durable tasks start first; other calls dispatch through the tool router |
+| Read cache | The explicit `ResourceBuilder` cache policy: one second private, or no reuse; protocol continuation reads are never reused |
+| Tools | The registered route policy is checked before Task admission; remaining calls dispatch through their typed request/output adapter |
 | Shutdown | SIGTERM or Ctrl-C, cancelling in-flight MCP work |
 
 A new server starts from the
@@ -841,7 +849,7 @@ Every server is self-describing. Under its canonical URI scheme it serves:
 |---|---|
 | `{scheme}://docs` | stable page of document entries with `id`, `title`, and concrete `uri`, in `items`; optional `nextCursor` names the last entry and continues through `?cursor=` |
 | `{scheme}://docs/{doc_id}` | a document body: at minimum `agents` (the crate `AGENTS.md`) and `design` (the crate `DESIGN.md`) |
-| `{scheme}://contract` | machine-readable complete owner profile: format, contract, server and per-item compliance status; Discover and list methods own the observed runtime surface |
+| `{scheme}://contract` | typed contract and provider identity; Discover and list methods own the observed runtime surface |
 
 On its administrative mount the server serves the same material as a read-only
 HTTP projection at `{mount}/admin/docs/llms.txt` (an index in llms.txt form) and
@@ -856,11 +864,10 @@ serves the manual for exactly the version deployed, including in offline
 installations. The `veoveo_hub_sdk::docs` module provides the embedding,
 declaration, and rendering machinery; consuming it is the intended way to
 comply. `server_docs!` selects the consuming crate's `AGENTS.md` and `DESIGN.md`,
-then calls the shared `embedded_document!` proc macro and admits the adjacent
-`contract-compliance.json`. Admission checks the server identity and the generated
-manual section against the profile. Its manifest-relative document
-selection must expand in the calling crate, as declared in the
-[shared macro catalog](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/macros/DESIGN.md#macro-catalog-and-enforcement).
+then calls the shared `embedded_document!` proc macro. The document identity is an
+admitted `ServerSlug`, and setup compares it with the provider identity. Its
+manifest-relative selection expands in the consuming crate. No adjacent compliance
+profile or generated per-rule manual section is loaded.
 
 The Console renders these resources generically; the hub generates an
 installation llms.txt from the catalog. Neither requires per-server work.
@@ -883,33 +890,42 @@ readable by humans:
   protocols profile.
 - `AGENTS.md` — the agent work manual, delta-only over the repository root
   `AGENTS.md`, with required sections `Purpose`, `Invariants`,
-  `Build And Test`, and `Contract Compliance`. The marked compliance section is
-  generated from the adjacent checked `contract-compliance.json` owner profile.
+  and `Build And Test`.
 
 A server's crate, binary and image take its repository name, `veoveo-mcp-<name>`.
 
-## Requirement Catalog And Owner Profiles
+## Typed Construction
 
-`docs/catalog.rs` owns the closed `RequirementId` vocabulary and exhaustive metadata.
-The catalog contains C01–C31 and C33. Requirement
-IDs differ from conformance's runtime check IDs. Adding a catalog requirement forces
-every owner to declare it because admission requires each current ID exactly once.
+`McpServerContract::Provider` is the same provider used by every registered request
+and read. `Routes<D>` accepts only that provider's tool and resource associations.
+Single outputs explicitly implement `SingleOutput`; no blanket `Serialize`
+implementation admits top-level collections. `CollectionTool` registers `List<T>`
+inputs and only `Page<T::Collection>` results. `.task<R>` requires `TaskToolCall` and
+derives the native tasks capability extension. Task-specific authorization and
+lifecycle behavior remain in `TaskSupport`.
 
-`docs/profile.rs` admits immutable profiles through the shared checked-value mechanism.
-The declaration wire carries `format` and `contract`; catalog metadata uses
-`noteWhitespace`. Both construction and JSON decoding reject unknown fields, formats, contracts, IDs, duplicate
-or missing entries and unknown statuses. Pending entries require a nonblank explanation.
-Provided notes preserve spaces and reject line breaks. Blankness uses Rust Unicode
-White_Space; generated catalog metadata exports its actual character set for all
-language consumers. A source declaration never supplies a runtime test outcome.
+`ResourceBuilder<R>` must receive its typed reader, explicit access policy and cache
+policy before registration as a singleton, member template or collection. Each read
+keeps its own `ResourceRead::Address` parser through dispatch. Schemas, descriptors
+and the existing authorization requirements maps derive from the ready routes.
+`RouteAccess::Authenticated` means a verified caller without an additional
+permission; it never admits an anonymous request. Missing entries remain undeclared.
+Every route checks current authorization, including before Task start. Catalog
+resources and templates use the same route policies. Native prompts register a
+descriptor, admitted name, explicit policy and render closure in the same routes;
+registration, prompt discovery and rendering share that entry.
 
-Owner profiles project into marked manual sections, and the catalog and JSON Schema
-are exported to `catalog/`. Source builds embed those manual bytes and their digests;
-runtime loading verifies agreement instead of replacing the body.
-Python and Node package the same generated catalog and schema with their owner profile.
-Their loaders perform the same semantic admission without repository reads.
+`Product<T>` owns a checked result URI and typed metadata. The transport adapter
+produces structured `resultUri` and a matching resource link together. Handlers
+return typed outputs rather than raw MCP results. `tool`, `collection_tool`,
+`resource_read` and `collection_resource` attributes generate ordinary public traits;
+contract-only consumers need no rmcp runtime. Type arguments are Rust types.
 
-## Compliance Checklist
+The requirement catalog below remains architectural documentation. The previous
+conformance runner, certification commands, evidence/coverage formats and per-rule
+compliance profiles are removed.
+
+## Architectural Requirements
 
 <!-- veoveo:requirement-catalog:start -->
 | ID | Level | Requirement |
@@ -917,7 +933,7 @@ Their loaders perform the same semantic admission without repository reads.
 | C01 | MUST | Each capability uses the canonical MCP surface for its need per the Protocol Surface table. |
 | C02 | MUST | Every tool declares input and output JSON Schemas; an addressable terminal product has one top-level canonical `resultUri`, while a no-product task omits it. |
 | C03 | MUST | Durable operations are task-augmented tools on the shared task runtime. |
-| C04 | MUST | Addressable state is exposed as resources or resource templates under the server's canonical scheme; growing collections, including pageable tool results, satisfy the Domain Collection Paging contract: bounded pages, opaque scoped continuation, deterministic complete traversal on unchanged data, current authorization and explicit mutation semantics. Exact reads do not scan the full collection. |
+| C04 | MUST | Addressable state is exposed as resources or resource templates under the server's canonical scheme. Growing resource collections and every collection-returning tool, including bounded or fixed listings, use the collection request/page contract: bounded pages, opaque scoped continuation, deterministic complete traversal on unchanged data, current authorization and explicit mutation semantics. Embedded arrays and batch action results remain parts of single output records. Exact reads do not scan the full collection. |
 | C05 | MUST | The server is not flattened to a tool-only convenience surface. |
 | C06 | MUST | Compatibility helpers are additive projections reusing canonical models, policy, audit, tasks, and URIs. |
 | C07 | MUST | Tool input schemas use the supported JSON Schema 2020-12 profile, close controlled argument objects, give each typed argument one JSON `type` with optional arguments omitted rather than `null`, declare `type` on every subschema whose references, composition, `const` or `enum` restrict its JSON types, and pass the shared document and reference-expansion bounds. |
@@ -945,48 +961,22 @@ Their loaders perform the same semantic admission without repository reads.
 | C29 | MUST | Ordinary hosted servers and the hub tolerate load-balanced replica changes; singleton workloads name the real exclusive state or GPU owner. |
 | C30 | MUST | Requests with equivalent upstream transport security share one catalog-revision-scoped HTTP connection pool and TLS trust store without sharing request authority. |
 | C31 | MUST | Readiness calls Discover and required list methods, compares the observed surface with installation allow/require policy, and fails closed on mismatch. |
-| C33 | MUST | Discovery identifiers, controlled DTO fields and values, adopted extension metadata and selected owner schema evidence satisfy the naming classes; narrow owner, JWT, frozen and external declarations require source review. |
+| C33 | MUST | Discovery identifiers, controlled DTO fields and values, and adopted extension metadata derive from typed naming declarations; narrow owner, JWT, frozen and external declarations require source review. |
 <!-- veoveo:requirement-catalog:end -->
 
-## Enforcement
+## Implementation Boundaries
 
-Verification is layered and discovers servers per the Scope And Discovery
-rules:
+Construction supplies typed request/output associations, required route policies,
+shared descriptors, schemas and immutable bounded pages. Ordinary component and
+integration tests exercise current authorization, indexed queries, mutation,
+response byte/time limits, forwarded-token rejection, readiness and transport.
+Dynamic properties are not certified by marker traits or owner declarations.
+Core state remains behind the SDK/runtime APIs; each server keeps
+`testing::assert_sql_confined` in its tests.
 
-- **Repository structure** — `veoveo-hub-sdk-conformance` asserts C22, C23, and
-  C24 for every discovered server crate, including required `AGENTS.md`
-  sections and a complete admitted owner profile whose generated section agrees
-  with the manual.
-- **Protocol conformance** — the conformance client validates advertised
-  schemas (C07) and the client-facing protocol shape against a running
-  server. Certification for `https://veoveo.ai/contracts/hosted-mcp` always checks C18–C21;
-  a profile cannot forbid resources or omit the administrative docs URL.
-  The client reads `{scheme}://contract`, requires the selected contract,
-  matches its server identity to the discovered implementation. It follows the
-  links actually published by `llms.txt` and authenticates those requests with
-  credentials supplied out of band after proving the projection rejects an
-  unauthenticated request at both its index and document bodies. Credentials
-  may be sent to the docs projection only when it has the same HTTP origin as
-  the MCP endpoint.
-  Forwarded-token verification proves only the selected boundary checks;
-  forged, expired, and misaddressed token cases remain explicit profile or
-  component tests.
-- **Construction** — C03, C10, C18–C21 are inherited by consuming
-  `veoveo-hub-sdk`; avoiding them requires bypassing the shared crate,
-  which review treats as a contract change.
-- **Transport conformance** — the shared Streamable HTTP constructor, terminal
-  response-budget middleware, hub upstream client pool, and deployment
-  checks enforce C10 and C25–C31 for first-party Rust servers. Packaged servers
-  must pass the same black-box checks.
-- **Core state** — each server's tests run `testing::assert_sql_confined`, which fails
-  when the server's SQL names a schema other than its own; see
-  [Core State Through The SDK](#core-state-through-the-sdk).
-- **Review** — C05, C06, C09, C13, and C14 are review-enforced boundaries;
-  their violation is architectural, not stylistic.
-
-The server's authorization declaration and the installation's roles own exposure.
-Discover and list methods own runtime observations. Readiness intersects and compares
-those two surfaces without copying observations into the contract resource.
+Installation roles and server route policies own exposure. Discover and list
+methods own runtime observations. Readiness compares those observations with its
+installation selection without copying them into the contract declaration.
 
 ### Resource source recovery
 

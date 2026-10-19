@@ -14,12 +14,18 @@ pub const HOSTED_MCP_CONTRACT: &str = "https://veoveo.ai/contracts/hosted-mcp";
 
 pub mod audit;
 pub mod calls;
+pub mod definition;
 pub mod docs;
+pub use veoveo_hub_sdk_macros::{
+    SingleOutput, collection_resource, collection_tool, resource_read, tool,
+};
 pub mod hub;
 pub mod identity;
 pub mod jsonrpc_codes;
 pub mod registration;
 pub mod usage;
+
+extern crate self as veoveo_hub_sdk;
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -83,7 +89,7 @@ pub use internal_auth::{
     KEY_REFRESH_INTERVAL, TokenAudience,
 };
 #[cfg(feature = "server")]
-pub use pagination::{Page, PaginationError, paginate};
+pub use pagination::{CatalogPage, PaginationError, paginate};
 #[cfg(feature = "server")]
 pub use protocol::{
     MAX_BAGGAGE_BYTES, MAX_TRACESTATE_BYTES, PRIVATE_CATALOG_TTL_MS, PRIVATE_RESOURCE_TTL_MS,

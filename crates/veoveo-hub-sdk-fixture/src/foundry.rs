@@ -15,13 +15,11 @@ use std::{
 use anyhow::{Context, anyhow};
 use rmcp::{
     ErrorData, RoleServer,
-    handler::server::router::tool::ToolRouter,
     model::{
-        CallToolRequestParams, CallToolResult, CreateTaskResult, GetTaskParams, GetTaskResult,
-        ReadResourceRequestParams, ServerCapabilities, ServerConfig, UpdateTaskParams,
+        CallToolRequestParams, CreateTaskResult, GetTaskParams, GetTaskResult, ServerCapabilities,
+        ServerConfig, UpdateTaskParams,
     },
     service::RequestContext,
-    tool, tool_router,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -34,13 +32,11 @@ use veoveo_hub_sdk::{
         task_seed, update_durable_task,
     },
     hosting::{
-        DomainAddress, DomainRead, DomainServer, Hosted, hub_identity,
+        DomainServer, Hosted, hub_identity,
         operations::{ProviderEvent, ProviderEvents, ProviderRejection, ProviderRequest},
-        structured_result,
     },
     registration::{
-        Access, AuthorizationBuilder, AuthorizationDeclaration, DeclarationError,
-        PermissionDefinition, Risk,
+        Access, AuthorizationDeclaration, DeclarationError, PermissionDefinition, Risk,
     },
     server_contract::{McpServerContract, McpServerSetup},
     usage::{
@@ -56,7 +52,7 @@ use veoveo_task::{
 };
 use veoveo_types::{ResourceScheme, TaskId, TaskTypeName, Vocabulary};
 
-use crate::calls_support::{CallsResource, NoScope, contract_config, docs, require};
+use crate::calls_support::{NoScope, contract_config, docs};
 use crate::kiln::{EVENT_HEADER, Job, KilnEvent, SIGNATURE_HEADER, Submit, verify};
 
 /// The Task operation of `foundry_cast`.
@@ -109,21 +105,14 @@ impl UsageKinds for FoundryUsage {
 
 pub struct FoundryContract;
 
-static DOCS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> = LazyLock::new(|| {
-    docs(
-        "foundry",
-        include_str!("../testdata/foundry-compliance.json"),
-    )
-});
+static DOCS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> = LazyLock::new(|| docs("foundry"));
 static SETUP: LazyLock<McpServerSetup<FoundryContract>> =
     LazyLock::new(|| McpServerSetup::new().expect("Foundry setup"));
 
 impl McpServerContract for FoundryContract {
+    type Server = FoundryDomain;
     type Scope = NoScope;
-    type Resource = CallsResource<FoundryContract>;
-    fn slug() -> ServerSlug {
-        ServerSlug::parse("foundry").unwrap()
-    }
+    type Provider = FoundryContract;
     fn scheme() -> ResourceScheme {
         ResourceScheme::parse("foundry").unwrap()
     }
@@ -143,26 +132,16 @@ impl McpServerContract for FoundryContract {
                 .build(),
         )
     }
-    fn resources() -> Result<
-        Vec<veoveo_hub_sdk::server_contract::McpResource<Self::Resource>>,
-        veoveo_hub_sdk::server_contract::McpSetupError,
-    > {
-        CallsResource::declared()
-    }
-    fn resource_templates() -> Result<
-        Vec<veoveo_hub_sdk::server_contract::McpResourceTemplate>,
-        veoveo_hub_sdk::server_contract::McpSetupError,
-    > {
-        CallsResource::<Self>::templates()
-    }
 }
 
 /// Foundry's declaration: `foundry_cast` requires `foundry.casts.make`.
 pub fn authorization() -> Result<AuthorizationDeclaration, DeclarationError> {
-    let tool = |name: &str| veoveo_hub_sdk::LocalToolName::parse(name).unwrap();
-    AuthorizationBuilder::<FoundryPermission>::new()
-        .tool(tool("foundry_cast"), FoundryPermission::CastsMake)
-        .build(&FoundryContract::slug(), &FoundryContract::scheme())
+    let declaration = ROUTES.authorization();
+    declaration.check(
+        &veoveo_hub_sdk::server_contract::provider_slug::<FoundryContract>(),
+        &FoundryContract::scheme(),
+    )?;
+    Ok(declaration)
 }
 
 /// The arguments of `foundry_cast`.
@@ -179,53 +158,44 @@ pub struct CastResult {
     pub billed_usd: String,
 }
 
-#[derive(Clone)]
-pub struct FoundryDomain {
-    tool_router: ToolRouter<Self>,
-}
-
-impl Default for FoundryDomain {
-    fn default() -> Self {
-        Self::new()
+impl veoveo_hub_sdk::definition::SingleOutput for CastResult {}
+impl veoveo_hub_sdk::calls::ProviderContract for FoundryContract {
+    fn slug() -> ServerSlug {
+        ServerSlug::parse("foundry").unwrap()
     }
 }
-
-#[tool_router]
+impl veoveo_hub_sdk::calls::ToolCall for CastRequest {
+    type Provider = FoundryContract;
+    type Output = CastResult;
+    const TOOL: &'static str = "foundry_cast";
+}
+impl veoveo_hub_sdk::calls::TaskToolCall for CastRequest {}
+#[derive(Clone, Default)]
+pub struct FoundryDomain;
 impl FoundryDomain {
     pub fn new() -> Self {
-        Self {
-            tool_router: Self::tool_router(),
-        }
-    }
-
-    #[tool(description = "Cast a piece in Kiln; runs as a Task.")]
-    async fn foundry_cast(
-        &self,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        require(&context, FoundryPermission::CastsMake)?;
-        Err(ErrorData::invalid_request(
-            "foundry_cast runs as a Task; call it with Task support",
-            None,
-        ))
+        Self
     }
 }
-
+static ROUTES: LazyLock<veoveo_hub_sdk::hosting::Routes<FoundryDomain>> = LazyLock::new(|| {
+    use veoveo_hub_sdk::hosting::{RoutePolicy, Routes};
+    Routes::builder(RoutePolicy::Authenticated)
+        .task::<CastRequest, _, _>(
+            "Cast a piece",
+            RoutePolicy::permission(FoundryPermission::CastsMake).expect("fixture permission"),
+            |_, _, _| async move {
+                Err(ErrorData::invalid_request("foundry_cast requires Task support", None).into())
+            },
+        )
+        .build()
+});
 impl DomainServer for FoundryDomain {
     type Contract = FoundryContract;
     fn setup() -> &'static McpServerSetup<FoundryContract> {
         &SETUP
     }
-    fn tool_router(&self) -> &ToolRouter<Self> {
-        &self.tool_router
-    }
-    async fn read(
-        &self,
-        _address: DomainAddress<FoundryContract>,
-        _request: &ReadResourceRequestParams,
-        _context: &RequestContext<RoleServer>,
-    ) -> Result<DomainRead, ErrorData> {
-        Err(veoveo_hub_sdk::hosting::served_by_host())
+    fn routes() -> &'static veoveo_hub_sdk::hosting::Routes<Self> {
+        &ROUTES
     }
 }
 
@@ -551,7 +521,7 @@ pub async fn cast(ctx: TaskContext, furnace: Furnace) -> anyhow::Result<TaskTran
                 piece: event.piece.unwrap_or_default(),
                 billed_usd: billed,
             };
-            let result = structured_result("cast", &result)
+            let result = veoveo_hub_sdk::hosting::task_result::<CastRequest>(&result)
                 .map_err(|error| anyhow!(error.message.to_string()))?;
             Ok(mcp_task_completion("cast", result)?)
         }

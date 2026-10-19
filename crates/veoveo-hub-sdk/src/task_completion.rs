@@ -55,12 +55,11 @@ mod tests {
 
     #[test]
     fn product_plain_and_tool_error_addresses_are_admitted_once() {
-        let product = crate::hosting::product_result(
-            "done",
-            Resource::new("fixture://items/1", "item"),
-            &json!({"resultUri":"fixture://items/1"}),
-        )
-        .unwrap();
+        let mut product = CallToolResult::success(vec![
+            ContentBlock::text("done"),
+            ContentBlock::ResourceLink(Resource::new("fixture://items/1", "item")),
+        ]);
+        product.structured_content = Some(json!({"resultUri":"fixture://items/1"}));
         assert_eq!(
             result_uri(&product).unwrap().unwrap().as_str(),
             "fixture://items/1"

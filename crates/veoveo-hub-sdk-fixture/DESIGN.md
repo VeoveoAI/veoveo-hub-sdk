@@ -1,7 +1,7 @@
 # Observatory Fixture
 
 `veoveo-hub-sdk-fixture` is an independent hosted server, Observatory, that the Hub
-registers as its test peer and that MCP conformance certifies. It also carries Ledger
+registers as its test peer. It also carries Ledger
 and Relay for calls between servers, Foundry and its fake provider Kiln for operations
 and usage, and the pure tool-input fixtures that hosted servers use in their
 argument-schema tests.
@@ -24,16 +24,12 @@ protocol handler and its `McpServerContract` associations. Neither veoveo-core n
 SDK library enumerates this domain. An independent consumer disables default
 features and builds only `contract` to qualify that separation.
 
-The hosted fixture serves a fixed reading, document resources, and the contract
-declaration. The conformance test owns its loopback listener and ephemeral bearer
-mapping, including the `FixtureGrants` injected after authentication. The scope helper
-compares those grants with the fixture's read permission. This identity profile is
-synthetic and provides no installed authentication qualification.
-
-The fixture has no external services, persistent data, or GPU work. Tests enforce a
-60-second deadline and stop the owned listener when they finish or fail. Hosted
-conformance checks the advertised resource and template surfaces and their well-known
-documents. Domain cases check typed exact reads and rejected grants separately.
+The hosted fixture serves exact readings, a three-item collection and its list tool,
+embedded documents and the contract identity. Resource and tool pages share the
+same nominal `ReadingCollection`, Core `Pager` and SDK selection construction. Its
+owner data and Hub identities are synthetic. Hosted integration tests follow both
+pages through native transport; they do not establish production authorization or
+storage behavior. No provider inference or external media encoding is involved.
 
 ## Calls Fixture
 

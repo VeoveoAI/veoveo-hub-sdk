@@ -129,3 +129,36 @@ pub struct Reading {
     pub id: ReadingId,
     pub value: i32,
 }
+
+impl veoveo_hub_sdk::definition::SingleOutput for Reading {}
+pub struct Observatory;
+impl veoveo_hub_sdk::calls::ProviderContract for Observatory {
+    fn slug() -> veoveo_types::ServerSlug {
+        veoveo_types::ServerSlug::parse("observatory").unwrap()
+    }
+}
+pub struct ReadingCollection;
+impl veoveo_types::Collection for ReadingCollection {
+    type Item = Reading;
+    type Filters = veoveo_hub_sdk::definition::NoFilters;
+    type Key = String;
+    type Limit = veoveo_types::PageSize<2>;
+    type Policy = veoveo_types::LiveKeyset;
+    const NAME: &'static str = "observatory.readings";
+    fn key(item: &Reading) -> String {
+        item.id.as_str().to_owned()
+    }
+}
+#[derive(Clone)]
+#[veoveo_hub_sdk::resource_read(provider=Observatory,address_type=ObservatoryResource,content=Reading,
+    address=ObservatoryResource::Reading(self.id.clone()),template="observatory://reading/{reading_id}",
+    parse=|address|match address {ObservatoryResource::Reading(id)=>Some(Self{id:id.clone()}),_=>None})]
+pub struct ReadReading {
+    pub id: ReadingId,
+}
+#[veoveo_hub_sdk::collection_resource(provider=Observatory,address_type=ObservatoryResource,collection=ReadingCollection,
+    address=ObservatoryResource::Readings,filters=veoveo_hub_sdk::definition::NoFilters{},template="observatory://readings",
+    parse=|address|match address {ObservatoryResource::Readings=>Some(Self{}),_=>None})]
+pub struct ReadReadings {}
+#[veoveo_hub_sdk::collection_tool(provider=Observatory,collection=ReadingCollection,name="readings",default_limit=2)]
+pub struct ReadingsTool;

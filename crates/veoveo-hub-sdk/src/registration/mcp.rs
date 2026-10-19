@@ -90,6 +90,7 @@ pub fn check_tool_annotations(
             .requirements
             .tools
             .get(&name)
+            .and_then(|required| required.permission())
             .and_then(|required| declaration.permission(required))
         else {
             continue;

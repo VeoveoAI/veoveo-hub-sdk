@@ -1,96 +1,85 @@
-//! In-process tests of the hosted server shape, with real hub tokens.
-
-use std::sync::LazyLock;
-
-use axum::{
-    body::Body,
-    http::{Request, StatusCode},
-};
-use rmcp::{
-    ErrorData, RoleServer,
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{
-        CallToolResult, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
-        ResourceTemplate, ServerCapabilities, ServerConfig,
-    },
-    service::RequestContext,
-    tool, tool_router,
-};
-use veoveo_types::{ResourceAddress, ResourceScheme, ResourceTemplateUri, ResourceUri};
-
+//! In-process tests of typed hosting with real synthetic Hub tokens.
 use super::{
-    DomainAddress, DomainRead, DomainServer, Hosted, hub_identity, served_by_host,
+    DomainServer, Hosted, ReadCache, ResourceBuilder, RoutePolicy, Routes, hub_identity,
     testing::{self, TestHub},
 };
 use crate::{
     ServerSlug,
     docs::ServerDocs,
-    server_contract::{
-        McpResource, McpResourceTemplate, McpServerContract, McpServerSetup, McpSetupError,
-    },
+    server_contract::{McpServerContract, McpServerSetup},
 };
-
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use rmcp::model::{ServerCapabilities, ServerConfig};
+use std::sync::LazyLock;
+use veoveo_types::{ResourceAddress, ResourceScheme, ResourceUri};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]
 #[vocabulary(scope)]
 enum FixtureScope {}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FixtureResource {
-    Docs,
-    Document(&'static str),
-    Contract,
     Items,
+    Item,
     Volatile,
 }
-
 impl ResourceAddress for FixtureResource {
     type Error = veoveo_types::IdentifierError;
     fn parse(uri: &ResourceUri) -> Result<Self, Self::Error> {
         match uri.as_str() {
-            "fixture://docs" => Ok(Self::Docs),
-            "fixture://docs/agents" => Ok(Self::Document("agents")),
-            "fixture://docs/design" => Ok(Self::Document("design")),
-            "fixture://contract" => Ok(Self::Contract),
             "fixture://items" => Ok(Self::Items),
+            "fixture://items/1" => Ok(Self::Item),
             "fixture://volatile" => Ok(Self::Volatile),
-            _ => Err(veoveo_types::IdentifierError::new(
-                uri.as_str(),
-                "unknown fixture address",
-            )),
+            _ => Err(Self::Error::new(uri.as_str(), "unknown fixture address")),
         }
     }
     fn to_uri(&self) -> Result<ResourceUri, Self::Error> {
         ResourceUri::new(match self {
-            Self::Docs => "fixture://docs".to_owned(),
-            Self::Document(id) => format!("fixture://docs/{id}"),
-            Self::Contract => "fixture://contract".to_owned(),
-            Self::Items => "fixture://items".to_owned(),
-            Self::Volatile => "fixture://volatile".to_owned(),
+            Self::Items => "fixture://items",
+            Self::Item => "fixture://items/1",
+            Self::Volatile => "fixture://volatile",
         })
-        .map_err(|_| veoveo_types::IdentifierError::new("fixture", "invalid fixture address"))
+        .map_err(|_| Self::Error::new("fixture", "invalid fixture address"))
     }
 }
-
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, veoveo_types::Vocabulary)]
+enum FixturePermission {
+    #[vocabulary(rename = "fixture.docs.read")]
+    Docs,
+    #[vocabulary(rename = "fixture.admin.read")]
+    Admin,
+}
+impl crate::registration::PermissionDefinition for FixturePermission {
+    fn resource(self) -> &'static str {
+        "fixture.item"
+    }
+    fn access(self) -> crate::registration::Access {
+        crate::registration::Access::Read
+    }
+    fn risks(self) -> &'static [crate::registration::Risk] {
+        &[]
+    }
+}
 static DOCS: LazyLock<ServerDocs> = LazyLock::new(|| {
-    ServerDocs::new("fixture")
+    ServerDocs::new(ServerSlug::parse("fixture").unwrap())
         .with_doc(
             "agents",
             "Agent manual",
-            include_str!("../../testdata/compliance-hosting.md"),
+            include_str!("../../testdata/hosting-agents.md"),
         )
         .with_doc("design", "Design", "# Design")
-        .with_profile_json(include_str!("../../testdata/compliance-hosting.json"))
-        .expect("complete fixture profile matches its embedded manual")
 });
-
 struct FixtureContract;
-
-impl McpServerContract for FixtureContract {
-    type Scope = FixtureScope;
-    type Resource = FixtureResource;
+impl crate::calls::ProviderContract for FixtureContract {
     fn slug() -> ServerSlug {
         ServerSlug::parse("fixture").unwrap()
     }
+}
+impl McpServerContract for FixtureContract {
+    type Server = FixtureDomain;
+    type Provider = Self;
+    type Scope = FixtureScope;
     fn scheme() -> ResourceScheme {
         ResourceScheme::parse("fixture").unwrap()
     }
@@ -101,171 +90,138 @@ impl McpServerContract for FixtureContract {
         &DOCS
     }
     fn server_config() -> ServerConfig {
-        let mut config = ServerConfig::new(
-            ServerCapabilities::builder()
-                .enable_tools()
-                .enable_resources()
-                .enable_completions()
-                .build(),
-        );
+        let mut config = ServerConfig::new(ServerCapabilities::builder().enable_tools().build());
         config.server_info = rmcp::model::Implementation::new("fixture", "1");
         config
     }
-    fn resources() -> Result<Vec<McpResource<FixtureResource>>, McpSetupError> {
-        [
-            (FixtureResource::Docs, "docs"),
-            (FixtureResource::Document("agents"), "agents"),
-            (FixtureResource::Document("design"), "design"),
-            (FixtureResource::Contract, "contract"),
-            (FixtureResource::Items, "items"),
-            (FixtureResource::Volatile, "volatile"),
-        ]
-        .into_iter()
-        .map(|(address, name)| McpResource::new(address, |uri| Resource::new(uri, name)))
-        .collect()
-    }
-    fn resource_templates() -> Result<Vec<McpResourceTemplate>, McpSetupError> {
-        let docs = crate::docs::docs_member_template(&Self::scheme());
-        vec![McpResourceTemplate::new(docs, |uri| {
-            ResourceTemplate::new(uri, "doc")
-        })]
-        .into_iter()
-        .chain(std::iter::once(McpResourceTemplate::new(
-            ResourceTemplateUri::new("fixture://items/{item_id}").unwrap(),
-            |uri| ResourceTemplate::new(uri, "item"),
-        )))
-        .collect()
-    }
 }
-
 static SETUP: LazyLock<McpServerSetup<FixtureContract>> =
     LazyLock::new(|| McpServerSetup::new().expect("fixture setup"));
-
 #[derive(Clone)]
-struct FixtureDomain {
-    tool_router: ToolRouter<Self>,
+struct FixtureDomain;
+impl FixtureDomain {
+    fn new() -> Self {
+        Self
+    }
 }
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[crate::tool(provider=FixtureContract,output=Echo,name="echo")]
 struct EchoRequest {
     text: String,
 }
-
-#[tool_router]
-impl FixtureDomain {
-    fn new() -> Self {
-        Self {
-            tool_router: Self::tool_router(),
-        }
-    }
-
-    #[tool(description = "Echo text for administrators.")]
-    async fn admin_echo(
-        &self,
-        Parameters(request): Parameters<EchoRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
-        Ok(CallToolResult::success(vec![
-            rmcp::model::ContentBlock::text(request.text),
-        ]))
-    }
-
-    #[tool(description = "Echo text back to the verified caller.")]
-    async fn echo(
-        &self,
-        Parameters(request): Parameters<EchoRequest>,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let identity = hub_identity(&context)?;
-        Ok(CallToolResult::success(vec![
-            rmcp::model::ContentBlock::text(format!(
-                "{} from {}",
-                request.text, identity.actor.subject
-            )),
-        ]))
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[crate::tool(provider=FixtureContract,output=Echo,name="admin_echo")]
+struct AdminRequest {
+    text: String,
+}
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+struct Echo {
+    text: String,
+}
+impl crate::definition::SingleOutput for Echo {}
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+struct State {
+    count: usize,
+}
+impl crate::definition::SingleOutput for State {}
+#[derive(Clone)]
+struct ReadState(FixtureResource);
+impl crate::calls::ResourceRead for ReadState {
+    type Provider = FixtureContract;
+    type Address = FixtureResource;
+    type Content = State;
+    fn address(&self) -> FixtureResource {
+        self.0.clone()
     }
 }
-
+struct ReadItem;
+impl crate::calls::ResourceRead for ReadItem {
+    type Provider = FixtureContract;
+    type Address = FixtureResource;
+    type Content = State;
+    fn address(&self) -> FixtureResource {
+        FixtureResource::Item
+    }
+}
+impl crate::definition::TemplateRead for ReadItem {
+    const TEMPLATE: &'static str = "fixture://items/{item_id}";
+    fn from_address(address: &FixtureResource) -> Option<Self> {
+        (*address == FixtureResource::Item).then_some(Self)
+    }
+}
+static ROUTES: LazyLock<Routes<FixtureDomain>> = LazyLock::new(|| {
+    Routes::builder(RoutePolicy::permission(FixturePermission::Docs).unwrap())
+        .tool::<EchoRequest, _, _>(
+            "Echo text back to the verified caller",
+            RoutePolicy::Authenticated,
+            |_, request, context| async move {
+                Ok(Echo {
+                    text: format!(
+                        "{} from {}",
+                        request.text,
+                        hub_identity(&context)?.actor.subject
+                    ),
+                })
+            },
+        )
+        .tool::<AdminRequest, _, _>(
+            "Echo for administrators",
+            RoutePolicy::permission(FixturePermission::Admin).unwrap(),
+            |_, request, _| async move { Ok(Echo { text: request.text }) },
+        )
+        .singleton(
+            ReadState(FixtureResource::Items),
+            ResourceBuilder::new("items")
+                .reader(|_, _, _| async { Ok(State { count: 0 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::Private),
+        )
+        .singleton(
+            ReadState(FixtureResource::Item),
+            ResourceBuilder::new("item-1")
+                .reader(|_, _, _| async { Ok(State { count: 1 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::Private),
+        )
+        .singleton(
+            ReadState(FixtureResource::Volatile),
+            ResourceBuilder::new("volatile")
+                .reader(|_, _, _| async { Ok(State { count: 0 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::NoStore),
+        )
+        .template::<ReadItem, _, _>(
+            ResourceBuilder::new("item")
+                .reader(|_, _, _| async { Ok(State { count: 1 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::Private),
+        )
+        .prompt(
+            rmcp::model::Prompt::new("summarize", Some("Summarize items"), None),
+            RoutePolicy::Authenticated,
+            |_, _, _| async {
+                Ok(rmcp::model::GetPromptResult::new(vec![
+                    rmcp::model::PromptMessage::new_text(
+                        rmcp::model::Role::User,
+                        "Summarize fixture://items.",
+                    ),
+                ]))
+            },
+        )
+        .prompt(
+            rmcp::model::Prompt::new("admin-summary", Some("Administrator summary"), None),
+            RoutePolicy::permission(FixturePermission::Admin).unwrap(),
+            |_, _, _| async { Ok(rmcp::model::GetPromptResult::new(vec![])) },
+        )
+        .build()
+});
 impl DomainServer for FixtureDomain {
     type Contract = FixtureContract;
     fn setup() -> &'static McpServerSetup<FixtureContract> {
         &SETUP
     }
-    fn tool_router(&self) -> &ToolRouter<Self> {
-        &self.tool_router
-    }
-    async fn list_tools(
-        &self,
-        tools: Vec<rmcp::model::Tool>,
-        context: &RequestContext<RoleServer>,
-    ) -> Result<super::Listing<rmcp::model::Tool>, ErrorData> {
-        let admin = veoveo_types::ScopeName::parse("admin:use").unwrap();
-        let is_admin = hub_identity(context)?.actor.scopes.contains(&admin);
-        Ok(super::Listing::all(
-            tools
-                .into_iter()
-                .filter(|tool| is_admin || tool.name != "admin_echo")
-                .collect(),
-        ))
-    }
-    async fn list_resources(
-        &self,
-        mut declared: Vec<Resource>,
-        _cursor: Option<&str>,
-        _context: &RequestContext<RoleServer>,
-    ) -> Result<super::Listing<Resource>, ErrorData> {
-        declared.push(Resource::new("fixture://items/1", "item-1"));
-        Ok(super::Listing::all(declared))
-    }
-    async fn authorize_documents(
-        &self,
-        _identity: &crate::HubInternalIdentity,
-        address: &ResourceUri,
-    ) -> Result<(), ErrorData> {
-        if address.as_str() == "fixture://docs/design" {
-            Err(ErrorData::invalid_request("design is restricted", None))
-        } else {
-            Ok(())
-        }
-    }
-    fn prompts(&self) -> Vec<rmcp::model::Prompt> {
-        vec![rmcp::model::Prompt::new(
-            "summarize",
-            Some("Summarize the items."),
-            None,
-        )]
-    }
-    async fn get_prompt(
-        &self,
-        request: rmcp::model::GetPromptRequestParams,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<rmcp::model::GetPromptResult, ErrorData> {
-        if request.name != "summarize" {
-            return Err(super::unknown_prompt(&request.name));
-        }
-        Ok(rmcp::model::GetPromptResult::new(vec![
-            rmcp::model::PromptMessage::new_text(
-                rmcp::model::Role::User,
-                "Summarize fixture://items.",
-            ),
-        ]))
-    }
-    async fn read(
-        &self,
-        address: DomainAddress<FixtureContract>,
-        request: &ReadResourceRequestParams,
-        _context: &RequestContext<RoleServer>,
-    ) -> Result<DomainRead, ErrorData> {
-        match address {
-            FixtureResource::Items => Ok(DomainRead::private(ReadResourceResult::new(vec![
-                ResourceContents::text("[]", &request.uri),
-            ]))),
-            FixtureResource::Volatile => Ok(DomainRead::no_store(ReadResourceResult::new(vec![
-                ResourceContents::text("{}", &request.uri),
-            ]))),
-            FixtureResource::Docs | FixtureResource::Document(_) | FixtureResource::Contract => {
-                Err(served_by_host())
-            }
-        }
+    fn routes() -> &'static Routes<Self> {
+        &ROUTES
     }
 }
 
@@ -279,6 +235,7 @@ fn hub() -> TestHub {
             .readiness(|| async { true })
             .build(),
     )
+    .granting([veoveo_types::PermissionName::parse("fixture.docs.read").unwrap()])
 }
 
 #[test]
@@ -660,7 +617,7 @@ async fn the_host_serves_contract_and_admits_domain_addresses() {
             serde_json::json!({"uri": "fixture://items"}),
         )
         .await;
-    assert_eq!(body["result"]["contents"][0]["text"], "[]");
+    assert_eq!(body["result"]["contents"][0]["text"], r#"{"count":0}"#);
     assert_eq!(body["result"]["cacheScope"], "private");
 
     let body = hub
@@ -680,7 +637,10 @@ async fn tools_receive_the_verified_caller() {
             serde_json::json!({"name": "echo", "arguments": {"text": "hello"}}),
         )
         .await;
-    assert_eq!(body["result"]["content"][0]["text"], "hello from user-1");
+    assert_eq!(
+        body["result"]["structuredContent"]["text"],
+        "hello from user-1"
+    );
 }
 
 #[tokio::test]
@@ -723,7 +683,7 @@ async fn each_read_keeps_the_cache_policy_its_domain_chose() {
 }
 
 #[tokio::test]
-async fn prompts_come_from_the_domain() {
+async fn prompts_come_from_registered_routes() {
     let hub = hub();
     let body = hub.rpc("prompts/list", serde_json::json!({})).await;
     assert_eq!(body["result"]["prompts"][0]["name"], "summarize");
@@ -767,6 +727,7 @@ async fn document_authorization_covers_mcp_reads_and_admin_routes() {
         )
         .await;
     assert!(allowed["result"]["contents"][0]["text"].is_string());
+    let hub = hub.granting([]);
     let denied = hub
         .rpc(
             "resources/read",
@@ -783,4 +744,21 @@ async fn document_authorization_covers_mcp_reads_and_admin_routes() {
         )
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn prompt_discovery_dispatch_and_registration_share_current_policy() {
+    let hub = hub();
+    assert_eq!(ROUTES.authorization().requirements.prompts.len(), 2);
+    let listing = hub.rpc("prompts/list", serde_json::json!({})).await;
+    assert_eq!(listing["result"]["prompts"].as_array().unwrap().len(), 1);
+    let denied = hub
+        .rpc("prompts/get", serde_json::json!({"name":"admin-summary"}))
+        .await;
+    assert_eq!(denied["error"]["code"], -32600);
+    let allowed = hub
+        .granting([veoveo_types::PermissionName::parse("fixture.admin.read").unwrap()])
+        .rpc("prompts/get", serde_json::json!({"name":"admin-summary"}))
+        .await;
+    assert!(allowed["result"]["messages"].as_array().unwrap().is_empty());
 }

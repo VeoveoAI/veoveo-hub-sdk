@@ -1,7 +1,7 @@
 //! The domain side of a hosted server, and the one `ServerHandler` that hosts it.
 //!
-//! A server implements [`DomainServer`]: its tools, a typed `read` for the
-//! addresses it owns, and optionally completion. It never implements rmcp's
+//! A server implements [`DomainServer`] with ready [`super::Routes`], binding
+//! typed handlers, resource readers and prompt renderers to policies. It never implements rmcp's
 //! `ServerHandler`. [`Hosted`] does that once for every server and supplies the
 //! shared protocol behavior:
 //!
@@ -9,10 +9,10 @@
 //! - authenticated, paged `resources/list`, `resources/templates/list` and
 //!   `tools/list`, with every tool argument declaring one JSON type;
 //! - `{scheme}://docs` and `{scheme}://contract` reads, and `doc_id` completion;
-//! - `prompts/list` and `prompts/get` from the domain's prompts;
+//! - `prompts/list` and `prompts/get` from the registered prompt policies and renderers;
 //! - address admission: an unparseable URI is Invalid Params (-32602), as the
 //!   server contract requires, before any domain code runs;
-//! - the cache policy each domain read declares through [`DomainRead`];
+//! - the explicit cache policy of each typed resource route;
 //! - tool dispatch, with durable tasks started first when the server has them, and the
 //!   published input schema's violations appended to a call its arguments failed;
 //! - `tasks/*` and `subscriptions/listen` through its [`TaskSupport`].
@@ -21,30 +21,23 @@ use std::future::Future;
 
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
-    handler::server::{router::tool::ToolRouter, tool::ToolCallContext},
     model::{
         CallToolRequestParams, CallToolResponse, CancelTaskParams, CompleteRequestParams,
-        CompleteResult, CreateTaskResult, GetPromptRequestParams, GetPromptResponse,
-        GetPromptResult, GetTaskParams, GetTaskResult, ListPromptsResult,
-        ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
-        Prompt, ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse,
-        ReadResourceResult, Resource, ResourceTemplate, ServerConfig, SubscriptionFilter, Tool,
+        CompleteResult, CreateTaskResult, GetPromptRequestParams, GetPromptResponse, GetTaskParams,
+        GetTaskResult, ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult,
+        ListToolsResult, PaginatedRequestParams, ProtocolVersion, ReadResourceRequestParams,
+        ReadResourceResponse, ReadResourceResult, ServerConfig, SubscriptionFilter, Tool,
         UpdateTaskParams,
     },
     service::{RequestContext, SubscriptionContext},
 };
-use veoveo_types::{ResourceAddress, ResourceUri};
+use veoveo_types::ResourceUri;
 
-use crate::HubInternalIdentity;
-
-use super::{auth::hub_identity, listing::Listing, schema::publish_input_schema};
+use super::auth::hub_identity;
 use crate::{
     final_protocol_versions, private_resource_response,
     server_contract::{McpServerContract, McpServerSetup},
 };
-
-/// The typed address a server owns, for its contract `C`.
-pub type DomainAddress<C> = <C as McpServerContract>::Resource;
 
 /// How long a client may reuse a domain read. Both policies are private to the
 /// caller; a read carrying request state or input responses is never reused.
@@ -60,32 +53,12 @@ pub enum ReadCache {
 /// A domain read and the cache policy the server chose for it. There is no
 /// default policy: each read names one.
 #[derive(Debug, Clone)]
-pub struct DomainRead {
+pub(crate) struct DomainRead {
     result: ReadResourceResult,
     cache: ReadCache,
 }
 
 impl DomainRead {
-    /// A read the caller may reuse briefly.
-    pub fn private(result: ReadResourceResult) -> Self {
-        Self {
-            result,
-            cache: ReadCache::Private,
-        }
-    }
-
-    /// A read the caller must not reuse.
-    pub fn no_store(result: ReadResourceResult) -> Self {
-        Self {
-            result,
-            cache: ReadCache::NoStore,
-        }
-    }
-
-    pub fn cache(&self) -> ReadCache {
-        self.cache
-    }
-
     fn into_response(self, request: &ReadResourceRequestParams) -> ReadResourceResponse {
         let continuation = request.request_state.is_some() || request.input_responses.is_some();
         let cacheable = self.cache == ReadCache::Private && !continuation;
@@ -94,97 +67,15 @@ impl DomainRead {
 }
 
 /// A server's domain behavior. Implement this; [`Hosted`] provides the protocol.
-pub trait DomainServer: Send + Sync + Sized + 'static {
+pub trait DomainServer: Clone + Send + Sync + Sized + 'static {
     /// The server's checked contract: scopes, resource addresses, and documents.
-    type Contract: McpServerContract + 'static;
+    type Contract: McpServerContract<Server = Self> + 'static;
 
     /// The checked setup, usually a `LazyLock` forced at startup.
     fn setup() -> &'static McpServerSetup<Self::Contract>;
 
-    /// The tools, from rmcp's `#[tool_router]`.
-    fn tool_router(&self) -> &ToolRouter<Self>;
-
-    /// Adjusts each tool descriptor before discovery, such as linking it to an App.
-    fn describe_tool(&self, tool: Tool) -> Tool {
-        tool
-    }
-
-    /// The tools `tools/list` shows this caller, after [`describe_tool`]. The
-    /// default shows every routed tool. Override it to require a scope or to hide
-    /// tools the caller cannot call; the tool itself still enforces access.
-    ///
-    /// [`describe_tool`]: DomainServer::describe_tool
-    fn list_tools(
-        &self,
-        tools: Vec<Tool>,
-        context: &RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<Listing<Tool>, ErrorData>> + Send {
-        let _ = context;
-        std::future::ready(Ok(Listing::all(tools)))
-    }
-
-    /// The resources `resources/list` shows this caller. `declared` holds the
-    /// setup's fixed resources, and the default lists them. Override it to
-    /// require a scope, filter by caller, or add instance resources; a domain
-    /// that pages a remote catalog uses `cursor` and returns [`Listing::page`].
-    fn list_resources(
-        &self,
-        declared: Vec<Resource>,
-        cursor: Option<&str>,
-        context: &RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<Listing<Resource>, ErrorData>> + Send {
-        let _ = (cursor, context);
-        std::future::ready(Ok(Listing::all(declared)))
-    }
-
-    /// The templates `resources/templates/list` shows this caller. `declared`
-    /// holds the setup's templates, and the default lists them.
-    fn list_resource_templates(
-        &self,
-        declared: Vec<ResourceTemplate>,
-        context: &RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<Listing<ResourceTemplate>, ErrorData>> + Send {
-        let _ = context;
-        std::future::ready(Ok(Listing::all(declared)))
-    }
-
-    /// Reads one admitted domain address and names its cache policy. The
-    /// well-known documents and contract never reach this method; answer their
-    /// variants with [`served_by_host`].
-    fn read(
-        &self,
-        address: DomainAddress<Self::Contract>,
-        request: &ReadResourceRequestParams,
-        context: &RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<DomainRead, ErrorData>> + Send;
-
-    /// Authorizes a caller to read the well-known documents or the contract at
-    /// `address`, over MCP, `doc_id` completion or the administrative document
-    /// routes. The default admits every authenticated caller; a server whose
-    /// documents follow current policy checks it here.
-    fn authorize_documents(
-        &self,
-        identity: &HubInternalIdentity,
-        address: &ResourceUri,
-    ) -> impl Future<Output = Result<(), ErrorData>> + Send {
-        let _ = (identity, address);
-        std::future::ready(Ok(()))
-    }
-
-    /// The server's prompts. The default has none.
-    fn prompts(&self) -> Vec<Prompt> {
-        Vec::new()
-    }
-
-    /// Renders one prompt by name. The default knows no prompts.
-    fn get_prompt(
-        &self,
-        request: GetPromptRequestParams,
-        context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<GetPromptResult, ErrorData>> + Send {
-        let _ = context;
-        std::future::ready(Err(unknown_prompt(&request.name)))
-    }
+    /// The ready typed routes, shared by discovery, registration and dispatch.
+    fn routes() -> &'static super::Routes<Self>;
 
     /// Completes template arguments. The host completes `doc_id` on the docs
     /// template before calling this. The default offers no completions.
@@ -339,14 +230,6 @@ impl<D: DomainServer, T> Hosted<D, T> {
     fn setup() -> &'static McpServerSetup<D::Contract> {
         D::setup()
     }
-
-    /// A routed tool as discovery shows it: described by the domain, with its input
-    /// schema published so that every argument declares one JSON type.
-    fn published(&self, tool: Tool) -> Tool {
-        let mut tool = self.domain.describe_tool(tool);
-        publish_input_schema(std::sync::Arc::make_mut(&mut tool.input_schema));
-        tool
-    }
 }
 
 impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
@@ -364,13 +247,13 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         hub_identity(&context)?;
-        let cursor = request
-            .as_ref()
-            .and_then(|request| request.cursor.as_deref());
-        let resources = self
-            .domain
-            .list_resources(Self::setup().declared_resources(), cursor, &context)
-            .await?;
+        let resources = super::Listing::all(
+            Self::setup()
+                .declared_resources()
+                .into_iter()
+                .filter(|resource| D::routes().resource_visible(&resource.uri, &context))
+                .collect(),
+        );
         Self::setup().list_resources(resources, request.as_ref())
     }
 
@@ -380,10 +263,13 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourceTemplatesResult, ErrorData> {
         hub_identity(&context)?;
-        let templates = self
-            .domain
-            .list_resource_templates(Self::setup().declared_resource_templates(), &context)
-            .await?;
+        let templates = super::Listing::all(
+            Self::setup()
+                .declared_resource_templates()
+                .into_iter()
+                .filter(|template| D::routes().template_visible(&template.uri_template, &context))
+                .collect(),
+        );
         Self::setup().list_resource_templates(templates, request.as_ref())
     }
 
@@ -393,18 +279,18 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
         if let Some(address) = Self::setup().document_address(&request.uri) {
-            let identity = hub_identity(&context)?;
-            self.domain.authorize_documents(&identity, &address).await?;
+            let _ = address;
+            D::routes().authorize_documents(&context)?;
         }
         if let Some(result) = Self::setup().read_documents(&request, &context)? {
             return Ok(result);
         }
         let address = ResourceUri::new(request.uri.as_str())
-            .ok()
-            .and_then(|uri| DomainAddress::<D::Contract>::parse(&uri).ok())
-            .ok_or_else(|| ErrorData::invalid_params("unknown resource address", None))?;
-        let read = self.domain.read(address, &request, &context).await?;
-        Ok(read.into_response(&request))
+            .map_err(|_| ErrorData::invalid_params("invalid resource URI", None))?;
+        let (result, cache) = D::routes()
+            .read(self.domain.clone(), address, context)
+            .await?;
+        Ok(DomainRead { result, cache }.into_response(&request))
     }
 
     async fn complete(
@@ -413,9 +299,7 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         context: RequestContext<RoleServer>,
     ) -> Result<CompleteResult, ErrorData> {
         if Self::setup().is_document_completion(&request) {
-            let identity = hub_identity(&context)?;
-            let index = crate::docs::docs_index_uri(&D::Contract::scheme());
-            self.domain.authorize_documents(&identity, &index).await?;
+            D::routes().authorize_documents(&context)?;
         }
         if let Some(result) = Self::setup().complete_documents(&request, &context)? {
             return Ok(result);
@@ -428,7 +312,11 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
-        Self::setup().list_prompts(self.domain.prompts(), request.as_ref(), &context)
+        Self::setup().list_prompts(
+            D::routes().list_prompts(&context),
+            request.as_ref(),
+            &context,
+        )
     }
 
     async fn get_prompt(
@@ -436,8 +324,8 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         request: GetPromptRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResponse, ErrorData> {
-        self.domain
-            .get_prompt(request, context)
+        D::routes()
+            .prompt(self.domain.clone(), request, context)
             .await
             .map(Into::into)
     }
@@ -448,23 +336,12 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         hub_identity(&context)?;
-        let tools = self
-            .domain
-            .tool_router()
-            .list_all()
-            .into_iter()
-            .map(|tool| self.published(tool))
-            .collect();
-        let tools = self.domain.list_tools(tools, &context).await?;
+        let tools = super::Listing::all(D::routes().list_tools(&context));
         Self::setup().list_tools(tools, request.as_ref())
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
-        self.domain
-            .tool_router()
-            .get(name)
-            .cloned()
-            .map(|tool| self.published(tool))
+        D::routes().get_tool(name)
     }
 
     async fn call_tool(
@@ -472,13 +349,16 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         mut request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        D::routes().authorize_tool(&request.name, &context)?;
         if let Some(created) = self.tasks.start_task(&mut request, &context).await? {
             return Ok(created.into());
         }
         let name = request.name.clone();
         let arguments = request.arguments.clone();
-        let call = ToolCallContext::new(&self.domain, request, context);
-        let mut response = self.domain.tool_router().call(call).await?;
+        let mut response: CallToolResponse = D::routes()
+            .call(self.domain.clone(), request, context)
+            .await?
+            .into();
         if let CallToolResponse::Complete(result) = &mut response
             && result.is_error == Some(true)
             && let Some(tool) = self.get_tool(&name)

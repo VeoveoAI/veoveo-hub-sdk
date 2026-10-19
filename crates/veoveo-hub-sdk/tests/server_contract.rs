@@ -1,573 +1,344 @@
+use rmcp::model::{Implementation, ServerConfig};
 use std::{collections::BTreeSet, sync::LazyLock};
-
-use rmcp::model::{Implementation, Resource, ResourceTemplate, ServerCapabilities, ServerConfig};
 use veoveo_hub_sdk::{
-    ServerSlug,
+    calls::{ProviderContract, ResourceRead},
+    definition::{Product, SingleOutput, TemplateRead},
     docs::ServerDocs,
-    server_contract::{
-        McpResource, McpResourceTemplate, McpServerContract, McpServerSetup, McpSetupError,
-    },
+    hosting::{DomainServer, ReadCache, ResourceBuilder, RoutePolicy, Routes},
+    server_contract::{McpServerContract, McpServerSetup, McpSetupError},
 };
-use veoveo_types::{ResourceAddress, ResourceScheme, ResourceTemplateUri, ResourceUri, ScopeName};
-
+use veoveo_types::{ResourceAddress, ResourceScheme, ResourceUri, ScopeName, ServerSlug};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]
 #[vocabulary(scope)]
-enum Permission {
+enum Scope {
     #[vocabulary(rename = "independent:read")]
     Read,
     #[vocabulary(rename = "independent:write")]
     Write,
 }
-
-// The fixture deliberately includes a broken codec to exercise admission failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+struct Independent;
+impl ProviderContract for Independent {
+    fn slug() -> ServerSlug {
+        ServerSlug::parse("independent").unwrap()
+    }
+}
+#[derive(Clone, PartialEq, Eq)]
 enum Address {
-    Docs,
-    Agents,
-    Design,
-    Contract,
-    BrokenRoundTrip,
+    Product { id: String },
+}
+#[derive(
+    serde::Serialize, serde::Deserialize, schemars::JsonSchema, veoveo_hub_sdk::SingleOutput,
+)]
+struct Metadata {
+    label: String,
+}
+#[derive(Clone)]
+#[veoveo_hub_sdk::resource_read(provider=Independent,address_type=Address,content=Metadata,
+    address=Address::Product{id:self.id.clone()},template="independent://products/{id}",
+    parse=|address|match address {Address::Product{id}=>Some(Self{id:id.clone()})})]
+struct ReadProduct {
+    id: String,
 }
 impl ResourceAddress for Address {
     type Error = veoveo_types::IdentifierError;
     fn parse(uri: &ResourceUri) -> Result<Self, Self::Error> {
-        match uri.as_str() {
-            "independent://docs" => Ok(Self::Docs),
-            "independent://docs/agents" => Ok(Self::Agents),
-            "independent://docs/design" => Ok(Self::Design),
-            "independent://contract" => Ok(Self::Contract),
-            _ => Err(veoveo_types::IdentifierError::new(
-                uri.as_str(),
-                "unknown fixture address",
-            )),
+        let invalid = || Self::Error::new(uri.as_str(), "invalid product address");
+        let parts = uri.components().map_err(|_| invalid())?;
+        let path: Vec<_> = parts.path_segments().collect();
+        if parts.scheme() != "independent"
+            || parts.authority() != "products"
+            || parts.has_query()
+            || path.len() != 1
+        {
+            return Err(invalid());
         }
+        Ok(Self::Product {
+            id: path[0].to_string(),
+        })
     }
     fn to_uri(&self) -> Result<ResourceUri, Self::Error> {
-        Ok(ResourceUri::new(match self {
-            Self::Docs | Self::BrokenRoundTrip => "independent://docs",
-            Self::Agents => "independent://docs/agents",
-            Self::Design => "independent://docs/design",
-            Self::Contract => "independent://contract",
-        })
-        .unwrap())
+        let Self::Product { id } = self;
+        let invalid = || Self::Error::new("product", "invalid product address");
+        veoveo_types::ResourceUriBuilder::from_components(
+            &ResourceScheme::parse("independent").unwrap(),
+            veoveo_types::UriAuthority::new("products").unwrap(),
+        )
+        .map_err(|_| invalid())?
+        .segment(veoveo_types::UriSegment::new(id).map_err(|_| invalid())?)
+        .build()
+        .map_err(|_| invalid())
     }
 }
-
-fn documents(owner: &'static str) -> ServerDocs {
-    let mut value: serde_json::Value =
-        serde_json::from_str(include_str!("../testdata/compliance-example.json")).unwrap();
-    value["server"] = serde_json::json!(owner);
-    let profile: veoveo_hub_sdk::docs::ComplianceProfile = serde_json::from_value(value).unwrap();
-    let manual = format!(
-        "# Manual\n\n## Contract Compliance\n\n{}\n",
-        veoveo_hub_sdk::docs::render_compliance(&profile)
-    );
-    ServerDocs::new(owner)
-        .with_doc("agents", "Agent manual", Box::leak(manual.into_boxed_str()))
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=Independent,output=Product<Metadata>,name="produce_product")]
+struct Produce {}
+fn documents(owner: &str) -> ServerDocs {
+    ServerDocs::new(ServerSlug::parse(owner).unwrap())
+        .with_doc("agents", "Agents", "# Agents")
         .with_doc("design", "Design", "# Design")
-        .with_profile_json(&serde_json::to_string(&profile).unwrap())
-        .unwrap()
 }
-
 static DOCUMENTS: LazyLock<ServerDocs> = LazyLock::new(|| documents("independent"));
-static FOREIGN_DOCUMENTS: LazyLock<ServerDocs> = LazyLock::new(|| documents("foreign"));
-static EMPTY_DOCUMENTS: LazyLock<ServerDocs> = LazyLock::new(|| ServerDocs::new("independent"));
-static DUPLICATE_DOCUMENTS: LazyLock<ServerDocs> = LazyLock::new(|| {
-    documents("independent").with_doc("agents", "Duplicate manual", "# Duplicate")
-});
-static BLANK_DOCUMENT: LazyLock<ServerDocs> =
-    LazyLock::new(|| documents("independent").with_doc("extra", "Empty", "  "));
-
-const VALID: u8 = 0;
-const WRONG_NAME: u8 = 1;
-const WRONG_OWNER: u8 = 2;
-const NO_RESOURCES: u8 = 3;
-const NO_DOCUMENTS: u8 = 4;
-const DUPLICATE_DOCUMENT: u8 = 5;
-const DUPLICATE_RESOURCE: u8 = 6;
-const MISSING_ROOT: u8 = 7;
-const MISSING_DOCUMENT_RESOURCE: u8 = 8;
-const DUPLICATE_SCOPE: u8 = 9;
-const EMPTY_SCOPES: u8 = 10;
-const BAD_TEMPLATE: u8 = 11;
-const DUPLICATE_TEMPLATE: u8 = 12;
-const EMPTY_DOCUMENT_BODY: u8 = 13;
-const NO_COMPLETIONS: u8 = 14;
-struct Fixture<const CASE: u8>;
-
-impl<const CASE: u8> McpServerContract for Fixture<CASE> {
-    type Scope = Permission;
-    type Resource = Address;
-    fn slug() -> ServerSlug {
-        ServerSlug::parse("independent").unwrap()
-    }
-    fn scheme() -> ResourceScheme {
-        ResourceScheme::parse("independent").unwrap()
-    }
-    fn scopes() -> &'static [Permission] {
-        match CASE {
-            DUPLICATE_SCOPE => &[Permission::Read, Permission::Read],
-            EMPTY_SCOPES => &[],
-            _ => &[Permission::Read],
-        }
-    }
-    fn documents() -> &'static ServerDocs {
-        match CASE {
-            WRONG_OWNER => &FOREIGN_DOCUMENTS,
-            NO_DOCUMENTS => &EMPTY_DOCUMENTS,
-            DUPLICATE_DOCUMENT => &DUPLICATE_DOCUMENTS,
-            EMPTY_DOCUMENT_BODY => &BLANK_DOCUMENT,
-            _ => &DOCUMENTS,
-        }
-    }
-    fn server_config() -> ServerConfig {
-        let mut config = ServerConfig::default();
-        config.server_info = Implementation::new(
-            if CASE == WRONG_NAME {
-                "foreign"
-            } else {
-                "independent"
-            },
-            "1.0.0",
-        );
-        config.capabilities = match CASE {
-            NO_RESOURCES => ServerCapabilities::builder().enable_completions().build(),
-            NO_COMPLETIONS => ServerCapabilities::builder().enable_resources().build(),
-            _ => ServerCapabilities::builder()
-                .enable_resources()
-                .enable_completions()
-                .build(),
-        };
-        config
-    }
-    fn resources() -> Result<Vec<McpResource<Address>>, McpSetupError> {
-        let mut addresses = vec![
-            Address::Docs,
-            Address::Agents,
-            Address::Design,
-            Address::Contract,
-        ];
-        match CASE {
-            DUPLICATE_RESOURCE => addresses.push(Address::Docs),
-            MISSING_ROOT => addresses.retain(|address| *address != Address::Contract),
-            MISSING_DOCUMENT_RESOURCE => addresses.retain(|address| *address != Address::Design),
-            _ => {}
-        }
-        addresses
-            .into_iter()
-            .map(|address| {
-                McpResource::new(address, |uri| {
-                    Resource::new(uri, "Fixture").with_mime_type("text/plain")
+static FOREIGN: LazyLock<ServerDocs> = LazyLock::new(|| documents("foreign"));
+static EMPTY: LazyLock<ServerDocs> = LazyLock::new(|| ServerDocs::new(Independent::slug()));
+static BLANK: LazyLock<ServerDocs> =
+    LazyLock::new(|| documents("independent").with_doc("extra", "Extra", " "));
+fn routes<D: DomainServer>() -> Routes<D>
+where
+    D::Contract: McpServerContract<Provider = Independent>,
+{
+    Routes::builder(RoutePolicy::Authenticated)
+        .tool::<Produce, _, _>(
+            "Create a product",
+            RoutePolicy::Authenticated,
+            |_, _, _| async {
+                Product::new(
+                    &Address::Product { id: "one".into() },
+                    Metadata {
+                        label: "ready".into(),
+                    },
+                )
+                .map_err(|_| {
+                    rmcp::ErrorData::internal_error("fixture product construction", None).into()
                 })
-            })
-            .collect()
-    }
-    fn resource_templates() -> Result<Vec<McpResourceTemplate>, McpSetupError> {
-        let text = if CASE == BAD_TEMPLATE {
-            "relative/{id}"
-        } else {
-            "independent://item/{+id}{?cursor}"
-        };
-        let template =
-            ResourceTemplateUri::new(text).map_err(|_| McpSetupError::InvalidTemplate)?;
-        let descriptor =
-            McpResourceTemplate::new(template, |uri| ResourceTemplate::new(uri, "Item"))?;
-        let mut templates = vec![descriptor; if CASE == DUPLICATE_TEMPLATE { 2 } else { 1 }];
-        templates.push(McpResourceTemplate::new(
-            ResourceTemplateUri::new("independent://docs/{doc_id}").unwrap(),
-            |uri| ResourceTemplate::new(uri, "Document"),
-        )?);
-        Ok(templates)
-    }
+            },
+        )
+        .template::<ReadProduct, _, _>(
+            ResourceBuilder::new("Product")
+                .reader(|_, _: ReadProduct, _| async {
+                    Ok(Metadata {
+                        label: "ready".into(),
+                    })
+                })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::Private),
+        )
+        .build()
 }
-
-fn rejects<const CASE: u8>(expected: McpSetupError) {
-    assert_eq!(McpServerSetup::<Fixture<CASE>>::new().err(), Some(expected));
+macro_rules! fixture {
+    ($module:ident,$docs:ident,$name:literal,$scopes:expr) => {
+        fixture!($module, $docs, $name, $scopes, false);
+    };
+    ($module:ident,$docs:ident,$name:literal,$scopes:expr,$registered:expr) => {
+        mod $module {
+            use super::*;
+            pub(super) struct Contract;
+            #[derive(Clone)]
+            pub(super) struct Domain;
+            static SETUP: LazyLock<McpServerSetup<Contract>> =
+                LazyLock::new(|| McpServerSetup::new().unwrap());
+            static ROUTES: LazyLock<Routes<Domain>> = LazyLock::new(routes);
+            impl McpServerContract for Contract {
+                type Server = Domain;
+                type Provider = Independent;
+                type Scope = Scope;
+                fn scheme() -> ResourceScheme {
+                    ResourceScheme::parse("independent").unwrap()
+                }
+                fn scopes() -> &'static [Scope] {
+                    $scopes
+                }
+                fn documents() -> &'static ServerDocs {
+                    &$docs
+                }
+                fn server_config() -> ServerConfig {
+                    let mut config = ServerConfig::default();
+                    config.server_info = Implementation::new($name, "1");
+                    config
+                        .capabilities
+                        .extensions
+                        .get_or_insert_default()
+                        .insert(
+                            veoveo_hub_sdk::registration::AUTHORIZATION_EXTENSION_ID.to_owned(),
+                            rmcp::model::JsonObject::new(),
+                        );
+                    if $registered {
+                        use veoveo_hub_sdk::registration::{
+                            AuthorizationDeclaration, RegistrationDeclaration, Requirements,
+                            ServerEndpoint, ServerVersion, mcp,
+                        };
+                        let declaration = RegistrationDeclaration {
+                            slug: Independent::slug(),
+                            uri_scheme: Self::scheme(),
+                            version: ServerVersion::new("1").unwrap(),
+                            endpoint: ServerEndpoint::new(
+                                "https://independent.example/mcp".parse().unwrap(),
+                            )
+                            .unwrap(),
+                        };
+                        mcp::advertise(
+                            &mut config.capabilities,
+                            &declaration,
+                            &AuthorizationDeclaration {
+                                permissions: vec![],
+                                requirements: Requirements::default(),
+                                uses: vec![],
+                            },
+                        );
+                    }
+                    config
+                }
+            }
+            impl DomainServer for Domain {
+                type Contract = Contract;
+                fn setup() -> &'static McpServerSetup<Contract> {
+                    &SETUP
+                }
+                fn routes() -> &'static Routes<Self> {
+                    &ROUTES
+                }
+            }
+        }
+    };
 }
-
+fixture!(valid, DOCUMENTS, "independent", &[Scope::Read]);
+fixture!(registered, DOCUMENTS, "independent", &[Scope::Read], true);
+fixture!(wrong_name, DOCUMENTS, "foreign", &[Scope::Read]);
+fixture!(wrong_owner, FOREIGN, "independent", &[Scope::Read]);
+fixture!(missing_docs, EMPTY, "independent", &[Scope::Read]);
+fixture!(blank_doc, BLANK, "independent", &[Scope::Read]);
+fixture!(
+    duplicate_scope,
+    DOCUMENTS,
+    "independent",
+    &[Scope::Read, Scope::Read]
+);
+fixture!(empty_scope, DOCUMENTS, "independent", &[]);
 #[test]
-fn scope_membership_keeps_unknown_grants_and_rejects_undeclared_permissions() {
-    let setup = McpServerSetup::<Fixture<VALID>>::new().unwrap();
+fn scope_admission_preserves_unknown_grants_and_empty_vocabularies() {
+    let setup = McpServerSetup::<valid::Contract>::new().unwrap();
     let grants = BTreeSet::from([
-        Permission::Read.into(),
-        Permission::Write.into(),
-        ScopeName::parse("another:read").unwrap(),
+        Scope::Read.into(),
+        Scope::Write.into(),
+        ScopeName::parse("other:read").unwrap(),
     ]);
-    assert!(setup.has_scope(&grants, Permission::Read));
-    assert!(!setup.has_scope(&grants, Permission::Write));
-    assert!(!setup.has_scope(&BTreeSet::new(), Permission::Read));
-    assert_eq!(
-        setup.scope_names(),
-        &BTreeSet::from([Permission::Read.into()])
-    );
-    rejects::<DUPLICATE_SCOPE>(McpSetupError::DuplicateScope);
-}
-
-#[test]
-fn servers_without_domain_scopes_have_an_empty_vocabulary() {
-    let setup = McpServerSetup::<Fixture<EMPTY_SCOPES>>::new().unwrap();
-    assert!(setup.scope_names().is_empty());
-    assert!(!setup.has_scope(&BTreeSet::from([Permission::Read.into()]), Permission::Read));
-}
-
-#[test]
-fn setup_preserves_typed_addresses_metadata_and_rfc6570_declarations() {
-    let setup = McpServerSetup::<Fixture<VALID>>::new().unwrap();
-    let resources = setup.resources();
-    assert_eq!(resources.len(), 4);
+    assert!(setup.has_scope(&grants, Scope::Read));
+    assert!(!setup.has_scope(&grants, Scope::Write));
+    assert!(!setup.has_scope(&BTreeSet::new(), Scope::Read));
     assert!(
-        resources
-            .windows(2)
-            .all(|pair| pair[0].descriptor().uri < pair[1].descriptor().uri)
+        McpServerSetup::<empty_scope::Contract>::new()
+            .unwrap()
+            .scope_names()
+            .is_empty()
     );
-    for resource in resources {
-        assert_eq!(
-            resource.address().to_uri().unwrap().as_str(),
-            resource.descriptor().uri
-        );
-        assert_eq!(
-            resource.descriptor().mime_type.as_deref(),
-            Some("text/plain")
-        );
-    }
     assert_eq!(
+        McpServerSetup::<duplicate_scope::Contract>::new().err(),
+        Some(McpSetupError::DuplicateScope)
+    );
+}
+#[test]
+fn host_supplies_capabilities_and_document_descriptors_from_construction() {
+    let setup = McpServerSetup::<valid::Contract>::new().unwrap();
+    assert!(setup.server_config().capabilities.resources.is_some());
+    assert!(setup.server_config().capabilities.completions.is_some());
+    assert!(setup.server_config().capabilities.tools.is_some());
+    assert_eq!(setup.resources().len(), 4);
+    assert!(
+        setup
+            .resources()
+            .windows(2)
+            .all(|pair| pair[0].address() < pair[1].address())
+    );
+    assert!(
         setup
             .resource_templates()
             .iter()
-            .find(|t| t.descriptor().name == "Item")
+            .any(|template| template.template().as_str() == ReadProduct::TEMPLATE)
+    );
+    assert!(
+        veoveo_hub_sdk::registration::mcp::advertised(&setup.server_config().capabilities)
             .unwrap()
-            .template()
-            .as_str(),
-        "independent://item/{+id}{?cursor}"
+            .is_none()
     );
+    let registered = McpServerSetup::<registered::Contract>::new().unwrap();
+    let advertised =
+        veoveo_hub_sdk::registration::mcp::advertised(&registered.server_config().capabilities)
+            .unwrap()
+            .unwrap();
+    assert_eq!(advertised.registration.slug, Independent::slug());
     assert_eq!(
-        setup.documents().server(),
-        setup.server_config().server_info.name
+        advertised.authorization,
+        registered::Domain::routes().authorization()
     );
 }
-
 #[test]
-fn descriptor_builder_cannot_override_address_or_hide_a_broken_codec() {
+fn semantic_identity_and_document_errors_are_still_refused() {
     assert_eq!(
-        McpResource::new(Address::Docs, |_| Resource::new("foreign://docs", "Docs")).unwrap_err(),
-        McpSetupError::DescriptorAddressMismatch
+        McpServerSetup::<wrong_name::Contract>::new().err(),
+        Some(McpSetupError::IdentityMismatch)
     );
     assert_eq!(
-        McpResource::new(Address::BrokenRoundTrip, |uri| Resource::new(uri, "Docs")).unwrap_err(),
-        McpSetupError::ResourceRoundTrip
+        McpServerSetup::<wrong_owner::Contract>::new().err(),
+        Some(McpSetupError::IdentityMismatch)
     );
     assert_eq!(
-        McpResource::new(Address::Docs, |uri| Resource::new(uri, " ")).unwrap_err(),
-        McpSetupError::MissingResourceName
+        McpServerSetup::<missing_docs::Contract>::new().err(),
+        Some(McpSetupError::MissingDocument)
+    );
+    assert_eq!(
+        McpServerSetup::<blank_doc::Contract>::new().err(),
+        Some(McpSetupError::MissingDocument)
     );
 }
-
 #[test]
-fn inconsistent_server_identity_and_missing_capability_fail_before_serving() {
-    rejects::<WRONG_NAME>(McpSetupError::IdentityMismatch);
-    rejects::<WRONG_OWNER>(McpSetupError::IdentityMismatch);
-    rejects::<NO_RESOURCES>(McpSetupError::MissingResourcesCapability);
-    rejects::<NO_COMPLETIONS>(McpSetupError::MissingCompletionsCapability);
-}
-
-#[test]
-fn document_and_discovery_coverage_is_checked_before_serving() {
-    rejects::<NO_DOCUMENTS>(McpSetupError::MissingDocument);
-    rejects::<EMPTY_DOCUMENT_BODY>(McpSetupError::MissingDocument);
-    rejects::<DUPLICATE_DOCUMENT>(McpSetupError::InvalidDocument);
-    rejects::<DUPLICATE_RESOURCE>(McpSetupError::DuplicateResource);
-    rejects::<MISSING_ROOT>(McpSetupError::MissingWellKnownResource);
-    rejects::<MISSING_DOCUMENT_RESOURCE>(McpSetupError::MissingWellKnownResource);
-}
-
-#[test]
-fn invalid_or_duplicate_template_declarations_are_rejected() {
-    rejects::<BAD_TEMPLATE>(McpSetupError::InvalidTemplate);
-    rejects::<DUPLICATE_TEMPLATE>(McpSetupError::DuplicateTemplate);
-}
-
-#[test]
-fn template_metadata_cannot_override_the_validated_reference() {
-    let template = ResourceTemplateUri::new("independent://item/{id}").unwrap();
+fn product_construction_and_received_uri_admission_share_one_shape() {
+    let read = ReadProduct { id: "one".into() };
+    let product = Product::new(
+        &read.address(),
+        Metadata {
+            label: "ready".into(),
+        },
+    )
+    .unwrap();
     assert_eq!(
-        McpResourceTemplate::new(template.clone(), |_| ResourceTemplate::new(
-            "foreign://{id}",
-            "Other"
-        ))
-        .unwrap_err(),
-        McpSetupError::DescriptorTemplateMismatch
+        SingleOutput::product_uri(&product),
+        Some(&read.uri().unwrap())
     );
-    assert_eq!(
-        McpResourceTemplate::new(template, |uri| ResourceTemplate::new(uri, " ")).unwrap_err(),
-        McpSetupError::InvalidTemplate
-    );
+    let wire = serde_json::to_value(product).unwrap();
+    assert_eq!(wire["resultUri"], "independent://products/one");
+    assert_eq!(wire["metadata"]["label"], "ready");
+    for invalid in [
+        serde_json::json!({"metadata":{"label":"ready"}}),
+        serde_json::json!({"resultUri":"not a URI","metadata":{"label":"ready"}}),
+    ] {
+        assert!(serde_json::from_value::<Product<Metadata>>(invalid).is_err());
+    }
 }
-
 #[cfg(feature = "testing")]
-mod product_results {
-    use super::*;
-    use rmcp::{
-        ErrorData, RoleServer,
-        handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-        model::{CallToolResult, ReadResourceRequestParams},
-        service::RequestContext,
-    };
+#[tokio::test]
+async fn hosted_product_output_text_and_link_come_from_the_same_value() {
     use veoveo_hub_sdk::hosting::{
-        DomainRead, DomainServer, Hosted, product_result,
+        Hosted,
         testing::{self, TestHub},
     };
-
-    #[derive(Clone)]
-    struct ProductDomain {
-        router: ToolRouter<Self>,
-    }
-
-    #[derive(serde::Deserialize, schemars::JsonSchema)]
-    #[serde(deny_unknown_fields)]
-    struct Request {
-        case: Case,
-    }
-
-    #[derive(Clone, Copy, Eq, PartialEq, veoveo_types::Vocabulary)]
-    enum Case {
-        Current,
-        Retired,
-        Mixed,
-        Mismatch,
-        Missing,
-        WrongType,
-        Null,
-        InvalidUri,
-    }
-
-    #[rmcp::tool_router]
-    impl ProductDomain {
-        #[rmcp::tool(
-            name = "produce_product",
-            description = "Contract fixture product result"
-        )]
-        async fn produce(
-            &self,
-            Parameters(request): Parameters<Request>,
-        ) -> Result<CallToolResult, ErrorData> {
-            let output = match request.case {
-                Case::Current => {
-                    #[derive(serde::Serialize)]
-                    #[serde(rename_all = "camelCase")]
-                    struct Product {
-                        result_uri: ResourceUri,
-                    }
-                    serde_json::to_value(Product {
-                        result_uri: ResourceUri::new("independent://products/1").unwrap(),
-                    })
-                    .unwrap()
-                }
-                Case::Retired => serde_json::json!({"result_uri":"independent://products/1"}),
-                Case::Mixed => {
-                    serde_json::json!({"resultUri":"independent://products/1", "result_uri":"independent://products/1"})
-                }
-                Case::Mismatch => serde_json::json!({"resultUri":"independent://products/2"}),
-                Case::Missing => serde_json::json!({}),
-                Case::WrongType => serde_json::json!({"resultUri":42}),
-                Case::Null => serde_json::json!({"resultUri":null}),
-                Case::InvalidUri => serde_json::json!({"resultUri":"not a resource URI"}),
-            };
-            product_result(
-                "Product ready",
-                Resource::new("independent://products/1", "Product"),
-                &output,
-            )
-        }
-    }
-
-    impl DomainServer for ProductDomain {
-        type Contract = Fixture<VALID>;
-        fn setup() -> &'static McpServerSetup<Self::Contract> {
-            static SETUP: LazyLock<McpServerSetup<Fixture<VALID>>> =
-                LazyLock::new(|| McpServerSetup::new().unwrap());
-            &SETUP
-        }
-        fn tool_router(&self) -> &ToolRouter<Self> {
-            &self.router
-        }
-        async fn read(
-            &self,
-            _: Address,
-            _: &ReadResourceRequestParams,
-            _: &RequestContext<RoleServer>,
-        ) -> Result<DomainRead, ErrorData> {
-            Err(ErrorData::resource_not_found(
-                "No fixture product read",
-                None,
-            ))
-        }
-    }
-
-    #[tokio::test]
-    async fn hub_product_results_require_only_current_result_uri_and_matching_link() {
-        tokio::time::timeout(std::time::Duration::from_secs(20), async {
-            let hub = TestHub::new(testing::for_domain::<ProductDomain>()
-                .handler(|| Hosted::new(ProductDomain { router: ProductDomain::tool_router() })).build());
-            let bearer = hub.token();
-            let mut violations = Vec::new();
-            for (case, succeeds) in [("current", true), ("retired", false), ("mixed", false), ("mismatch", false), ("missing", false), ("wrong_type", false), ("null", false), ("invalid_uri", false)] {
-                let request = serde_json::json!({"name":"produce_product", "arguments":{"case":case}});
-                let (status, response) = hub.rpc_with("tools/call", request.clone(), Some(&bearer)).await;
-                let success = response.get("result").is_some_and(|result| result.get("isError") != Some(&serde_json::Value::Bool(true)));
-                let intended_error = response["error"]["code"] == -32603
-                    && response["error"]["message"].as_str().is_some_and(|message| {
-                        message.starts_with("product result") && message.ends_with("must match its resource link")
-                    });
-                if status.as_u16() != 200 || (succeeds && !success) || (!succeeds && !intended_error) {
-                    violations.push(serde_json::json!({"request":request,"httpStatus":status.as_u16(),"response":response}));
-                } else if succeeds {
-                    assert_eq!(response["result"]["structuredContent"]["resultUri"], "independent://products/1");
-                    assert_eq!(response["result"]["content"][1]["type"], "resource_link");
-                    assert_eq!(response["result"]["content"][1]["uri"], "independent://products/1");
-                    assert!(response["result"]["structuredContent"].get("result_uri").is_none());
-                }
-            }
-            assert!(violations.is_empty(), "Product result contract violations: {}", serde_json::Value::Array(violations));
-        }).await.expect("Hub product result matrix exceeded twenty seconds");
-    }
-
-    #[tokio::test]
-    async fn hub_traces_preserve_routing_without_query_or_credentials() {
-        use std::{
-            io::Write,
-            sync::{Arc, Mutex},
-        };
-        use tracing::instrument::WithSubscriber;
-        struct TraceWriter(Arc<Mutex<Vec<u8>>>);
-        impl Write for TraceWriter {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().unwrap().extend_from_slice(bytes);
-                Ok(bytes.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        tokio::time::timeout(std::time::Duration::from_secs(20), async {
-            let captured = Arc::new(Mutex::new(Vec::new()));
-            let writer = captured.clone();
-            let subscriber = tracing_subscriber::fmt()
-                .with_max_level(tracing::Level::TRACE).with_ansi(false).without_time()
-                .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW)
-                .with_writer(move || TraceWriter(writer.clone())).finish();
-            let hub = TestHub::new(testing::for_domain::<ProductDomain>()
-                .handler(|| Hosted::new(ProductDomain { router: ProductDomain::tool_router() }))
-                .public_routes(axum::Router::new().route("/trace-query", axum::routing::get(|uri: axum::http::Uri| async move {
-                    uri.query().unwrap_or_default().to_owned()
-                }))).build());
-            let query = "veoveo_trace_query_sentinel=veoveo_trace_query_value&access_token=synthetic-trace-query-token&signature=synthetic-trace-signature%2Fvalue";
-            let request = hub.request(&format!("/trace-query?{query}"))
-                .method("GET").version(axum::http::Version::HTTP_11)
-                .header("authorization", "Bearer synthetic-trace-header-token")
-                .header("cookie", "fixture=synthetic-trace-cookie")
-                .body(axum::body::Body::empty()).unwrap();
-            let expected_route = request.uri().path().to_owned();
-            let (status, body) = hub.send(request).with_subscriber(subscriber).await;
-            assert_eq!(status.as_u16(), 200);
-            assert_eq!(body, query, "the route must receive the original query");
-            let trace = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
-            assert!(trace.contains("method=GET"), "missing request method");
-            assert!(trace.contains(&format!("http.route={expected_route}")), "missing the matched route");
-            assert!(trace.contains("version=HTTP/1.1"), "missing request version");
-            let forbidden = ["veoveo_trace_query_sentinel", "veoveo_trace_query_value", "access_token", "synthetic-trace-query-token", "synthetic-trace-signature", "synthetic-trace-header-token", "synthetic-trace-cookie"]
-                .into_iter().filter(|value| trace.contains(value)).collect::<Vec<_>>();
-            assert!(forbidden.is_empty(), "Request trace contains synthetic query/credential sentinels: {forbidden:?}");
-        }).await.expect("Hub trace query control exceeded twenty seconds");
-    }
-
-    /// A route whose path carries a secret, such as a share link's token, records its
-    /// template, never the segment; a request that matches no route records neither its
-    /// path nor its query.
-    #[tokio::test]
-    async fn request_spans_record_the_route_template_never_a_secret_path_segment() {
-        use std::{
-            io::Write,
-            sync::{Arc, Mutex},
-        };
-        use tracing::instrument::WithSubscriber;
-        struct TraceWriter(Arc<Mutex<Vec<u8>>>);
-        impl Write for TraceWriter {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().unwrap().extend_from_slice(bytes);
-                Ok(bytes.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let writer = captured.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_ansi(false)
-            .without_time()
-            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
-            .with_writer(move || TraceWriter(writer.clone()))
-            .finish();
-        let hub = TestHub::new(
-            testing::for_domain::<ProductDomain>()
-                .handler(|| {
-                    Hosted::new(ProductDomain {
-                        router: ProductDomain::tool_router(),
-                    })
-                })
-                .public_routes(
-                    axum::Router::new()
-                        .route("/shares/{token}", axum::routing::get(|| async { "shared" })),
-                )
-                .build(),
-        );
-        let secret = "synthetic-share-token-sentinel";
-        let shared = hub
-            .request(&format!(
-                "/shares/{secret}?signature=synthetic-share-query-sentinel"
-            ))
-            .method("GET")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        let template = format!(
-            "{}/shares/{{token}}",
-            shared
-                .uri()
-                .path()
-                .trim_end_matches(&format!("/shares/{secret}"))
-        );
-        let unmatched = hub
-            .request("/no-such-route/synthetic-unmatched-sentinel?q=synthetic-unmatched-query")
-            .method("GET")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        let (status, body) = async {
-            let shared = hub.send(shared).await;
-            assert_eq!(hub.send(unmatched).await.0.as_u16(), 404);
-            shared
-        }
-        .with_subscriber(subscriber)
+    let hub = TestHub::new(
+        testing::for_domain::<valid::Domain>()
+            .handler(|| Hosted::new(valid::Domain))
+            .build(),
+    );
+    let response = hub
+        .rpc(
+            "tools/call",
+            serde_json::json!({"name":"produce_product","arguments":{}}),
+        )
         .await;
-        assert_eq!((status.as_u16(), body.as_str()), (200, "shared"));
-        let trace = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
-        assert!(
-            trace.contains(&format!("http.route={template}")),
-            "the span lacks the route template {template}: {trace}"
-        );
-        assert!(trace.contains("http.route=unmatched"), "{trace}");
-        let leaked: Vec<&str> = [
-            secret,
-            "synthetic-share-query-sentinel",
-            "synthetic-unmatched-sentinel",
-            "synthetic-unmatched-query",
-        ]
-        .into_iter()
-        .filter(|sentinel| trace.contains(sentinel))
+    let output = &response["result"]["structuredContent"];
+    assert_eq!(
+        output["resultUri"], "independent://products/one",
+        "{response}"
+    );
+    let content = response["result"]["content"].as_array().unwrap();
+    let links: Vec<_> = content
+        .iter()
+        .filter(|block| block["type"] == "resource_link")
         .collect();
-        assert!(
-            leaked.is_empty(),
-            "request spans recorded {leaked:?}: {trace}"
-        );
-    }
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0]["uri"], output["resultUri"]);
+    let text = content
+        .iter()
+        .find_map(|block| block["text"].as_str())
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(text).unwrap(),
+        *output
+    );
 }

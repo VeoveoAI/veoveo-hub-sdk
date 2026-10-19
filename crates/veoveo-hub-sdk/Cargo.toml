@@ -65,6 +65,7 @@ server = [
 testing = ["server", "dep:tower", "dep:pg_query", "dep:proc-macro2", "dep:syn"]
 
 [dependencies]
+veoveo-hub-sdk-macros = { path = "../veoveo-hub-sdk-macros" }
 veoveo-audit-contract.workspace = true
 veoveo-oauth = { workspace = true, optional = true }
 veoveo-types.workspace = true

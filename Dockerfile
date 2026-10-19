@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # Stages: dev is the development environment and check is the single gate. The SDK is a
-# library: it ships no runtime image, and the conformance CLI installs with Cargo.
+# library: it ships no runtime image. The Hub client CLI installs with Cargo.
 
 FROM rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS dev
 # clang and cmake build aws-lc-sys, which jsonwebtoken's AWS-LC backend links. PostgreSQL

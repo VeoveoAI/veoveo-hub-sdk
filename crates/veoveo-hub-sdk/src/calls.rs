@@ -8,7 +8,7 @@
 //! through strings. The `client` feature sends the calls and reads.
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use veoveo_types::{PermissionName, ResourceAddress, ResourceUri, ServerSlug};
 
 use crate::hub::{HubToolName, HubToolNameError};
@@ -26,7 +26,7 @@ pub trait ToolCall: Serialize + Send + Sync + 'static {
     /// The provider whose tool this request calls.
     type Provider: ProviderContract;
     /// The tool's structured result, decoded from `structuredContent`.
-    type Output: DeserializeOwned + Send + 'static;
+    type Output: crate::definition::Output;
     /// The tool's name on its server, such as `create_upload`.
     const TOOL: &'static str;
 
@@ -38,9 +38,28 @@ pub trait ToolCall: Serialize + Send + Sync + 'static {
     }
 }
 
+/// Preserve a local request's call association while admitting its cross-field
+/// invariants through Core's checked-value constructor/decoder.
+impl<T> ToolCall for veoveo_types::Checked<T>
+where
+    T: veoveo_types::Check + ToolCall,
+    T::Error: std::fmt::Display,
+{
+    type Provider = T::Provider;
+    type Output = T::Output;
+    const TOOL: &'static str = T::TOOL;
+}
+
 /// A tool that runs as a Task. Starting it returns a handle that resolves with the
 /// Task's result.
 pub trait TaskToolCall: ToolCall {}
+
+impl<T> TaskToolCall for veoveo_types::Checked<T>
+where
+    T: veoveo_types::Check + TaskToolCall,
+    T::Error: std::fmt::Display,
+{
+}
 
 /// A read of one provider resource: the provider's typed address and the resource's
 /// typed content, which the provider serves as one `application/json` text content.
@@ -50,7 +69,7 @@ pub trait ResourceRead: Send + Sync + 'static {
     /// The provider's resource address type, which builds the URI.
     type Address: ResourceAddress;
     /// The resource's content, decoded from its JSON text.
-    type Content: DeserializeOwned + Send + 'static;
+    type Content: crate::definition::ResourceContent;
 
     /// The resource this read names.
     fn address(&self) -> Self::Address;

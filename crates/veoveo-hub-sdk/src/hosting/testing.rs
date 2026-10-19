@@ -48,7 +48,7 @@ use super::{
 use crate::{
     ForwardedRequest, ForwardedTokenVerifier, HubInternalSigningKey, HubInternalTokenIssuer,
     HubInternalTokenVerifier, HubInternalTrustBundle, HubProfileId, OAuthClientId, Principal,
-    PrincipalKind, PublicDeployment, TokenIssuer, TokenSubject, server_contract::McpServerContract,
+    PrincipalKind, PublicDeployment, TokenIssuer, TokenSubject,
 };
 
 /// The host authority of the test deployment.
@@ -128,8 +128,11 @@ pub fn authority() -> InvocationAuthority {
 /// A verifier of `D`'s tokens that holds the test key and never refreshes it.
 pub(crate) fn test_verifier<D: DomainServer>() -> ForwardedTokenVerifier {
     ForwardedTokenVerifier::fixed(
-        HubInternalTokenVerifier::from_access_tokens(&access_token_trust(), D::Contract::slug())
-            .unwrap(),
+        HubInternalTokenVerifier::from_access_tokens(
+            &access_token_trust(),
+            crate::server_contract::provider_slug::<D::Contract>(),
+        )
+        .unwrap(),
     )
 }
 

@@ -80,16 +80,16 @@ fn authorization_declaration_wire_format() {
             ],
             "requirements": {
                 "tools": {
-                    "activate_release": "clock.admin",
-                    "create_event": "clock.events.write",
-                    "resolve_time": "clock.read"
+                    "activate_release": {"kind":"permission","permission":"clock.admin"},
+                    "create_event": {"kind":"permission","permission":"clock.events.write"},
+                    "resolve_time": {"kind":"permission","permission":"clock.read"}
                 },
-                "resources": {"clock://authorities/current": "clock.read"},
+                "resources": {"clock://authorities/current": {"kind":"permission","permission":"clock.read"}},
                 "resourceTemplates": {
-                    "clock://events/{event}": "clock.read",
-                    "ui://clock/{view}": "clock.read"
+                    "clock://events/{event}": {"kind":"permission","permission":"clock.read"},
+                    "ui://clock/{view}": {"kind":"permission","permission":"clock.read"}
                 },
-                "prompts": {"plan_window": "clock.read"}
+                "prompts": {"plan_window": {"kind":"permission","permission":"clock.read"}}
             }
         })
     );
@@ -103,8 +103,9 @@ fn required_permission_lookup() {
     let declaration = authorization();
     let required = |target| {
         declaration
-            .required(target)
-            .map(|permission| permission.permission.as_str().to_owned())
+            .access(target)
+            .and_then(RouteAccess::permission)
+            .map(|permission| permission.as_str().to_owned())
     };
     let create_event = tool("create_event");
     assert_eq!(
@@ -135,7 +136,7 @@ fn ambiguous_template_matches_require_nothing() {
     let event = ResourceUri::new("clock://events/abc").unwrap();
     assert!(
         declaration
-            .required(RequirementTarget::Resource(&event))
+            .access(RequirementTarget::Resource(&event))
             .is_none()
     );
 }
@@ -144,7 +145,8 @@ fn ambiguous_template_matches_require_nothing() {
 fn declarations_outside_the_namespace_are_rejected() {
     let mut wire = serde_json::to_value(authorization()).unwrap();
     wire["permissions"][0]["permission"] = json!("map.read");
-    wire["requirements"]["tools"]["resolve_time"] = json!("map.read");
+    wire["requirements"]["tools"]["resolve_time"] =
+        json!({"kind":"permission","permission":"map.read"});
     let declaration: AuthorizationDeclaration = serde_json::from_value(wire).unwrap();
     assert!(matches!(
         declaration.check(&slug(), &scheme()),
@@ -160,7 +162,8 @@ fn declarations_outside_the_namespace_are_rejected() {
     ));
 
     let mut wire = serde_json::to_value(authorization()).unwrap();
-    wire["requirements"]["resources"] = json!({"map://layers/a": "clock.read"});
+    wire["requirements"]["resources"] =
+        json!({"map://layers/a": {"kind":"permission","permission":"clock.read"}});
     let declaration: AuthorizationDeclaration = serde_json::from_value(wire).unwrap();
     assert!(matches!(
         declaration.check(&slug(), &scheme()),
@@ -168,7 +171,8 @@ fn declarations_outside_the_namespace_are_rejected() {
     ));
 
     let mut wire = serde_json::to_value(authorization()).unwrap();
-    wire["requirements"]["tools"]["resolve_time"] = json!("clock.undeclared");
+    wire["requirements"]["tools"]["resolve_time"] =
+        json!({"kind":"permission","permission":"clock.undeclared"});
     let declaration: AuthorizationDeclaration = serde_json::from_value(wire).unwrap();
     assert!(matches!(
         declaration.check(&slug(), &scheme()),
@@ -185,7 +189,8 @@ fn declarations_outside_the_namespace_are_rejected() {
     ));
 
     let mut wire = serde_json::to_value(authorization()).unwrap();
-    wire["requirements"]["prompts"]["plan_window"] = json!("clock.events.write");
+    wire["requirements"]["prompts"]["plan_window"] =
+        json!({"kind":"permission","permission":"clock.events.write"});
     let declaration: AuthorizationDeclaration = serde_json::from_value(wire).unwrap();
     assert!(matches!(
         declaration.check(&slug(), &scheme()),

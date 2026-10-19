@@ -23,18 +23,40 @@ pub struct PermissionDeclaration {
     pub risks: BTreeSet<Risk>,
 }
 
-/// Each target names exactly one permission. A target the declaration omits is denied.
+/// Presence declares a route. Authenticated never means anonymous. A missing
+/// entry remains undeclared, distinct from an explicitly admitted caller route.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "kind",
+    content = "permission",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
+pub enum RouteAccess {
+    Authenticated,
+    Permission(PermissionName),
+}
+impl RouteAccess {
+    pub fn permission(&self) -> Option<&PermissionName> {
+        match self {
+            Self::Authenticated => None,
+            Self::Permission(permission) => Some(permission),
+        }
+    }
+}
+
+/// Each target declares its access policy. An omitted target is undeclared.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Requirements {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub tools: BTreeMap<LocalToolName, PermissionName>,
+    pub tools: BTreeMap<LocalToolName, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub resources: BTreeMap<ResourceUri, PermissionName>,
+    pub resources: BTreeMap<ResourceUri, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub resource_templates: BTreeMap<ResourceTemplateUri, PermissionName>,
+    pub resource_templates: BTreeMap<ResourceTemplateUri, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub prompts: BTreeMap<PromptName, PermissionName>,
+    pub prompts: BTreeMap<PromptName, RouteAccess>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -65,13 +87,13 @@ pub(crate) struct AuthorizationDocument {
 #[serde(deny_unknown_fields)]
 struct RequirementsDocument {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    tools: BTreeMap<LocalToolName, PermissionName>,
+    tools: BTreeMap<LocalToolName, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    resources: BTreeMap<ResourceUri, PermissionName>,
+    resources: BTreeMap<ResourceUri, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    resource_templates: BTreeMap<ResourceTemplateUri, PermissionName>,
+    resource_templates: BTreeMap<ResourceTemplateUri, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    prompts: BTreeMap<PromptName, PermissionName>,
+    prompts: BTreeMap<PromptName, RouteAccess>,
 }
 
 impl From<AuthorizationDocument> for AuthorizationDeclaration {
@@ -146,6 +168,7 @@ impl AuthorizationDeclaration {
             .chain(requirements.resources.values())
             .chain(requirements.resource_templates.values())
             .chain(requirements.prompts.values())
+            .filter_map(RouteAccess::permission)
         {
             if !declared.contains(required) {
                 return Err(DeclarationError::UndeclaredPermission {
@@ -173,8 +196,9 @@ impl AuthorizationDeclaration {
             }
         }
         for (prompt, permission) in &requirements.prompts {
-            if self
-                .permission(permission)
+            if permission
+                .permission()
+                .and_then(|permission| self.permission(permission))
                 .is_some_and(|declared| declared.access == Access::Write)
             {
                 return Err(DeclarationError::PromptRequiresWrite {
@@ -216,7 +240,7 @@ impl AuthorizationDeclaration {
 
     /// The permission a target requires. An exact resource entry wins over templates;
     /// a resource matched by templates that require different permissions has none.
-    pub fn required(&self, target: RequirementTarget<'_>) -> Option<&PermissionDeclaration> {
+    pub fn access(&self, target: RequirementTarget<'_>) -> Option<&RouteAccess> {
         let requirements = &self.requirements;
         let name = match target {
             RequirementTarget::Tool(tool) => requirements.tools.get(tool),
@@ -237,7 +261,7 @@ impl AuthorizationDeclaration {
                 matched.all(|other| other == first).then_some(first)
             }),
         }?;
-        self.permission(name)
+        Some(name)
     }
 }
 
@@ -414,8 +438,8 @@ fn permission_name<P: PermissionDefinition>(
 
 fn permission_names<K: Ord, P: PermissionDefinition>(
     map: BTreeMap<K, P>,
-) -> Result<BTreeMap<K, PermissionName>, DeclarationError> {
+) -> Result<BTreeMap<K, RouteAccess>, DeclarationError> {
     map.into_iter()
-        .map(|(key, permission)| Ok((key, permission_name(permission)?)))
+        .map(|(key, permission)| Ok((key, RouteAccess::Permission(permission_name(permission)?))))
         .collect()
 }

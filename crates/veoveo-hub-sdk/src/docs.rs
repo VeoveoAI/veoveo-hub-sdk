@@ -14,15 +14,11 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 pub mod catalog;
-mod profile;
+mod declaration;
 #[cfg(feature = "server")]
 mod served;
 pub use catalog::{RequirementCatalogFormat, RequirementId};
-pub use profile::{
-    COMPLIANCE_END, COMPLIANCE_START, ComplianceError, ComplianceItem, ComplianceProfile,
-    ComplianceProfileFormat, ComplianceStatus, ContractDeclaration, render_compliance,
-    verify_manual,
-};
+pub use declaration::ContractDeclaration;
 use sha2::{Digest as _, Sha256};
 #[doc(hidden)]
 pub use veoveo_types::embedded_document;
@@ -46,12 +42,7 @@ pub const DOC_ID_AGENTS: &str = "agents";
 pub const DOC_ID_DESIGN: &str = "design";
 
 /// Section headers every server `AGENTS.md` must contain (C23).
-pub const REQUIRED_AGENT_SECTIONS: [&str; 4] = [
-    "## Purpose",
-    "## Invariants",
-    "## Build And Test",
-    "## Contract Compliance",
-];
+pub const REQUIRED_AGENT_SECTIONS: [&str; 3] = ["## Purpose", "## Invariants", "## Build And Test"];
 
 /// One document embedded from the server crate at build time.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -67,19 +58,17 @@ pub struct ServerDoc {
 /// The embedded document set a server serves under `{scheme}://docs`.
 #[derive(Debug, Clone)]
 pub struct ServerDocs {
-    server: &'static str,
+    server: veoveo_types::ServerSlug,
     docs: Vec<ServerDoc>,
     declaration: OnceLock<ContractDeclaration>,
-    profile: Option<ComplianceProfile>,
 }
 
 impl ServerDocs {
-    pub fn new(server: &'static str) -> Self {
+    pub fn new(server: veoveo_types::ServerSlug) -> Self {
         Self {
             server,
             docs: Vec::new(),
             declaration: OnceLock::new(),
-            profile: None,
         }
     }
 
@@ -109,41 +98,12 @@ impl ServerDocs {
         self
     }
 
-    /// Admit the owner profile and compare its projection with embedded manual bytes.
-    pub fn with_profile_json(mut self, bytes: &str) -> Result<Self, ComplianceError> {
-        let profile: ComplianceProfile = serde_json::from_str(bytes).map_err(|error| {
-            profile::invalid(format!("owner profile JSON failed admission: {error}"))
-        })?;
-        if profile.server().as_str() != self.server {
-            return Err(profile::invalid("owner profile/server identity mismatch"));
-        }
-        let manual = self
-            .agent_manual()
-            .ok_or_else(|| profile::invalid("missing agent manual"))?;
-        verify_manual(manual, &profile)?;
-        self.declaration = OnceLock::new();
-        self.profile = Some(profile);
-        Ok(self)
+    pub fn identity(&self) -> &veoveo_types::ServerSlug {
+        &self.server
     }
 
-    pub fn admitted_profile(&self) -> Result<&ComplianceProfile, ComplianceError> {
-        let profile = self.profile.as_ref().ok_or_else(|| {
-            profile::invalid("served documents require an admitted owner profile")
-        })?;
-        verify_manual(
-            self.agent_manual()
-                .ok_or_else(|| profile::invalid("missing agent manual"))?,
-            profile,
-        )?;
-        Ok(profile)
-    }
-    pub fn profile(&self) -> &ComplianceProfile {
-        self.admitted_profile()
-            .expect("served documents require an admitted owner profile")
-    }
-
-    pub fn server(&self) -> &'static str {
-        self.server
+    pub fn server(&self) -> &str {
+        self.server.as_str()
     }
 
     pub fn doc(&self, id: &str) -> Option<&ServerDoc> {
@@ -176,7 +136,7 @@ impl ServerDocs {
     ///
     /// Discover and the list methods are the only authority for the observed
     /// running protocol surface. The embedded contract resource declares only
-    /// repository-owned contract and compliance evidence.
+    /// the contract and provider identity.
     pub fn contract_declaration(&self) -> &ContractDeclaration {
         self.declaration
             .get_or_init(|| ContractDeclaration::from_docs(self))
@@ -277,22 +237,19 @@ pub fn page_documents(
 #[macro_export]
 macro_rules! server_docs {
     ($server:expr) => {
-        $crate::docs::ServerDocs::new($server)
-            .with_embedded_doc(
-                $crate::docs::DOC_ID_AGENTS,
-                "Agent work manual",
-                $crate::docs::embedded_document!("AGENTS.md"),
-            )
-            .with_embedded_doc(
-                $crate::docs::DOC_ID_DESIGN,
-                "Domain design",
-                $crate::docs::embedded_document!("DESIGN.md"),
-            )
-            .with_profile_json(include_str!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/contract-compliance.json"
-            )))
-            .expect("embedded owner compliance profile and manual must agree")
+        $crate::docs::ServerDocs::new(
+            ::veoveo_types::ServerSlug::parse($server).expect("declared server identity"),
+        )
+        .with_embedded_doc(
+            $crate::docs::DOC_ID_AGENTS,
+            "Agent work manual",
+            $crate::docs::embedded_document!("AGENTS.md"),
+        )
+        .with_embedded_doc(
+            $crate::docs::DOC_ID_DESIGN,
+            "Domain design",
+            $crate::docs::embedded_document!("DESIGN.md"),
+        )
     };
 }
 
@@ -302,7 +259,7 @@ mod tests {
 
     #[test]
     fn llms_txt_lists_every_document() {
-        let docs = ServerDocs::new("example")
+        let docs = ServerDocs::new(veoveo_types::ServerSlug::parse("example").unwrap())
             .with_doc(DOC_ID_AGENTS, "Agent work manual", "body")
             .with_doc(DOC_ID_DESIGN, "Domain design", "body");
         let index = docs.llms_txt();
@@ -311,34 +268,5 @@ mod tests {
         assert!(index.contains("- [Domain design](design)"));
         assert!(index.contains(ContractId::HostedMcp.as_str()));
         assert_eq!(ContractId::HostedMcp.as_str(), crate::HOSTED_MCP_CONTRACT);
-    }
-
-    #[test]
-    fn embedded_profile_and_manual_must_agree() {
-        let bytes = include_str!("../testdata/compliance-example.json");
-        let manual = include_str!("../testdata/compliance-example.md");
-        let docs = ServerDocs::new("example")
-            .with_doc(DOC_ID_AGENTS, "Agent work manual", manual)
-            .with_profile_json(bytes)
-            .unwrap();
-        let declaration = docs.contract_declaration();
-        assert_eq!(declaration.compliance().len(), 32);
-        assert!(std::ptr::eq(declaration, docs.contract_declaration()));
-        assert_eq!(
-            serde_json::to_value(declaration).unwrap(),
-            serde_json::to_value(docs.profile()).unwrap()
-        );
-        assert!(
-            ServerDocs::new("foreign")
-                .with_doc(DOC_ID_AGENTS, "Agent work manual", manual)
-                .with_profile_json(bytes)
-                .is_err()
-        );
-        assert!(
-            ServerDocs::new("example")
-                .with_doc(DOC_ID_AGENTS, "Agent work manual", "altered manual")
-                .with_profile_json(bytes)
-                .is_err()
-        );
     }
 }

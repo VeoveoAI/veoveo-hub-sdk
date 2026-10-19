@@ -7,14 +7,11 @@ use std::{collections::BTreeSet, sync::LazyLock};
 use futures::StreamExt;
 use rmcp::{
     ErrorData, RoleServer,
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolRequestParams, CallToolResult, ContentBlock, CreateTaskResult, GetTaskParams,
-        GetTaskResult, ReadResourceRequestParams, ServerCapabilities, ServerConfig,
-        UpdateTaskParams,
+        CallToolRequestParams, CreateTaskResult, GetTaskParams, GetTaskResult, ServerCapabilities,
+        ServerConfig, UpdateTaskParams,
     },
     service::RequestContext,
-    tool, tool_router,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -27,11 +24,8 @@ use veoveo_hub_sdk::{
         get_durable_task, mcp_task_completion, subscribe_durable_tasks, task_seed,
         update_durable_task,
     },
-    hosting::{
-        ClientContext, DomainAddress, DomainRead, DomainServer, Hosted, NoTasks, ServerCalls,
-        hub_identity, structured_result,
-    },
-    registration::{AuthorizationBuilder, AuthorizationDeclaration, DeclarationError},
+    hosting::{ClientContext, DomainServer, Hosted, NoTasks, ServerCalls, hub_identity},
+    registration::{AuthorizationDeclaration, DeclarationError},
     server_contract::{McpServerContract, McpServerSetup},
 };
 use veoveo_task::{
@@ -41,27 +35,24 @@ use veoveo_task::{
 use veoveo_types::{ResourceScheme, TaskId, TaskTypeName, Vocabulary};
 
 use crate::calls::{
-    EntryName, EntryState, FollowedEntry, Inspect, LedgerPermission, OpenEntry, ReadEntry,
-    ReadSeal, RelayPermission, Tally,
+    EntryName, EntryState, FollowedEntry, Inspect, OpenEntry, ReadEntry, ReadSeal, RelayPermission,
+    Tally,
 };
-use crate::calls_support::{CallsResource, NoScope, contract_config, docs, require};
+use crate::calls_support::{NoScope, contract_config, docs, require};
 
 /// The Task operation of `relay_later`.
 pub const LATER: TaskTypeName = TaskTypeName::from_static("relay.later");
 
 pub struct RelayContract;
 
-static DOCS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> =
-    LazyLock::new(|| docs("relay", include_str!("../testdata/relay-compliance.json")));
+static DOCS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> = LazyLock::new(|| docs("relay"));
 static SETUP: LazyLock<McpServerSetup<RelayContract>> =
     LazyLock::new(|| McpServerSetup::new().expect("Relay setup"));
 
 impl McpServerContract for RelayContract {
+    type Server = RelayDomain;
     type Scope = NoScope;
-    type Resource = CallsResource<RelayContract>;
-    fn slug() -> ServerSlug {
-        ServerSlug::parse("relay").unwrap()
-    }
+    type Provider = RelayContract;
     fn scheme() -> ResourceScheme {
         ResourceScheme::parse("relay").unwrap()
     }
@@ -81,55 +72,30 @@ impl McpServerContract for RelayContract {
                 .build(),
         )
     }
-    fn resources() -> Result<
-        Vec<veoveo_hub_sdk::server_contract::McpResource<Self::Resource>>,
-        veoveo_hub_sdk::server_contract::McpSetupError,
-    > {
-        CallsResource::declared()
-    }
-    fn resource_templates() -> Result<
-        Vec<veoveo_hub_sdk::server_contract::McpResourceTemplate>,
-        veoveo_hub_sdk::server_contract::McpSetupError,
-    > {
-        CallsResource::<Self>::templates()
-    }
 }
 
 /// Relay's declaration: every tool requires `relay.calls.make`, and Relay uses Ledger's
 /// two permissions.
 pub fn authorization() -> Result<AuthorizationDeclaration, DeclarationError> {
-    let tool = |name: &str| veoveo_hub_sdk::LocalToolName::parse(name).unwrap();
-    AuthorizationBuilder::<RelayPermission>::new()
-        .tool(tool("relay_inspect"), RelayPermission::CallsMake)
-        .tool(tool("relay_seal"), RelayPermission::CallsMake)
-        .tool(tool("relay_tally"), RelayPermission::CallsMake)
-        .tool(tool("relay_later"), RelayPermission::CallsMake)
-        .tool(tool("relay_whoami"), RelayPermission::CallsMake)
-        .tool(tool("relay_follow_entry"), RelayPermission::CallsMake)
-        .uses(LedgerPermission::EntriesRead)
-        .uses(LedgerPermission::EntriesWrite)
-        .uses(LedgerPermission::SealsRead)
-        .build(&RelayContract::slug(), &RelayContract::scheme())
+    let declaration = ROUTES.authorization();
+    declaration.check(
+        &veoveo_hub_sdk::server_contract::provider_slug::<RelayContract>(),
+        &RelayContract::scheme(),
+    )?;
+    Ok(declaration)
 }
 
 /// The tool result of a call to Ledger: its result, or the refusal as an error result.
-fn relayed<T: serde::Serialize>(
-    outcome: Result<T, CallError>,
-) -> Result<CallToolResult, ErrorData> {
-    match outcome {
-        Ok(output) => structured_result("relayed", &output),
-        Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
-            error.to_string(),
-        )])),
-    }
+fn relayed<T>(outcome: Result<T, CallError>) -> Result<T, veoveo_hub_sdk::hosting::ToolError> {
+    outcome.map_err(Into::into)
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, serde::Serialize, Deserialize, JsonSchema)]
 struct TallyRequest {
     entries: u32,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, serde::Serialize, Deserialize, JsonSchema)]
 struct FollowRequest {
     entry: EntryName,
 }
@@ -140,9 +106,7 @@ const FOLLOW_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 const ENTRY_OPEN_MS: u64 = 1_500;
 
 #[derive(Clone)]
-pub struct RelayDomain {
-    tool_router: ToolRouter<Self>,
-}
+pub struct RelayDomain;
 
 impl Default for RelayDomain {
     fn default() -> Self {
@@ -150,38 +114,32 @@ impl Default for RelayDomain {
     }
 }
 
-#[tool_router]
 impl RelayDomain {
     pub fn new() -> Self {
-        Self {
-            tool_router: Self::tool_router(),
-        }
+        Self
     }
 
-    #[tool(description = "Ask Ledger whom this call is for.")]
     async fn relay_inspect(
         &self,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<crate::calls::Inspection, veoveo_hub_sdk::hosting::ToolError> {
         require(&context, RelayPermission::CallsMake)?;
         relayed(context.client()?.call(Inspect {}).await)
     }
 
-    #[tool(description = "Read Ledger's seal for the caller.")]
     async fn relay_seal(
         &self,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<crate::calls::Seal, veoveo_hub_sdk::hosting::ToolError> {
         require(&context, RelayPermission::CallsMake)?;
         relayed(context.client()?.call(ReadSeal {}).await)
     }
 
-    #[tool(description = "Start Ledger's tally Task and wait for its result.")]
     async fn relay_tally(
         &self,
-        Parameters(request): Parameters<TallyRequest>,
+        request: TallyRequest,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<crate::calls::Tallied, veoveo_hub_sdk::hosting::ToolError> {
         require(&context, RelayPermission::CallsMake)?;
         let client = context.client()?;
         let outcome = async {
@@ -196,21 +154,19 @@ impl RelayDomain {
         relayed(outcome)
     }
 
-    #[tool(description = "Report the identity this call reached Relay with.")]
     async fn relay_whoami(
         &self,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<crate::calls::Inspection, veoveo_hub_sdk::hosting::ToolError> {
         let identity = require(&context, RelayPermission::CallsMake)?;
-        structured_result("inspected", &crate::calls_support::inspection(&identity))
+        Ok(crate::calls_support::inspection(&identity))
     }
 
-    #[tool(description = "Open a Ledger entry and follow it until it closes.")]
     async fn relay_follow_entry(
         &self,
-        Parameters(request): Parameters<FollowRequest>,
+        request: FollowRequest,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<FollowedEntry, veoveo_hub_sdk::hosting::ToolError> {
         require(&context, RelayPermission::CallsMake)?;
         let client = context.client()?;
         let entry = request.entry;
@@ -259,34 +215,69 @@ impl RelayDomain {
         relayed(outcome)
     }
 
-    #[tool(description = "Ask Ledger whom this call is for, later, from a Task.")]
     async fn relay_later(
         &self,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<crate::calls::Inspection, veoveo_hub_sdk::hosting::ToolError> {
         require(&context, RelayPermission::CallsMake)?;
         Err(ErrorData::invalid_request(
             "relay_later runs as a Task; call it with Task support",
             None,
-        ))
+        )
+        .into())
     }
 }
 
+#[derive(serde::Serialize, Deserialize, JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=RelayContract,output=crate::calls::Inspection,name="relay_inspect")]
+struct InspectRelay {}
+#[derive(serde::Serialize, Deserialize, JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=RelayContract,output=crate::calls::Seal,name="relay_seal")]
+struct SealRelay {}
+#[derive(serde::Serialize, Deserialize, JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=RelayContract,output=crate::calls::Inspection,name="relay_whoami")]
+struct WhoamiRelay {}
+#[derive(serde::Serialize, Deserialize, JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=RelayContract,output=crate::calls::Inspection,name="relay_later",task=true)]
+struct LaterRelay {}
+impl veoveo_hub_sdk::calls::ProviderContract for RelayContract {
+    fn slug() -> ServerSlug {
+        ServerSlug::parse("relay").unwrap()
+    }
+}
+impl veoveo_hub_sdk::calls::ToolCall for TallyRequest {
+    type Provider = RelayContract;
+    type Output = crate::calls::Tallied;
+    const TOOL: &'static str = "relay_tally";
+}
+impl veoveo_hub_sdk::calls::ToolCall for FollowRequest {
+    type Provider = RelayContract;
+    type Output = FollowedEntry;
+    const TOOL: &'static str = "relay_follow_entry";
+}
+static ROUTES: LazyLock<veoveo_hub_sdk::hosting::Routes<RelayDomain>> = LazyLock::new(|| {
+    use veoveo_hub_sdk::hosting::{RoutePolicy, Routes};
+    let policy =
+        || RoutePolicy::permission(RelayPermission::CallsMake).expect("fixture permission");
+    Routes::<RelayDomain>::builder(RoutePolicy::Authenticated)
+        .tool::<InspectRelay,_,_>("Relay identity",policy(),|domain,_,context|async move{domain.relay_inspect(context).await})
+        .tool::<SealRelay,_,_>("Relay seal",policy(),|domain,_,context|async move{domain.relay_seal(context).await})
+        .tool::<WhoamiRelay,_,_>("Inspect Relay identity",policy(),|domain,_,context|async move{domain.relay_whoami(context).await})
+        .task::<LaterRelay,_,_>("Relay from a Task",policy(),|domain,_,context|async move{domain.relay_later(context).await})
+        .tool::<TallyRequest,_,_>("Relay tally",policy(),|domain,request,context|async move{domain.relay_tally(request,context).await})
+        .tool::<FollowRequest,_,_>("Follow entry",policy(),|domain,request,context|async move{domain.relay_follow_entry(request,context).await})
+        .uses(veoveo_types::PermissionName::parse("ledger.entries.read").unwrap())
+        .uses(veoveo_types::PermissionName::parse("ledger.entries.write").unwrap())
+        .uses(veoveo_types::PermissionName::parse("ledger.seals.read").unwrap())
+        .build()
+});
 impl DomainServer for RelayDomain {
     type Contract = RelayContract;
     fn setup() -> &'static McpServerSetup<RelayContract> {
         &SETUP
     }
-    fn tool_router(&self) -> &ToolRouter<Self> {
-        &self.tool_router
-    }
-    async fn read(
-        &self,
-        _address: DomainAddress<RelayContract>,
-        _request: &ReadResourceRequestParams,
-        _context: &RequestContext<RoleServer>,
-    ) -> Result<DomainRead, ErrorData> {
-        Err(veoveo_hub_sdk::hosting::served_by_host())
+    fn routes() -> &'static veoveo_hub_sdk::hosting::Routes<Self> {
+        &ROUTES
     }
 }
 
@@ -356,7 +347,7 @@ impl RelayTasks {
         let transition = match outcome {
             Ok(inspection) => mcp_task_completion(
                 "relayed",
-                structured_result("relayed", &inspection)
+                veoveo_hub_sdk::hosting::task_result::<LaterRelay>(&inspection)
                     .map_err(|error| anyhow::anyhow!(error.message.to_string()))?,
             )?,
             Err(error) => {

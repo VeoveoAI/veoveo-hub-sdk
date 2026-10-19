@@ -1,232 +1,125 @@
+//! Observatory uses the same typed resource and list-tool declarations as clients.
 use crate::contract::{
-    ObservatoryDocument, ObservatoryResource, ObservatoryScope, Reading, ReadingId,
+    ObservatoryScope, ReadReading, ReadReadings, Reading, ReadingCollection, ReadingId,
+    ReadingsTool,
 };
 use rmcp::{
-    ErrorData, RoleServer, ServerHandler,
-    model::{
-        CompleteRequestParams, CompleteResult, Implementation, ListResourceTemplatesResult,
-        ListResourcesResult, PaginatedRequestParams, ReadResourceRequestParams,
-        ReadResourceResponse, ReadResourceResult, Reference, Resource, ResourceContents,
-        ResourceTemplate, ServerCapabilities, ServerConfig,
-    },
+    ErrorData, RoleServer,
+    model::{Implementation, ServerConfig},
     service::RequestContext,
 };
-use std::{collections::BTreeSet, sync::LazyLock};
+use std::sync::LazyLock;
 use veoveo_hub_sdk::{
-    ServerSlug,
-    docs::ServerDocs,
-    hosting::{completion, rank_completions},
-    server_contract::{
-        McpResource, McpResourceTemplate, McpServerContract, McpServerSetup, McpSetupError,
+    definition::{CollectionRequest, List, ReadCollection},
+    hosting::{
+        DomainServer, Hosted, ReadCache, ResourceBuilder, RoutePolicy, Routes, hub_identity,
     },
+    server_contract::{McpServerContract, McpServerSetup},
 };
-use veoveo_types::{ResourceAddress, ResourceScheme, ResourceTemplateUri, ResourceUri, ScopeName};
+use veoveo_types::{LiveKeyset, Page, Pager, ResourceScheme, TenantId};
 
 pub struct ObservatoryContract;
-pub static DOCUMENTS: LazyLock<ServerDocs> =
+static DOCUMENTS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> =
     LazyLock::new(|| veoveo_hub_sdk::server_docs!("observatory"));
 pub static SETUP: LazyLock<McpServerSetup<ObservatoryContract>> =
-    LazyLock::new(|| McpServerSetup::new().expect("fixture setup"));
-
+    LazyLock::new(|| McpServerSetup::new().expect("typed Observatory setup"));
 impl McpServerContract for ObservatoryContract {
+    type Server = ObservatoryMcp;
     type Scope = ObservatoryScope;
-    type Resource = ObservatoryResource;
-    fn slug() -> ServerSlug {
-        ServerSlug::parse("observatory").unwrap()
-    }
+    type Provider = crate::contract::Observatory;
     fn scheme() -> ResourceScheme {
         ResourceScheme::parse("observatory").unwrap()
     }
     fn scopes() -> &'static [ObservatoryScope] {
         ObservatoryScope::ALL
     }
-    fn documents() -> &'static ServerDocs {
+    fn documents() -> &'static veoveo_hub_sdk::docs::ServerDocs {
         &DOCUMENTS
     }
     fn server_config() -> ServerConfig {
-        let mut info = ServerConfig::default();
-        info.server_info = Implementation::new("observatory", env!("CARGO_PKG_VERSION"));
-        info.capabilities = ServerCapabilities::builder()
-            .enable_resources()
-            .enable_completions()
-            .build();
-        info
-    }
-    fn resources() -> Result<Vec<McpResource<ObservatoryResource>>, McpSetupError> {
-        [
-            (ObservatoryResource::Docs, "Documents", "application/json"),
-            (
-                ObservatoryResource::Document(ObservatoryDocument::Agents),
-                "Agent manual",
-                "text/markdown",
-            ),
-            (
-                ObservatoryResource::Document(ObservatoryDocument::Design),
-                "Domain design",
-                "text/markdown",
-            ),
-            (
-                ObservatoryResource::Contract,
-                "Contract",
-                "application/json",
-            ),
-            (
-                ObservatoryResource::Readings,
-                "Readings",
-                "application/json",
-            ),
-        ]
-        .into_iter()
-        .map(|(address, name, mime)| {
-            McpResource::new(address, |uri| Resource::new(uri, name).with_mime_type(mime))
-        })
-        .collect()
-    }
-    fn resource_templates() -> Result<Vec<McpResourceTemplate>, McpSetupError> {
-        let template = ResourceTemplateUri::new("observatory://reading/{reading_id}")
-            .map_err(|_| McpSetupError::InvalidTemplate)?;
-        Ok(vec![
-            McpResourceTemplate::new(template, |uri| {
-                ResourceTemplate::new(uri, "Reading").with_mime_type("application/json")
-            })?,
-            McpResourceTemplate::new(
-                ResourceTemplateUri::new("observatory://docs/{doc_id}").unwrap(),
-                |uri| ResourceTemplate::new(uri, "Document").with_mime_type("text/markdown"),
-            )?,
-        ])
+        let mut config = ServerConfig::default();
+        config.server_info = Implementation::new("observatory", env!("CARGO_PKG_VERSION"));
+        config
     }
 }
-
-/// Synthetic grants inserted only after the test host authenticates its bearer.
-#[derive(Clone)]
-pub struct FixtureGrants(pub BTreeSet<ScopeName>);
-
 #[derive(Clone)]
 pub struct ObservatoryMcp;
-
-fn authorize(context: &RequestContext<RoleServer>) -> Result<(), ErrorData> {
-    let grants = context
-        .extensions
-        .get::<axum::http::request::Parts>()
-        .and_then(|parts| parts.extensions.get::<FixtureGrants>())
-        .ok_or_else(|| ErrorData::invalid_request("fixture authentication required", None))?;
-    if !SETUP.has_scope(&grants.0, ObservatoryScope::Read) {
-        return Err(ErrorData::invalid_request(
-            "observatory read scope required",
-            None,
-        ));
-    }
-    Ok(())
+fn readings() -> Vec<Reading> {
+    ["sensor-a", "sensor-b", "sensor-c"]
+        .into_iter()
+        .enumerate()
+        .map(|(i, id)| Reading {
+            id: ReadingId::new(id).unwrap(),
+            value: 7 + i as i32,
+        })
+        .collect()
 }
-
-impl ServerHandler for ObservatoryMcp {
-    fn get_info(&self) -> ServerConfig {
-        SETUP.server_config().clone()
+fn page(
+    selection: CollectionRequest<ReadingCollection>,
+    tenant: TenantId,
+) -> Result<Page<ReadingCollection>, ErrorData> {
+    let (filters, limit, cursor) = selection.into_parts();
+    Pager::<ReadingCollection>::new(tenant, filters, limit, LiveKeyset, cursor.as_ref())
+        .and_then(|pager| pager.select(readings()))
+        .map_err(|_| ErrorData::invalid_params("invalid reading continuation", None))
+}
+async fn read_reading(
+    _: ObservatoryMcp,
+    read: ReadReading,
+    _: RequestContext<RoleServer>,
+) -> Result<Reading, ErrorData> {
+    readings()
+        .into_iter()
+        .find(|reading| reading.id == read.id)
+        .ok_or_else(|| ErrorData::resource_not_found("unknown reading", None))
+}
+async fn read_readings(
+    _: ObservatoryMcp,
+    read: ReadCollection<ReadReadings>,
+    context: RequestContext<RoleServer>,
+) -> Result<Page<ReadingCollection>, ErrorData> {
+    let identity = hub_identity(&context)?;
+    page(read.into_selection(), identity.authority.tenant)
+}
+async fn list_readings(
+    _: ObservatoryMcp,
+    request: List<ReadingsTool>,
+    context: RequestContext<RoleServer>,
+) -> Result<Page<ReadingCollection>, ErrorData> {
+    let identity = hub_identity(&context)?;
+    page(request.into_selection(), identity.authority.tenant)
+}
+static ROUTES: LazyLock<Routes<ObservatoryMcp>> = LazyLock::new(|| {
+    Routes::builder(RoutePolicy::Authenticated)
+        .template::<ReadReading, _, _>(
+            ResourceBuilder::new("Reading")
+                .reader(read_reading)
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::Private),
+        )
+        .collection_resource::<ReadReadings, _, _>(
+            Some(ReadReadings {}),
+            ResourceBuilder::new("Readings")
+                .reader(read_readings)
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::Private),
+        )
+        .collection::<ReadingsTool, _, _>(
+            "Read a page of readings",
+            RoutePolicy::Authenticated,
+            list_readings,
+        )
+        .build()
+});
+impl DomainServer for ObservatoryMcp {
+    type Contract = ObservatoryContract;
+    fn setup() -> &'static McpServerSetup<Self::Contract> {
+        &SETUP
     }
-    async fn complete(
-        &self,
-        request: CompleteRequestParams,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CompleteResult, ErrorData> {
-        authorize(&context)?;
-        let Reference::Resource(reference) = &request.r#ref else {
-            return Ok(CompleteResult::default());
-        };
-        let template = veoveo_hub_sdk::docs::docs_member_template(&ObservatoryContract::scheme());
-        if reference.uri != template.as_str() || request.argument.name != "doc_id" {
-            return Ok(CompleteResult::default());
-        }
-        completion(rank_completions(
-            SETUP.documents().iter().map(|doc| doc.id),
-            &request.argument.value,
-        ))
-    }
-    async fn list_resources(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        context: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, ErrorData> {
-        authorize(&context)?;
-        Ok(ListResourcesResult {
-            resources: SETUP
-                .resources()
-                .iter()
-                .map(|value| value.descriptor().clone())
-                .collect(),
-            next_cursor: None,
-            result_type: Some(rmcp::model::ResultType::COMPLETE),
-            ttl_ms: Some(veoveo_hub_sdk::PRIVATE_CATALOG_TTL_MS),
-            cache_scope: Some(rmcp::model::CacheScope::Private),
-            meta: None,
-        })
-    }
-    async fn list_resource_templates(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        context: RequestContext<RoleServer>,
-    ) -> Result<ListResourceTemplatesResult, ErrorData> {
-        authorize(&context)?;
-        Ok(ListResourceTemplatesResult {
-            resource_templates: SETUP
-                .resource_templates()
-                .iter()
-                .map(|template| template.descriptor().clone())
-                .collect(),
-            next_cursor: None,
-            result_type: Some(rmcp::model::ResultType::COMPLETE),
-            ttl_ms: Some(veoveo_hub_sdk::PRIVATE_CATALOG_TTL_MS),
-            cache_scope: Some(rmcp::model::CacheScope::Private),
-            meta: None,
-        })
-    }
-    async fn read_resource(
-        &self,
-        request: ReadResourceRequestParams,
-        context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResponse, ErrorData> {
-        authorize(&context)?;
-        if let Some(result) = SETUP
-            .documents()
-            .read_authorized_docs(&ResourceScheme::parse("observatory").unwrap(), &request)?
-        {
-            return Ok(result);
-        }
-        let uri = ResourceUri::new(request.uri.clone())
-            .map_err(|_| ErrorData::invalid_params("invalid resource", None))?;
-        let resource = ObservatoryResource::parse(&uri)
-            .map_err(|_| ErrorData::resource_not_found("unknown Observatory resource", None))?;
-        let (body, mime) = match resource {
-            ObservatoryResource::Docs => (
-                json(&SETUP.documents().iter().collect::<Vec<_>>())?,
-                "application/json",
-            ),
-            ObservatoryResource::Document(id) => (
-                SETUP.documents().doc(id.as_str()).unwrap().body.to_owned(),
-                "text/markdown",
-            ),
-            ObservatoryResource::Contract => (
-                json(SETUP.documents().contract_declaration())?,
-                "application/json",
-            ),
-            ObservatoryResource::Readings => (
-                json(&vec![ReadingId::new("sensor-a").unwrap()])?,
-                "application/json",
-            ),
-            ObservatoryResource::Reading(id) if id.as_str() == "sensor-a" => {
-                (json(&Reading { id, value: 7 })?, "application/json")
-            }
-            ObservatoryResource::Reading(_) => {
-                return Err(ErrorData::resource_not_found("unknown reading", None));
-            }
-        };
-        let result = ReadResourceResult::new(vec![
-            ResourceContents::text(body, request.uri).with_mime_type(mime),
-        ]);
-        Ok(veoveo_hub_sdk::private_resource_response(result, true))
+    fn routes() -> &'static Routes<Self> {
+        &ROUTES
     }
 }
-
-fn json<T: serde::Serialize>(value: &T) -> Result<String, ErrorData> {
-    serde_json::to_string(value)
-        .map_err(|_| ErrorData::internal_error("fixture serialization failed", None))
+pub fn hosted() -> Hosted<ObservatoryMcp> {
+    Hosted::new(ObservatoryMcp)
 }

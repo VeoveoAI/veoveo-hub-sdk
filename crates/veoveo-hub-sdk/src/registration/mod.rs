@@ -28,7 +28,7 @@ pub mod statement;
 pub use access::{Access, Risk};
 pub use authorization::{
     AuthorizationBuilder, AuthorizationDeclaration, PermissionDeclaration, PermissionDefinition,
-    RequirementTarget, Requirements,
+    RequirementTarget, Requirements, RouteAccess,
 };
 pub use declaration::{RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerVersion};
 pub use error::DeclarationError;

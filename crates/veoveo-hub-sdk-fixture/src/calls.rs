@@ -8,7 +8,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use veoveo_hub_sdk::{
-    calls::{ProviderContract, ResourceRead, TaskToolCall, ToolCall},
+    calls::{ProviderContract, TaskToolCall, ToolCall},
     registration::{Access, PermissionDefinition, Risk},
 };
 use veoveo_types::{
@@ -251,17 +251,11 @@ impl ToolCall for OpenEntry {
 
 /// A read of one entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[veoveo_hub_sdk::resource_read(provider=Ledger,address_type=LedgerAddress,content=Entry,
+    address=LedgerAddress::Entry(self.entry.clone()),template="ledger://entries/{entry}",
+    parse=|address|match address {LedgerAddress::Entry(entry)=>Some(Self{entry:entry.clone()})})]
 pub struct ReadEntry {
     pub entry: EntryName,
-}
-
-impl ResourceRead for ReadEntry {
-    type Provider = Ledger;
-    type Address = LedgerAddress;
-    type Content = Entry;
-    fn address(&self) -> LedgerAddress {
-        LedgerAddress::Entry(self.entry.clone())
-    }
 }
 
 /// What Relay saw of an entry it followed: each state it observed until the entry
@@ -273,3 +267,9 @@ pub struct FollowedEntry {
     pub waited: Entry,
     pub read: Entry,
 }
+
+impl veoveo_hub_sdk::definition::SingleOutput for Inspection {}
+impl veoveo_hub_sdk::definition::SingleOutput for Seal {}
+impl veoveo_hub_sdk::definition::SingleOutput for Tallied {}
+impl veoveo_hub_sdk::definition::SingleOutput for Entry {}
+impl veoveo_hub_sdk::definition::SingleOutput for FollowedEntry {}

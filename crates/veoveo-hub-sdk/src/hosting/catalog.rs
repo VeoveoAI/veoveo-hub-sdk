@@ -30,7 +30,7 @@ use super::{
 fn page<T>(
     items: Vec<T>,
     request: Option<&PaginatedRequestParams>,
-) -> Result<crate::Page<T>, ErrorData> {
+) -> Result<crate::CatalogPage<T>, ErrorData> {
     paginate(items, request, CATALOG_PAGE_SIZE)
         .map_err(|error| ErrorData::invalid_params(error.to_string(), None))
 }

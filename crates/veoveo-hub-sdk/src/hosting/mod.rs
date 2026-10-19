@@ -4,8 +4,9 @@
 //!
 //! - its checked [`McpServerSetup`]: scopes, typed resource addresses, templates,
 //!   and embedded documents;
-//! - a [`DomainServer`] implementation: its tools, a typed `read` for the addresses
-//!   it owns, and optional completion;
+//! - a [`DomainServer`] implementation exposing ready [`Routes`], with typed
+//!   tool outputs and [`ResourceBuilder`] readers, explicit policies/cache and
+//!   native prompt renderers, plus optional completion;
 //! - optional [`TaskSupport`] for durable tasks and subscriptions.
 //!
 //! This module supplies the rest of the server contract, identically for every
@@ -37,6 +38,9 @@ mod host;
 mod listing;
 pub mod operations;
 mod results;
+mod routes;
+pub use crate::definition::TemplateRead;
+pub use routes::{ResourceBuilder, RoutePolicy, Routes, RoutesBuilder, ToolError, task_result};
 mod schema;
 mod server;
 mod subscriptions;
@@ -48,11 +52,10 @@ mod tests;
 pub use auth::{ForwardedBearer, forwarded_bearer, hub_identity};
 pub use calls::{ClientContext, ServerCalls};
 pub use domain::{
-    DomainAddress, DomainRead, DomainServer, Hosted, NoTasks, ReadCache, TaskSupport,
-    served_by_host, unknown_prompt,
+    DomainServer, Hosted, NoTasks, ReadCache, TaskSupport, served_by_host, unknown_prompt,
 };
 pub use listing::{CATALOG_PAGE_SIZE, Listing};
-pub use results::{completion, json_read, product_result, rank_completions, structured_result};
+pub use results::{completion, rank_completions};
 pub use schema::{
     AmbiguousArgument, UndeclaredType, ambiguous_arguments, publish_input_schema, undeclared_types,
 };

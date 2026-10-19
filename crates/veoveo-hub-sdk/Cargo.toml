@@ -118,7 +118,7 @@ proc-macro2.workspace = true
 rmcp = { workspace = true, features = ["client", "macros", "server", "transport-streamable-http-client-reqwest", "reqwest-tls-no-provider"] }
 rustls.workspace = true
 syn.workspace = true
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true, features = ["full", "test-util"] }
 tower.workspace = true
 uuid.workspace = true
 

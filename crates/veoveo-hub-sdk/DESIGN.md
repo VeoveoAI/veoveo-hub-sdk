@@ -647,8 +647,15 @@ the resource through `subscriptions/listen` before it reads, reads again on each
 `notifications/resources/updated` for the resource, and resolves with the first content
 that satisfies its predicate, so it waits without polling. `Read::updates` yields the
 content when the subscription opens and each time a read after an update finds it
-changed. A subscription that ends is opened again up to three times, each time with a
-fresh read, and a subscription the Hub does not acknowledge for the resource fails
+changed. An ended subscription is opened again after cancellable exponential backoff
+from 100 milliseconds to five seconds, each time with a fresh read. Backoff resets
+only after five seconds observed awaiting notifications on that acknowledged stream;
+acknowledgments and snapshot reads alone do not reset it. The caller's existing
+timeout or dropping the observation bounds recovery; an untimed observation has no
+implicit lifetime limit. Task-result observations use the same policy and reconcile
+the current status on each new subscription, without resubmitting the tool call.
+Protocol, admission, acknowledgment, read and decode errors remain terminal. A
+subscription the Hub does not acknowledge for the resource fails
 with `Unsubscribed`. The provider must advertise resource subscriptions and announce
 each change to the resource.
 

@@ -48,23 +48,55 @@ fn template(value: &str) -> ResourceTemplateUri {
     ResourceTemplateUri::new(value).unwrap()
 }
 
+// Direct wire fixtures exercise the registration trust boundary. Hosted authors
+// construct these declarations from their ready Routes table.
 fn authorization() -> AuthorizationDeclaration {
-    AuthorizationBuilder::<ClockPermission>::new()
-        .tool(tool("resolve_time"), ClockPermission::Read)
-        .tool(tool("create_event"), ClockPermission::EventsWrite)
-        .tool(tool("activate_release"), ClockPermission::Admin)
-        .resource(
-            ResourceUri::new("clock://authorities/current").unwrap(),
-            ClockPermission::Read,
-        )
-        .resource_template(template("clock://events/{event}"), ClockPermission::Read)
-        .resource_template(template("ui://clock/{view}"), ClockPermission::Read)
-        .prompt(
-            PromptName::parse("plan_window").unwrap(),
-            ClockPermission::Read,
-        )
-        .build(&slug(), &scheme())
-        .unwrap()
+    let permissions = [
+        ClockPermission::Read,
+        ClockPermission::EventsWrite,
+        ClockPermission::Admin,
+    ]
+    .into_iter()
+    .map(|permission| PermissionDeclaration {
+        permission: PermissionName::parse(permission.as_str()).unwrap(),
+        resource: veoveo_types::ResourceTypeName::parse(permission.resource()).unwrap(),
+        access: permission.access(),
+        risks: permission.risks().iter().copied().collect(),
+    })
+    .collect();
+    AuthorizationDeclaration {
+        permissions,
+        requirements: Requirements {
+            tools: [
+                (tool("resolve_time"), policy(ClockPermission::Read)),
+                (tool("create_event"), policy(ClockPermission::EventsWrite)),
+                (tool("activate_release"), policy(ClockPermission::Admin)),
+            ]
+            .into(),
+            resources: [(
+                ResourceUri::new("clock://authorities/current").unwrap(),
+                policy(ClockPermission::Read),
+            )]
+            .into(),
+            resource_templates: [
+                (
+                    template("clock://events/{event}"),
+                    policy(ClockPermission::Read),
+                ),
+                (template("ui://clock/{view}"), policy(ClockPermission::Read)),
+            ]
+            .into(),
+            prompts: [(
+                PromptName::parse("plan_window").unwrap(),
+                policy(ClockPermission::Read),
+            )]
+            .into(),
+        },
+        uses: Vec::new(),
+    }
+}
+fn policy(permission: ClockPermission) -> RouteAccess {
+    RouteAccess::Permission(PermissionName::parse(permission.as_str()).unwrap())
 }
 
 #[test]
@@ -125,14 +157,12 @@ fn required_permission_lookup() {
 
 #[test]
 fn ambiguous_template_matches_require_nothing() {
-    let declaration = AuthorizationBuilder::<ClockPermission>::new()
-        .resource_template(template("clock://events/{event}"), ClockPermission::Read)
-        .resource_template(
-            template("clock://events/{+tail}"),
-            ClockPermission::EventsWrite,
-        )
-        .build(&slug(), &scheme())
-        .unwrap();
+    let mut declaration = authorization();
+    declaration.requirements.resource_templates.insert(
+        template("clock://events/{+tail}"),
+        policy(ClockPermission::EventsWrite),
+    );
+    declaration.check(&slug(), &scheme()).unwrap();
     let event = ResourceUri::new("clock://events/abc").unwrap();
     assert!(
         declaration
@@ -143,18 +173,23 @@ fn ambiguous_template_matches_require_nothing() {
 
 #[test]
 fn authorization_matches_native_collection_queries_and_member_paths() {
-    let declaration = AuthorizationBuilder::<ClockPermission>::new()
-        .resource_template(
+    let mut declaration = authorization();
+    declaration.requirements.resource_templates = [
+        (
             template("clock://events{?role,state,limit,cursor}"),
-            ClockPermission::Read,
-        )
-        .resource_template(
+            policy(ClockPermission::Read),
+        ),
+        (
             template("clock://events/{event}"),
-            ClockPermission::EventsWrite,
-        )
-        .resource_template(template("clock://model/{+model_id}"), ClockPermission::Read)
-        .build(&slug(), &scheme())
-        .unwrap();
+            policy(ClockPermission::EventsWrite),
+        ),
+        (
+            template("clock://model/{+model_id}"),
+            policy(ClockPermission::Read),
+        ),
+    ]
+    .into();
+    declaration.check(&slug(), &scheme()).unwrap();
     for uri in [
         "clock://events",
         "clock://events?limit=2&cursor=opaque",
@@ -211,9 +246,12 @@ fn authorization_refuses_templates_outside_the_native_route_profile() {
         "clock://events/{id}{?id}",
         "clock://events//",
     ] {
-        let result = AuthorizationBuilder::<ClockPermission>::new()
-            .resource_template(template(uri), ClockPermission::Read)
-            .build(&slug(), &scheme());
+        let mut declaration = authorization();
+        declaration
+            .requirements
+            .resource_templates
+            .insert(template(uri), policy(ClockPermission::Read));
+        let result = declaration.check(&slug(), &scheme());
         assert!(
             matches!(result, Err(DeclarationError::UnsupportedTemplate { .. })),
             "{uri}: {result:?}"
@@ -291,36 +329,14 @@ fn wire_admission_rejects_unknown_vocabulary() {
     assert!(serde_json::from_value::<AuthorizationDeclaration>(wire).is_err());
 }
 
-/// A provider's permission vocabulary, as its `contract` feature exports it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, veoveo_types::Vocabulary)]
-enum MapPermission {
-    #[vocabulary(rename = "map.layers.read")]
-    LayersRead,
-    #[vocabulary(rename = "map.layers.write")]
-    LayersWrite,
-}
-
-impl PermissionDefinition for MapPermission {
-    fn resource(self) -> &'static str {
-        "map.layer"
-    }
-    fn access(self) -> Access {
-        match self {
-            Self::LayersRead => Access::Read,
-            Self::LayersWrite => Access::Write,
-        }
-    }
-}
-
 #[test]
 fn uses_name_other_servers_permissions() {
-    let declaration = AuthorizationBuilder::<ClockPermission>::new()
-        .tool(tool("resolve_time"), ClockPermission::Read)
-        .uses(MapPermission::LayersWrite)
-        .uses(MapPermission::LayersRead)
-        .uses(MapPermission::LayersRead)
-        .build(&slug(), &scheme())
-        .unwrap();
+    let mut declaration = authorization();
+    declaration.uses = ["map.layers.read", "map.layers.write"]
+        .into_iter()
+        .map(|name| PermissionName::parse(name).unwrap())
+        .collect();
+    declaration.check(&slug(), &scheme()).unwrap();
     let wire = serde_json::to_value(&declaration).unwrap();
     assert_eq!(wire["uses"], json!(["map.layers.read", "map.layers.write"]));
     let map = ServerSlug::parse("map").unwrap();
@@ -376,24 +392,6 @@ fn uses_name_other_servers_permissions() {
     let mut ungranted = consumer.clone();
     ungranted.grant_types.clear();
     assert!(ungranted.check().is_err());
-}
-
-#[test]
-fn builder_rejects_conflicting_requirements() {
-    let result = AuthorizationBuilder::<ClockPermission>::new()
-        .tool(tool("resolve_time"), ClockPermission::Read)
-        .tool(tool("resolve_time"), ClockPermission::Admin)
-        .build(&slug(), &scheme());
-    assert!(matches!(
-        result,
-        Err(DeclarationError::ConflictingRequirement { .. })
-    ));
-    let other = ServerSlug::parse("map").unwrap();
-    assert!(
-        AuthorizationBuilder::<ClockPermission>::new()
-            .build(&other, &scheme())
-            .is_err()
-    );
 }
 
 fn registration() -> RegistrationDeclaration {
@@ -876,36 +874,6 @@ fn advertised_declarations_round_trip_through_capabilities() {
         mcp::advertised(&rmcp::model::ServerCapabilities::default()).unwrap(),
         None
     );
-}
-
-#[test]
-fn tool_annotations_must_agree_with_permissions() {
-    let declaration = authorization();
-    let annotated = |name: &str, read_only: Option<bool>, destructive: Option<bool>| {
-        let mut tool = rmcp::model::Tool::new(
-            name.to_owned(),
-            "test tool",
-            std::sync::Arc::new(serde_json::Map::new()),
-        );
-        let mut annotations = rmcp::model::ToolAnnotations::default();
-        annotations.read_only_hint = read_only;
-        annotations.destructive_hint = destructive;
-        tool.annotations = Some(annotations);
-        tool
-    };
-    mcp::check_tool_annotations(&declaration, &[annotated("resolve_time", Some(true), None)])
-        .unwrap();
-    assert!(matches!(
-        mcp::check_tool_annotations(&declaration, &[annotated("create_event", Some(true), None)]),
-        Err(DeclarationError::ReadOnlyToolRequiresWrite { .. })
-    ));
-    assert!(matches!(
-        mcp::check_tool_annotations(
-            &declaration,
-            &[annotated("activate_release", Some(false), Some(true))]
-        ),
-        Err(DeclarationError::DestructiveToolWithoutRisk { .. })
-    ));
 }
 
 #[test]

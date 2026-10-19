@@ -9,7 +9,7 @@ enum Path<'a> {
     Tail,
 }
 
-pub(super) struct AuthorizationTemplate<'a> {
+pub(crate) struct AuthorizationTemplate<'a> {
     scheme: &'a str,
     authority: &'a str,
     path: Vec<Path<'a>>,
@@ -20,7 +20,7 @@ pub(super) struct AuthorizationTemplate<'a> {
 impl<'a> AuthorizationTemplate<'a> {
     /// Admit exactly the native route profile: literal root, whole scalar path
     /// segments, a terminal reserved tail and one terminal optional query expansion.
-    pub(super) fn parse(template: &'a ResourceTemplateUri) -> Option<Self> {
+    pub(crate) fn parse(template: &'a ResourceTemplateUri) -> Option<Self> {
         let wire = template.as_str();
         let mut variables = BTreeSet::new();
         let (path_wire, query) = if let Some((path, query)) = wire.split_once("{?") {
@@ -97,6 +97,15 @@ impl<'a> AuthorizationTemplate<'a> {
             query,
             trailing_slash,
         })
+    }
+
+    #[cfg(feature = "server")]
+    pub(crate) fn scheme(&self) -> &str {
+        self.scheme
+    }
+    #[cfg(feature = "server")]
+    pub(crate) fn authority(&self) -> &str {
+        self.authority
     }
 
     pub(super) fn matches(&self, uri: &ResourceUri) -> bool {

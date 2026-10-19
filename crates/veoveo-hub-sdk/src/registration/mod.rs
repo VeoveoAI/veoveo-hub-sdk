@@ -10,7 +10,7 @@
 //! server's key.
 mod access;
 pub mod authorization;
-mod authorization_template;
+pub(crate) mod authorization_template;
 pub mod declaration;
 mod error;
 pub mod grants;
@@ -28,8 +28,8 @@ pub mod statement;
 
 pub use access::{Access, Risk};
 pub use authorization::{
-    AuthorizationBuilder, AuthorizationDeclaration, PermissionDeclaration, PermissionDefinition,
-    RequirementTarget, Requirements, RouteAccess,
+    AuthorizationDeclaration, PermissionDeclaration, PermissionDefinition, RequirementTarget,
+    Requirements, RouteAccess,
 };
 pub use declaration::{RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerVersion};
 pub use error::DeclarationError;

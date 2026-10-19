@@ -86,9 +86,12 @@ prompt requires, and the permissions it uses on other servers. The registration 
     { "permission": "time.admin", "resource": "time.authority", "access": "write", "risks": ["administer"] }
   ],
   "requirements": {
-    "tools": { "resolve_time": "time.read", "create_temporal_event": "time.events.write" },
-    "resource_templates": { "time://events/{event}": "time.read" },
-    "prompts": { "plan_window": "time.read" }
+    "tools": {
+      "resolve_time": {"kind":"permission", "permission":"time.read"},
+      "create_event": {"kind":"permission", "permission":"time.events.write"}
+    },
+    "resource_templates": { "time://events/{event}": {"kind":"permission", "permission":"time.read"} },
+    "prompts": { "plan_window": {"kind":"permission", "permission":"time.read"} }
   },
   "uses": ["artifact.artifacts.read"]
 }
@@ -99,14 +102,17 @@ requirements member is `resourceTemplates`.
 
 `access` is exactly one of `read` or `write`. `risks` holds any of `sensitive`,
 `destructive`, `billed`, `physical` and `administer`, and an empty set is omitted.
-A server builds the declaration from a closed Rust enum that implements
-`PermissionDefinition`, and `AuthorizationBuilder` derives every entry from that enum.
-The same requirement table drives the server's own handler checks.
+A server supplies its closed `PermissionDefinition` enum to required `RoutePolicy`
+steps while constructing typed `Routes`. The ready table derives this declaration,
+discovery, dispatch admission and tool annotation hints. There is no independent
+authorization authoring table. An explicitly `Authenticated` route serializes as
+`{"kind":"authenticated"}` and requires valid current admission without an additional
+permission; an absent route remains undeclared.
 
 `uses` lists the permissions of other servers that this server calls with. A call to
-another server carries at most these permissions. `AuthorizationBuilder::uses`
-takes a variant of the provider's own permission enum, which the provider's `contract`
-feature exports, so a consumer names no permission as text. The member is omitted when
+another server carries at most these permissions. `RoutesBuilder::uses` takes the
+native `PermissionName` from the provider's exported permission enum, for example
+`.uses(ArtifactPermission::ArtifactsRead.name())`. The member is omitted when
 the server calls no other server. A provider need not be registered when the consumer
 registers.
 
@@ -120,8 +126,6 @@ The Hub rejects a declaration when any of these hold:
   `{+tail}` and one optional terminal `{?name,...}` query expansion. Other operators,
   variable authorities, mixed segments, modifiers and fixed queries are refused;
 - a prompt requires a `write` permission;
-- a tool annotated `readOnlyHint` requires a `write` permission, or a tool annotated
-  `destructiveHint` requires a permission without the `destructive` risk;
 - a use names a permission in the server's own namespace, or names one permission
   twice.
 
@@ -508,9 +512,7 @@ let endpoint = RegistrationClient::discover(&http, &hub_issuer).await?;
 let metadata = ClientMetadata::new(
     *key.public_key(),
     registration,
-    AuthorizationBuilder::<TimePermission>::new()
-        .tool(LocalToolName::parse("resolve_time")?, TimePermission::Read)
-        .build(&slug, &scheme)?,
+    <TimeDomain as DomainServer>::routes().authorization(),
 )?;
 let client = RegistrationClient::new(http, endpoint, registration_secret, key, metadata)?;
 let registration = client.register().await?;
@@ -533,7 +535,7 @@ rustls crypto provider before reaching the Hub over HTTPS.
 | Feature of `veoveo-hub-sdk` | Adds to this module |
 |---|---|
 | `contract` | Declarations, the OAuth request and response types, the token exchange wire types, `PermissionsDetail`, JWK types and their schemas |
-| `server` | `ServerKeyPair`, the software statement and client assertion on AWS-LC, `KeyDirectory` and `RegistrationClient` on reqwest, and advertising and reading the declarations in MCP capabilities with the tool annotation check |
+| `server` | `ServerKeyPair`, the software statement and client assertion on AWS-LC, `KeyDirectory` and `RegistrationClient` on reqwest, and advertising and reading the declarations in MCP capabilities |
 
 ## Qualification
 

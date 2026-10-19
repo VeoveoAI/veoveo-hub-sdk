@@ -354,7 +354,66 @@ impl<D: DomainServer> RoutesBuilder<D> {
         }
     }
     pub fn build(self) -> Routes<D> {
+        let _ = self.permission_declarations();
         Routes { inner: self }
+    }
+    fn permission_declarations(&self) -> BTreeMap<PermissionName, PermissionDeclaration> {
+        let policies = std::iter::once(&self.documents)
+            .chain(self.tools.values().map(|route| &route.policy))
+            .chain(self.prompts.values().map(|route| &route.policy))
+            .chain(self.resources.iter().map(|route| &route.policy));
+        let mut permissions = BTreeMap::new();
+        for policy in policies {
+            if let RoutePolicy::Permission(permission) = policy
+                && let Some(previous) =
+                    permissions.insert(permission.permission.clone(), permission.clone())
+            {
+                assert_eq!(
+                    previous, *permission,
+                    "conflicting typed route permission declaration"
+                );
+            }
+        }
+        permissions
+    }
+    fn insert_resource(&mut self, route: ResourceRoute<D>) {
+        let reserved = |uri: &veoveo_types::ResourceUri| {
+            let parts = uri.components().expect("typed resource components");
+            parts.scheme() == <D::Contract as McpServerContract>::scheme().as_str()
+                && matches!(parts.authority(), "docs" | "contract")
+        };
+        if let Some(fixed) = &route.fixed {
+            assert!(
+                !reserved(fixed.address()),
+                "typed resource route collides with host-owned documents"
+            );
+            assert!(
+                self.resources.iter().all(|existing| existing
+                    .fixed
+                    .as_ref()
+                    .is_none_or(|other| other.address() != fixed.address())),
+                "duplicate typed fixed resource route"
+            );
+        }
+        if let Some(template) = &route.template {
+            let parsed = crate::registration::authorization_template::AuthorizationTemplate::parse(
+                template.template(),
+            )
+            .expect("native typed resource template");
+            assert!(
+                !(parsed.scheme() == <D::Contract as McpServerContract>::scheme().as_str()
+                    && matches!(parsed.authority(), "docs" | "contract")),
+                "typed resource template collides with host-owned documents"
+            );
+            assert!(
+                self.resources.iter().all(|existing| existing
+                    .template
+                    .as_ref()
+                    .is_none_or(|other| other.template() != template.template())),
+                "duplicate typed resource template route"
+            );
+        }
+        self.resources.push(route);
     }
     pub fn uses(mut self, permission: PermissionName) -> Self {
         self.uses.push(permission);
@@ -388,25 +447,18 @@ impl<D: DomainServer> RoutesBuilder<D> {
     }
     pub fn authorization(&self) -> crate::registration::AuthorizationDeclaration {
         let mut requirements = crate::registration::Requirements::default();
-        let mut permissions = BTreeMap::new();
-        let mut remember = |policy: &RoutePolicy| {
-            if let RoutePolicy::Permission(permission) = policy {
-                permissions.insert(permission.permission.clone(), permission.clone());
-            }
-        };
+        let permissions = self.permission_declarations();
         for (name, route) in &self.tools {
             requirements.tools.insert(
                 crate::identity::LocalToolName::parse(name).expect("typed tool name"),
                 route.policy.access(),
             );
-            remember(&route.policy);
         }
         for (name, route) in &self.prompts {
             requirements.prompts.insert(
                 crate::identity::PromptName::parse(name).expect("typed prompt name"),
                 route.policy.access(),
             );
-            remember(&route.policy);
         }
         for route in &self.resources {
             if let Some(fixed) = &route.fixed {
@@ -419,7 +471,6 @@ impl<D: DomainServer> RoutesBuilder<D> {
                     .resource_templates
                     .insert(template.template().clone(), route.policy.access());
             }
-            remember(&route.policy);
         }
         let scheme = <D::Contract as McpServerContract>::scheme();
         let docs = <D::Contract as McpServerContract>::documents();
@@ -441,7 +492,6 @@ impl<D: DomainServer> RoutesBuilder<D> {
             crate::docs::docs_member_template(&scheme),
             self.documents.access(),
         );
-        remember(&self.documents);
         crate::registration::AuthorizationDeclaration {
             permissions: permissions.into_values().collect(),
             requirements,
@@ -631,7 +681,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
                 Ok((super::results::json_read(uri.as_str(), &output)?, cache))
             }))
         });
-        self.resources.push(ResourceRoute {
+        self.insert_resource(ResourceRoute {
             fixed: Some(descriptor),
             template: None,
             policy,
@@ -699,7 +749,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
                 Ok((super::results::json_read(uri.as_str(), &output)?, cache))
             }))
         });
-        self.resources.push(ResourceRoute {
+        self.insert_resource(ResourceRoute {
             fixed,
             template: Some(template),
             policy,
@@ -739,7 +789,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
                 Ok((super::results::json_read(uri.as_str(), &output)?, cache))
             }))
         });
-        self.resources.push(ResourceRoute {
+        self.insert_resource(ResourceRoute {
             fixed: None,
             template: Some(template),
             policy,

@@ -1,12 +1,11 @@
 //! MCP discovery: a server advertises its declarations in `capabilities.extensions`,
 //! so what it registers and what it advertises have one source. The Hub reads them
-//! back and checks them against the tools the server lists.
-use crate::identity::LocalToolName;
-use rmcp::model::{JsonObject, ServerCapabilities, Tool};
+//! back for registration identity and authorization admission.
+use rmcp::model::{JsonObject, ServerCapabilities};
 
 use crate::registration::{
-    AUTHORIZATION_EXTENSION_ID, Access, AuthorizationDeclaration, DeclarationError,
-    REGISTRATION_EXTENSION_ID, RegistrationDeclaration, Risk,
+    AUTHORIZATION_EXTENSION_ID, AuthorizationDeclaration, DeclarationError,
+    REGISTRATION_EXTENSION_ID, RegistrationDeclaration,
 };
 
 /// Advertise the declarations.
@@ -69,40 +68,4 @@ fn read<T: serde::de::DeserializeOwned>(
                 .map_err(|_| DeclarationError::invalid(field, "does not match its declared shape"))
         })
         .transpose()
-}
-
-/// MCP annotations are hints that a client must not trust for security; here they
-/// only catch a declaration that contradicts the server's own tool description. A
-/// read-only tool must require read access, and a destructive tool must carry the
-/// destructive risk. Absent hints impose nothing.
-pub fn check_tool_annotations(
-    declaration: &AuthorizationDeclaration,
-    tools: &[Tool],
-) -> Result<(), DeclarationError> {
-    for tool in tools {
-        let Some(annotations) = tool.annotations.as_ref() else {
-            continue;
-        };
-        let Ok(name) = LocalToolName::parse(tool.name.as_ref()) else {
-            continue;
-        };
-        let Some(permission) = declaration
-            .requirements
-            .tools
-            .get(&name)
-            .and_then(|required| required.permission())
-            .and_then(|required| declaration.permission(required))
-        else {
-            continue;
-        };
-        if annotations.read_only_hint == Some(true) && permission.access == Access::Write {
-            return Err(DeclarationError::ReadOnlyToolRequiresWrite { tool: name });
-        }
-        if annotations.destructive_hint == Some(true)
-            && !permission.risks.contains(&Risk::Destructive)
-        {
-            return Err(DeclarationError::DestructiveToolWithoutRisk { tool: name });
-        }
-    }
-    Ok(())
 }

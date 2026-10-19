@@ -1,4 +1,4 @@
-use crate::identity::{LocalToolName, PromptName};
+use crate::identity::PromptName;
 use veoveo_types::{PermissionName, ResourceTypeName};
 
 /// The exact reason a declaration is rejected. Diagnostics name declared identifiers,
@@ -13,18 +13,12 @@ pub enum DeclarationError {
     DuplicatePermission { permission: PermissionName },
     #[error("a requirement names undeclared permission {permission}")]
     UndeclaredPermission { permission: PermissionName },
-    #[error("{target} is required twice with different permissions")]
-    ConflictingRequirement { target: String },
     #[error("resource requirement {uri} is outside the server's URI scheme")]
     ResourceOutsideScheme { uri: String },
     #[error(
         "resource template {template} is outside the native path and optional-query route profile"
     )]
     UnsupportedTemplate { template: String },
-    #[error("tool {tool} is annotated read-only but requires a write permission")]
-    ReadOnlyToolRequiresWrite { tool: LocalToolName },
-    #[error("tool {tool} is annotated destructive but its permission lacks the destructive risk")]
-    DestructiveToolWithoutRisk { tool: LocalToolName },
     #[error("prompt {prompt} requires a write permission")]
     PromptRequiresWrite { prompt: PromptName },
     #[error("use of {permission} names the server's own namespace; declare it as a permission")]

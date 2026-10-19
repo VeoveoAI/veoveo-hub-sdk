@@ -607,8 +607,8 @@ tool that runs as a Task also implements `TaskToolCall`. Each read type implemen
 `ResourceRead`: the provider's typed resource address, which builds the URI, and the
 content type it decodes from the resource's one `application/json` text content. A
 consumer depends on the provider's `contract` feature by Git revision and declares the
-permissions it uses with `AuthorizationBuilder::uses`, taking the provider's permission
-enum.
+permissions it uses with the ready route builder's `.uses`, passing the provider's
+typed permission name, for example `.uses(ArtifactPermission::ArtifactsRead.name())`.
 
 Calls are builders that run when awaited:
 

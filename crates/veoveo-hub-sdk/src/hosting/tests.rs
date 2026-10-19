@@ -20,24 +20,30 @@ use veoveo_types::{ResourceAddress, ResourceScheme, ResourceUri};
 enum FixtureScope {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FixtureResource {
+    Docs,
     Items,
     Item,
+    NestedItem,
     Volatile,
 }
 impl ResourceAddress for FixtureResource {
     type Error = veoveo_types::IdentifierError;
     fn parse(uri: &ResourceUri) -> Result<Self, Self::Error> {
         match uri.as_str() {
+            "fixture://docs" => Ok(Self::Docs),
             "fixture://items" => Ok(Self::Items),
             "fixture://items/1" => Ok(Self::Item),
+            "fixture://items/1/member" => Ok(Self::NestedItem),
             "fixture://volatile" => Ok(Self::Volatile),
             _ => Err(Self::Error::new(uri.as_str(), "unknown fixture address")),
         }
     }
     fn to_uri(&self) -> Result<ResourceUri, Self::Error> {
         ResourceUri::new(match self {
+            Self::Docs => "fixture://docs",
             Self::Items => "fixture://items",
             Self::Item => "fixture://items/1",
+            Self::NestedItem => "fixture://items/1/member",
             Self::Volatile => "fixture://volatile",
         })
         .map_err(|_| Self::Error::new("fixture", "invalid fixture address"))
@@ -149,6 +155,11 @@ impl crate::definition::TemplateRead for ReadItem {
         (*address == FixtureResource::Item).then_some(Self)
     }
 }
+#[crate::resource_read(provider = FixtureContract, address_type = FixtureResource, content = State,
+    template = "fixture://items/{item_id}/member", address = FixtureResource::NestedItem,
+    parse = |address| matches!(address, FixtureResource::NestedItem).then_some(Self))]
+struct ReadNestedItem;
+
 static ROUTES: LazyLock<Routes<FixtureDomain>> = LazyLock::new(|| {
     Routes::builder(RoutePolicy::permission(FixturePermission::Docs).unwrap())
         .tool::<EchoRequest, _, _>(
@@ -761,4 +772,72 @@ async fn prompt_discovery_dispatch_and_registration_share_current_policy() {
         .rpc("prompts/get", serde_json::json!({"name":"admin-summary"}))
         .await;
     assert!(allowed["result"]["messages"].as_array().unwrap().is_empty());
+}
+
+#[test]
+#[should_panic(expected = "duplicate typed fixed resource route")]
+fn resource_construction_refuses_duplicate_fixed_identity() {
+    Routes::<FixtureDomain>::builder(RoutePolicy::Authenticated)
+        .singleton(
+            ReadState(FixtureResource::Items),
+            ResourceBuilder::new("first")
+                .reader(|_, _, _| async { Ok(State { count: 0 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::NoStore),
+        )
+        .singleton(
+            ReadState(FixtureResource::Items),
+            ResourceBuilder::new("second")
+                .reader(|_, _, _| async { Ok(State { count: 1 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::NoStore),
+        );
+}
+
+#[test]
+#[should_panic(expected = "duplicate typed resource template route")]
+fn resource_construction_refuses_duplicate_template_identity() {
+    Routes::<FixtureDomain>::builder(RoutePolicy::Authenticated)
+        .template::<ReadNestedItem, _, _>(
+            ResourceBuilder::new("first")
+                .reader(|_, _, _| async { Ok(State { count: 0 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::NoStore),
+        )
+        .template::<ReadNestedItem, _, _>(
+            ResourceBuilder::new("second")
+                .reader(|_, _, _| async { Ok(State { count: 1 }) })
+                .policy(RoutePolicy::Authenticated)
+                .cache(ReadCache::NoStore),
+        );
+}
+
+#[test]
+#[should_panic(expected = "collides with host-owned documents")]
+fn resource_construction_reserves_host_documents() {
+    Routes::<FixtureDomain>::builder(RoutePolicy::Authenticated).singleton(
+        ReadState(FixtureResource::Docs),
+        ResourceBuilder::new("override")
+            .reader(|_, _, _| async { Ok(State { count: 0 }) })
+            .policy(RoutePolicy::Authenticated)
+            .cache(ReadCache::NoStore),
+    );
+}
+
+#[test]
+#[should_panic(expected = "conflicting typed route permission declaration")]
+fn route_construction_refuses_conflicting_permission_metadata() {
+    let RoutePolicy::Permission(mut conflicting) =
+        RoutePolicy::permission(FixturePermission::Docs).unwrap()
+    else {
+        unreachable!()
+    };
+    conflicting.access = crate::registration::Access::Write;
+    Routes::<FixtureDomain>::builder(RoutePolicy::permission(FixturePermission::Docs).unwrap())
+        .tool::<EchoRequest, _, _>(
+            "conflicting permission",
+            RoutePolicy::Permission(conflicting),
+            |_, request, _| async move { Ok(Echo { text: request.text }) },
+        )
+        .build();
 }

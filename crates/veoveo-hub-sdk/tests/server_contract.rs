@@ -72,6 +72,17 @@ impl ResourceAddress for Address {
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[veoveo_hub_sdk::tool(provider=Independent,output=Product<Metadata>,name="produce_product")]
 struct Produce {}
+const SERIALIZATION_SENTINEL: &str = "fixture-private-serialization-payload";
+#[derive(serde::Deserialize, schemars::JsonSchema, veoveo_hub_sdk::SingleOutput)]
+struct Unserializable {}
+impl serde::Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom(SERIALIZATION_SENTINEL))
+    }
+}
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=Independent,output=Unserializable,name="fail_serialization")]
+struct FailSerialization {}
 fn documents(owner: &str) -> ServerDocs {
     ServerDocs::new(ServerSlug::parse(owner).unwrap())
         .with_doc("agents", "Agents", "# Agents")
@@ -101,6 +112,11 @@ where
                     rmcp::ErrorData::internal_error("fixture product construction", None).into()
                 })
             },
+        )
+        .tool::<FailSerialization, _, _>(
+            "Fail while serializing typed output",
+            RoutePolicy::Authenticated,
+            |_, _, _| async { Ok(Unserializable {}) },
         )
         .template::<ReadProduct, _, _>(
             ResourceBuilder::new("Product")
@@ -341,4 +357,173 @@ async fn hosted_product_output_text_and_link_come_from_the_same_value() {
         serde_json::from_str::<serde_json::Value>(text).unwrap(),
         *output
     );
+}
+
+#[cfg(feature = "testing")]
+mod security {
+    use super::*;
+    use std::{
+        io::Write,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+    use tracing::instrument::WithSubscriber;
+    use veoveo_hub_sdk::hosting::{
+        Hosted,
+        testing::{self, TestHub},
+    };
+
+    struct TraceWriter(Arc<Mutex<Vec<u8>>>);
+    impl Write for TraceWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn traces_preserve_routing_without_query_or_credentials() {
+        tokio::time::timeout(Duration::from_secs(20), async {
+            let captured = Arc::new(Mutex::new(Vec::new()));
+            let writer = captured.clone();
+            let subscriber = tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::TRACE)
+                .with_ansi(false)
+                .without_time()
+                .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+                .with_writer(move || TraceWriter(writer.clone()))
+                .finish();
+            let hub = TestHub::new(
+                testing::for_domain::<valid::Domain>()
+                    .handler(|| Hosted::new(valid::Domain))
+                    .public_routes(axum::Router::new().route(
+                        "/trace-query",
+                        axum::routing::get(|uri: axum::http::Uri| async move {
+                            uri.query().unwrap_or_default().to_owned()
+                        }),
+                    ))
+                    .build(),
+            );
+            let query = "query-sentinel=query-value&access_token=synthetic-query-token&signature=synthetic-signature%2Fvalue";
+            let request = hub
+                .request(&format!("/trace-query?{query}"))
+                .method("GET")
+                .version(axum::http::Version::HTTP_11)
+                .header("authorization", "Bearer synthetic-header-token")
+                .header("cookie", "fixture=synthetic-cookie")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let expected_route = request.uri().path().to_owned();
+            let (status, body) = hub.send(request).with_subscriber(subscriber).await;
+            assert_eq!(status.as_u16(), 200);
+            assert_eq!(body, query, "the handler must receive the original query");
+            let trace = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+            assert!(trace.contains("method=GET"), "{trace}");
+            assert!(trace.contains(&format!("http.route={expected_route}")), "{trace}");
+            assert!(trace.contains("version=HTTP/1.1"), "{trace}");
+            for sentinel in [
+                "query-sentinel", "query-value", "access_token", "synthetic-query-token",
+                "synthetic-signature", "synthetic-header-token", "synthetic-cookie",
+            ] {
+                assert!(!trace.contains(sentinel), "trace leaked {sentinel}: {trace}");
+            }
+        })
+        .await
+        .expect("trace redaction test exceeded twenty seconds");
+    }
+
+    #[tokio::test]
+    async fn traces_record_templates_never_secret_or_unmatched_paths() {
+        tokio::time::timeout(Duration::from_secs(20), async {
+            let captured = Arc::new(Mutex::new(Vec::new()));
+            let writer = captured.clone();
+            let subscriber = tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::TRACE)
+                .with_ansi(false)
+                .without_time()
+                .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+                .with_writer(move || TraceWriter(writer.clone()))
+                .finish();
+            let hub = TestHub::new(
+                testing::for_domain::<valid::Domain>()
+                    .handler(|| Hosted::new(valid::Domain))
+                    .public_routes(
+                        axum::Router::new()
+                            .route("/shares/{token}", axum::routing::get(|| async { "shared" })),
+                    )
+                    .build(),
+            );
+            let secret = "synthetic-share-token";
+            let shared = hub
+                .request(&format!("/shares/{secret}?signature=synthetic-share-query"))
+                .method("GET")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let template = format!(
+                "{}/shares/{{token}}",
+                shared
+                    .uri()
+                    .path()
+                    .trim_end_matches(&format!("/shares/{secret}"))
+            );
+            let unmatched = hub
+                .request("/no-such-route/synthetic-unmatched-path?q=synthetic-unmatched-query")
+                .method("GET")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            async {
+                let (status, body) = hub.send(shared).await;
+                assert_eq!((status.as_u16(), body.as_str()), (200, "shared"));
+                assert_eq!(hub.send(unmatched).await.0.as_u16(), 404);
+            }
+            .with_subscriber(subscriber)
+            .await;
+            let trace = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+            assert!(trace.contains(&format!("http.route={template}")), "{trace}");
+            assert!(trace.contains("http.route=unmatched"), "{trace}");
+            for sentinel in [
+                secret,
+                "synthetic-share-query",
+                "synthetic-unmatched-path",
+                "synthetic-unmatched-query",
+            ] {
+                assert!(
+                    !trace.contains(sentinel),
+                    "trace leaked {sentinel}: {trace}"
+                );
+            }
+        })
+        .await
+        .expect("path redaction test exceeded twenty seconds");
+    }
+
+    #[tokio::test]
+    async fn typed_output_serialization_failure_keeps_diagnostics_payload_free() {
+        tokio::time::timeout(Duration::from_secs(20), async {
+            let hub = TestHub::new(
+                testing::for_domain::<valid::Domain>()
+                    .handler(|| Hosted::new(valid::Domain))
+                    .build(),
+            );
+            let response = hub
+                .rpc(
+                    "tools/call",
+                    serde_json::json!({"name":"fail_serialization","arguments":{}}),
+                )
+                .await;
+            assert_eq!(response["error"]["code"], -32603);
+            assert_eq!(
+                response["error"]["message"],
+                "typed output serialization failed"
+            );
+            assert!(response["error"].get("data").is_none());
+            assert!(response.get("result").is_none());
+            assert!(!response.to_string().contains(SERIALIZATION_SENTINEL));
+        })
+        .await
+        .expect("serialization redaction test exceeded twenty seconds");
+    }
 }

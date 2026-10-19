@@ -107,7 +107,7 @@ impl RequirementId {
             ),
             Self::C04 => (
                 RequirementLevel::Must,
-                "Addressable state is exposed as resources or resource templates under the server's canonical scheme; growing collections use bounded domain-owned pages and exact reads do not scan the full collection.",
+                "Addressable state is exposed as resources or resource templates under the server's canonical scheme; growing collections, including pageable tool results, satisfy the Domain Collection Paging contract: bounded pages, opaque scoped continuation, deterministic complete traversal on unchanged data, current authorization and explicit mutation semantics. Exact reads do not scan the full collection.",
             ),
             Self::C05 => (
                 RequirementLevel::Must,

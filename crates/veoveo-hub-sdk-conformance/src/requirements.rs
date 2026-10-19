@@ -83,7 +83,14 @@ pub fn requirement_verification(id: RequirementId) -> RequirementVerification {
         C01 => (Review, &[]),
         C02 => (Mixed, &["VV-MCP-TOOLS-002", "VV-MCP-TOOLS-003"]),
         C03 => (Mixed, &["VV-MCP-TASKS-001"]),
-        C04 => (Mixed, &["VV-MCP-RESOURCES-001", "VV-MCP-TEMPLATES-001"]),
+        C04 => (
+            Mixed,
+            &[
+                "VV-MCP-RESOURCES-001",
+                "VV-MCP-TEMPLATES-001",
+                "VV-MCP-PAGING-001",
+            ],
+        ),
         C05 | C06 => (Review, &[]),
         C07 => (Runtime, &["VV-MCP-TOOLS-003"]),
         C08 | C09 | C10 => (Review, &[]),
@@ -164,7 +171,12 @@ mod tests {
     }
     #[test]
     fn security_and_readiness_runtime_checks_still_require_policy_review() {
-        for id in [RequirementId::C12, RequirementId::C31, RequirementId::C33] {
+        for id in [
+            RequirementId::C04,
+            RequirementId::C12,
+            RequirementId::C31,
+            RequirementId::C33,
+        ] {
             let mapping = requirement_verification(id);
             assert_eq!(mapping.mode, VerificationMode::Mixed);
             let results: Vec<_> = mapping

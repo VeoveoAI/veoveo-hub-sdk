@@ -261,7 +261,25 @@ async fn certifies_a_domain_without_linking_its_implementation() -> anyhow::Resu
     let report =
         run_hosted_server_conformance(&profile, &ConformanceCredentials::bearer("test-token"))
             .await?;
-    assert!(report.passed(), "{:#?}", report.checks);
+    assert!(
+        !report.passed(),
+        "missing domain paging evidence must remain incomplete"
+    );
+    assert!(
+        report.checks.iter().all(|check| {
+            if check.requirement_id == "VV-MCP-PAGING-001" {
+                check.status == veoveo_hub_sdk_conformance::CheckStatus::Incomplete
+            } else {
+                !matches!(
+                    check.status,
+                    veoveo_hub_sdk_conformance::CheckStatus::Failed
+                        | veoveo_hub_sdk_conformance::CheckStatus::Incomplete
+                )
+            }
+        }),
+        "{:#?}",
+        report.checks
+    );
     assert_eq!(
         report
             .implementation

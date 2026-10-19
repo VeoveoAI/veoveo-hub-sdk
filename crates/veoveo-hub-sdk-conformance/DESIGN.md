@@ -21,6 +21,69 @@ server in any language without linking its implementation.
 | `https://veoveo.ai/contracts/hosted-mcp` | Veoveo hosted-server contract for MCP `2026-07-28` |
 | `ai.veoveo/hub-discovery-degradation` | typed server/surface/failure-code catalog metadata; a degraded catalog makes naming inspection incomplete |
 
+## Domain Paging Inspection
+
+C04 includes `VV-MCP-PAGING-001`. The generic CLI and existing
+`run_hosted_server_conformance` / `run_hosted_server_conformance_with_evidence`
+entrypoints have no domain adapters and now return `Incomplete` for this check.
+Consequently `ConformanceReport::passed()` returns false. This is a deliberate
+coverage change, not evidence of a server regression. Existing profiles and public
+MCP wire types are unchanged; no domain schemas or executable probe instructions
+are inferred from resource descriptions or added to the profile format.
+
+An owner harness calls `paging::inspect_pages` through a typed fetch closure, then
+supplies the resulting sealed observations and nonempty required listing labels to
+`run_hosted_server_conformance_with_paging`, alongside existing naming evidence.
+Adapters can target any implementation language over ordinary MCP. The test-owned
+[`tests/paging.rs`](tests/paging.rs) shows actual `resources/read` and `tools/call`
+adapters against a synthetic fixture. Give each server/listing/surface a distinct
+safe informational label. Keys encode the owner's total order and unique
+tie-breaker, and the expected sequence comes from an independently known fixture
+or authoritative store selection, never from concatenating the tested responses.
+
+The probe follows every non-null token verbatim, including empty strings and tokens
+on empty intermediate pages. It verifies per-page item/byte/cursor bounds, exact
+ordered completeness against the expected sequence, repeated cursors and terminal
+completion. Every required listing needs its own completed multi-page traversal
+with at least two items; empty and single-page cases are supplementary. Missing
+selections or observations, unavailable fetch/decode and inspection budget
+exhaustion stay `Incomplete`. Known page violations are `Failed`. No arbitrary
+owner scenario boolean can manufacture successful traversal evidence.
+
+Independent budgets bound each traversal and the aggregate accepted evidence:
+1,024 pages, 16,384 identities, 32 MiB serialized result bytes and thirty seconds,
+with at most 128 selections/observations. Expected-key serialization is bounded
+before comparisons; each result is serialized through a bounded counting writer
+within C10's 8 MiB limit. A post-fetch/post-inspection deadline check covers ready
+futures whose synchronous work cannot be preempted by the async timeout. The
+adapter and its response allocation remain trusted caller code. The inspector
+cannot preempt arbitrary synchronous adapter code or bound memory already
+allocated by that caller.
+
+Byte evidence is the reserialized complete MCP result supplied by the adapter,
+including resource text escaping and tool content. It is not the original received
+HTTP bytes or JSON-RPC envelope and does not independently prove C10's final wire
+cap. Owners pass the actual MCP result before extracting a domain DTO; measuring
+only that DTO would omit its wrapper. Reports retain safe labels, server slug,
+surface, owner-declared provenance, status, sanitized reason, limits, counts and
+elapsed microseconds for success and failure; keys, bodies, error text and cursor
+values are excluded. Rejected oversized selections also bound report observations.
+For an oversized result, the counting writer stops at rejection: its byte count is
+a lower bound on serialized result size, not a measurement of the full result.
+
+The runner checks the observation's server slug against its profile. Slug, origin,
+adapter correctness, endpoint/revision correspondence, selection completeness and
+the connection between extracted keys/cursor and the response are trusted owner
+inputs requiring review. A passed paging check therefore keeps C04 `Mixed` /
+`ReviewRequired`. Domain scope/refusal, limit changes, mutation, current
+authorization and supported-replica semantics require actual owner tests; this
+generic traversal API does not assert them. The synthetic test exercises filter,
+limit, foreign-owner, malformed/oversized/duplicate-cursor refusal, insertion with
+revision invalidation and authorization revocation for its own fixture only.
+It does not qualify production services, deployed replicas or real inference.
+Existing services still need owner adapters and those domain tests adopted in
+their repositories before claiming the expanded C04 coverage.
+
 ## Naming Inspection
 
 C33 inspects published tool input and output schema graphs using the same per-document

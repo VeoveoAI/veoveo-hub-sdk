@@ -217,7 +217,25 @@ async fn qualify() -> anyhow::Result<()> {
     )
     .await?;
     println!("{}", serde_json::to_string(&report)?);
-    assert!(report.passed(), "{:#?}", report.checks);
+    assert!(
+        !report.passed(),
+        "missing domain paging evidence must remain incomplete"
+    );
+    assert!(
+        report.checks.iter().all(|check| {
+            if check.requirement_id == "VV-MCP-PAGING-001" {
+                check.status == veoveo_hub_sdk_conformance::CheckStatus::Incomplete
+            } else {
+                !matches!(
+                    check.status,
+                    veoveo_hub_sdk_conformance::CheckStatus::Failed
+                        | veoveo_hub_sdk_conformance::CheckStatus::Incomplete
+                )
+            }
+        }),
+        "{:#?}",
+        report.checks
+    );
     let naming = report
         .checks
         .iter()

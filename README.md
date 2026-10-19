@@ -17,6 +17,11 @@ which holds the protocol-independent platform, and on rmcp, the official MCP Rus
 | `veoveo-hub-sdk-fixture` | The [Observatory test server](crates/veoveo-hub-sdk-fixture/DESIGN.md), Ledger and Relay for calls between servers, Foundry and its fake provider Kiln for operations and usage, and the tool-input fixtures servers use in their tests |
 | `veoveo-hub-sdk-cli` | The [Hub client](crates/veoveo-hub-sdk-cli/DESIGN.md) `veoveo-hub-sdk-cli`, which lists, reads and calls what one installation caller sees, lets a chat model work on a request with those tools, and runs use-case tests against a running installation |
 
+C04 now requires measured domain paging evidence. Generic CLI/legacy runner calls
+report `VV-MCP-PAGING-001` as `Incomplete` until an owner harness supplies actual
+resource/tool fetch adapters through `run_hosted_server_conformance_with_paging`.
+See the [paging contract and migration](crates/veoveo-hub-sdk-conformance/DESIGN.md#domain-paging-inspection).
+
 ## Features
 
 | Feature of `veoveo-hub-sdk` | Gives | Pulls in |

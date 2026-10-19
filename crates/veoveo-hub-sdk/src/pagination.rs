@@ -27,6 +27,13 @@ impl fmt::Display for PaginationError {
 
 impl Error for PaginationError {}
 
+/// Slice an already ordered collection using numeric offsets.
+///
+/// The caller must preserve membership and ordering across continuation requests
+/// (for example through an immutable catalog revision). A snapshot held only for
+/// one request does not satisfy this precondition. This helper retains no snapshot,
+/// binds no filters or authority and performs no authorization. Mutable domain
+/// collections need their owner's scoped keyset, revision or snapshot policy.
 pub fn paginate<T>(
     items: Vec<T>,
     request: Option<&PaginatedRequestParams>,

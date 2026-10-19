@@ -2,6 +2,7 @@
 
 pub mod catalog;
 pub mod naming;
+pub mod paging;
 pub mod requirements;
 pub mod schema_evidence;
 
@@ -18,7 +19,10 @@ pub use report::{
     CONFORMANCE_REPORT_FORMAT, CheckResult, CheckStatus, ConformanceReport,
     ConformanceReportFormat, ObservedImplementation,
 };
-pub use runner::{run_hosted_server_conformance, run_hosted_server_conformance_with_evidence};
+pub use runner::{
+    run_hosted_server_conformance, run_hosted_server_conformance_with_evidence,
+    run_hosted_server_conformance_with_paging,
+};
 pub use schema_evidence::{
     NamingEvidence, OwnerSchemaEvidence, SchemaEvidenceOrigin, SchemaObservation,
     ToolNameProjection,

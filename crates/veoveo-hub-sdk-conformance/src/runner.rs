@@ -43,6 +43,18 @@ pub async fn run_hosted_server_conformance_with_evidence(
     credentials: &ConformanceCredentials,
     evidence: &crate::schema_evidence::NamingEvidence<'_>,
 ) -> Result<ConformanceReport> {
+    run_hosted_server_conformance_with_paging(profile, credentials, evidence, &Default::default())
+        .await
+}
+
+/// Include owner-executed domain traversal probes. Generic CLI and legacy entry
+/// points cannot discover domain schemas and report missing paging as incomplete.
+pub async fn run_hosted_server_conformance_with_paging(
+    profile: &HostedServerConformanceProfile,
+    credentials: &ConformanceCredentials,
+    evidence: &crate::schema_evidence::NamingEvidence<'_>,
+    paging: &crate::paging::PagingEvidence<'_>,
+) -> Result<ConformanceReport> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     profile.validate()?;
     let bearer_token = credentials
@@ -50,6 +62,7 @@ pub async fn run_hosted_server_conformance_with_evidence(
         .ok_or_else(|| anyhow!("hosted certification requires an out-of-band bearer token"))?;
     let started_at = chrono::Utc::now();
     let mut checks = Vec::new();
+    checks.push(crate::paging::check_paging(paging, &profile.server_slug));
     let http = reqwest::Client::new();
 
     if profile.http.require_authentication_rejection {

@@ -144,6 +144,65 @@ domain identity and do not require a full collection scan. `resources/list`
 advertises stable roots and templates rather than enumerating every dynamic
 record. Completion queries are bounded at their authoritative store.
 
+### Domain Collection Paging
+
+C04 governs growing domain collections exposed by `resources/read` and pageable
+tool results. Each owner MUST document and test these observable guarantees:
+
+- A page has a positive default and maximum item limit and a maximum serialized
+  response byte size within C10's final 8 MiB JSON response cap. Owners define
+  invalid-limit behavior and how an item that cannot fit is refused; continuation
+  must make cursor progress and terminate on unchanged data. Empty intermediate
+  pages are permitted; clients still follow a non-null continuation.
+  Optional totals declare whether they are exact or estimated and their consistency
+  scope; clients use `nextCursor`, not totals or page length, to detect completion.
+- Requests accept an optional opaque `cursor`; JSON pages expose `nextCursor`.
+  Missing or null `nextCursor` means completion; any non-null token means continue.
+  A resource collection continues on the same collection URI with exactly one
+  `cursor` query parameter, URI-encoded as query data. Preserve every other query
+  argument. Duplicate cursor parameters are refused. A template that advertises
+  continuation uses RFC 6570 query expansion; a documented root may accept cursor
+  queries without advertising such a template. Tools pass continuation in their
+  declared input. Clients do not decode, normalize or infer token contents.
+  Opacity is a client obligation, not a requirement for encryption or a globally
+  unique token spelling.
+- Cursors have a documented finite byte cap and are bound to the listing and its
+  effective filters, order, and applicable tenant/owner/role scope. A changed limit
+  is either supported without loss or refused as documented. Malformed, oversized,
+  wrong-listing and wrong-scope cursors are refused with a documented error and
+  restart instruction. They never silently restart or select a different listing.
+- Ordering is deterministic and total, with a unique stable tie-breaker. On
+  unchanged data and authorization, following continuation terminates and returns
+  every matching identity exactly once, in order. An exact page-size boundary
+  terminates correctly, directly or through a documented final empty page.
+- Every page applies current authorization. A cursor is a position, never an
+  authority grant; possession cannot restore revoked access or cross a tenant or
+  owner boundary. Unsupported cursor replicas or expired snapshots fail explicitly.
+- The owner declares mutation semantics: live keyset traversal, revision-bound
+  continuation, or a retained snapshot. It describes visibility of inserts,
+  deletes, reorderings and authorization changes, and restart/expiry behavior.
+  Request-local snapshots do not imply cross-request snapshot consistency.
+
+Owners keep their cursor encodings, caps, page DTOs and consistency policies.
+Core supplies transport-neutral bounds and cursor primitives; this SDK owns MCP
+wire conventions and conformance. No domain type, MCP field or server registry is
+introduced into Core. MCP catalog methods (`tools/list`, `resources/list`,
+`resources/templates/list`, `prompts/list`) retain the protocol's pagination
+semantics rather than adopting a domain cursor codec. In particular a catalog
+client follows any non-null cursor, including an empty string.
+Finite immutable SDK documentation indexes keep their existing document-position
+cursor contract; they are not growing domain collections and do not acquire
+tenant/keyset codecs through this requirement.
+
+Executable evidence includes multi-page traversal of a known unchanged selection,
+empty and exact-boundary cases, malformed and foreign cursors, changed filters and
+limits, and tests of the declared mutation and current-authorization behavior.
+Cross-replica continuation is tested when multiple replicas are supported. The
+SDK's reusable probe measures traversal only; owners execute domain scope,
+mutation, authorization and replica scenarios in their own tests. Missing owner
+evidence leaves C04 incomplete; successful selected probes still require review
+of coverage, policy and the trusted adapter's connection to the selected server.
+
 An agent reads resources through a governed current-profile adapter rather than an
 unrestricted protocol peer. The adapter admits absolute domain resource URIs and
 bounded text or JSON content. It rejects browser, local-file, network, credential,
@@ -858,7 +917,7 @@ Their loaders perform the same semantic admission without repository reads.
 | C01 | MUST | Each capability uses the canonical MCP surface for its need per the Protocol Surface table. |
 | C02 | MUST | Every tool declares input and output JSON Schemas; an addressable terminal product has one top-level canonical `resultUri`, while a no-product task omits it. |
 | C03 | MUST | Durable operations are task-augmented tools on the shared task runtime. |
-| C04 | MUST | Addressable state is exposed as resources or resource templates under the server's canonical scheme; growing collections use bounded domain-owned pages and exact reads do not scan the full collection. |
+| C04 | MUST | Addressable state is exposed as resources or resource templates under the server's canonical scheme; growing collections, including pageable tool results, satisfy the Domain Collection Paging contract: bounded pages, opaque scoped continuation, deterministic complete traversal on unchanged data, current authorization and explicit mutation semantics. Exact reads do not scan the full collection. |
 | C05 | MUST | The server is not flattened to a tool-only convenience surface. |
 | C06 | MUST | Compatibility helpers are additive projections reusing canonical models, policy, audit, tasks, and URIs. |
 | C07 | MUST | Tool input schemas use the supported JSON Schema 2020-12 profile, close controlled argument objects, give each typed argument one JSON `type` with optional arguments omitted rather than `null`, declare `type` on every subschema whose references, composition, `const` or `enum` restrict its JSON types, and pass the shared document and reference-expansion bounds. |
@@ -956,7 +1015,12 @@ event history without forwarding denied Task payloads or emitting idle timer cha
 
 ## Cursor Admission
 
-Pagination keeps its published optional String cursor fields and v1: numeric-offset spelling. Its owner codec retains usize parser aliases and existing error behavior without adding canonical equality, collection binding or a new input limit.
+The low-level offset helper keeps its published optional String cursor fields and
+`v1:` numeric-offset spelling. Its owner codec retains usize parser aliases and
+existing error behavior. It binds no listing, filters or authority and retains no
+snapshot; callers must maintain stable membership and order across requests and
+apply their own bounds and authorization. It is not by itself an implementation
+of the Domain Collection Paging contract for mutable collections.
 
 ## Forwarded Identity Types
 

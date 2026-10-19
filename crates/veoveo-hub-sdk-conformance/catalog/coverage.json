@@ -25,7 +25,8 @@
     {
       "checks": [
         "VV-MCP-RESOURCES-001",
-        "VV-MCP-TEMPLATES-001"
+        "VV-MCP-TEMPLATES-001",
+        "VV-MCP-PAGING-001"
       ],
       "id": "C04",
       "mode": "mixed"

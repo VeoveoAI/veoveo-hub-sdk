@@ -115,8 +115,10 @@ The Hub rejects a declaration when any of these hold:
 - a permission or resource type does not start with the server's slug and a dot;
 - a permission is declared twice, or a requirement names an undeclared permission;
 - a resource or template URI uses neither the server's scheme nor `ui://{slug}/`;
-- a template uses an RFC 6570 operator, since only simple `{variable}` expressions
-  match concrete URIs;
+- a template is outside the native resource route profile: a literal scheme and
+  authority, literal or whole `{variable}` path segments, an optional terminal
+  `{+tail}` and one optional terminal `{?name,...}` query expansion. Other operators,
+  variable authorities, mixed segments, modifiers and fixed queries are refused;
 - a prompt requires a `write` permission;
 - a tool annotated `readOnlyHint` requires a `write` permission, or a tool annotated
   `destructiveHint` requires a permission without the `destructive` risk;
@@ -125,7 +127,13 @@ The Hub rejects a declaration when any of these hold:
 
 A target the declaration omits is denied. An exact resource entry takes precedence
 over templates, and a URI matched by templates that require different permissions
-requires none and is denied.
+requires none and is denied. Collection templates match their root with no query
+and pages containing any subset of the declared query names, in any order. Unknown
+query names, empty query strings and duplicate decoded names (including encoded
+aliases) are refused. Scalar captures consume one path segment; a terminal reserved
+tail consumes the remaining segments, including zero, as the native route machinery
+does. Domain address types still validate captured values. This authorization route
+profile is distinct from Core's lexical resource policy selectors.
 
 Discover advertises the identity and authorization declarations in full, so the
 Hub compares what a server registered with what it serves.

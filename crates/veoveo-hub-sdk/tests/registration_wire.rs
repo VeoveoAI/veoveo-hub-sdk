@@ -128,7 +128,7 @@ fn ambiguous_template_matches_require_nothing() {
     let declaration = AuthorizationBuilder::<ClockPermission>::new()
         .resource_template(template("clock://events/{event}"), ClockPermission::Read)
         .resource_template(
-            template("clock://{kind}/{id}"),
+            template("clock://events/{+tail}"),
             ClockPermission::EventsWrite,
         )
         .build(&slug(), &scheme())
@@ -139,6 +139,86 @@ fn ambiguous_template_matches_require_nothing() {
             .access(RequirementTarget::Resource(&event))
             .is_none()
     );
+}
+
+#[test]
+fn authorization_matches_native_collection_queries_and_member_paths() {
+    let declaration = AuthorizationBuilder::<ClockPermission>::new()
+        .resource_template(
+            template("clock://events{?role,state,limit,cursor}"),
+            ClockPermission::Read,
+        )
+        .resource_template(
+            template("clock://events/{event}"),
+            ClockPermission::EventsWrite,
+        )
+        .resource_template(template("clock://model/{+model_id}"), ClockPermission::Read)
+        .build(&slug(), &scheme())
+        .unwrap();
+    for uri in [
+        "clock://events",
+        "clock://events?limit=2&cursor=opaque",
+        "clock://events?cursor=opaque&state=pending&limit=2&role=decider",
+        "clock://events?%63ursor=opaque",
+        "clock://model/owner/model/edit",
+        "clock://model",
+    ] {
+        let uri = ResourceUri::new(uri).unwrap();
+        assert_eq!(
+            declaration.access(RequirementTarget::Resource(&uri)),
+            Some(&RouteAccess::Permission(
+                PermissionName::parse("clock.read").unwrap()
+            )),
+            "{uri}"
+        );
+    }
+    let member = ResourceUri::new("clock://events/one").unwrap();
+    assert_eq!(
+        declaration.access(RequirementTarget::Resource(&member)),
+        Some(&RouteAccess::Permission(
+            PermissionName::parse("clock.events.write").unwrap()
+        ))
+    );
+    for uri in [
+        "clock://events?unknown=1",
+        "clock://events?cursor=a&cursor=b",
+        "clock://events?cursor=a&%63ursor=b",
+        "clock://events?",
+        "clock://events/one/nested",
+        "clock://events/one?cursor=opaque",
+    ] {
+        let uri = ResourceUri::new(uri).unwrap();
+        assert!(
+            declaration
+                .access(RequirementTarget::Resource(&uri))
+                .is_none(),
+            "{uri}"
+        );
+    }
+}
+
+#[test]
+fn authorization_refuses_templates_outside_the_native_route_profile() {
+    for uri in [
+        "clock://{authority}/{id}",
+        "clock://events/prefix-{id}",
+        "clock://events/{+tail}/member",
+        "clock://events/{id:2}",
+        "clock://events/{id*}",
+        "clock://events{&cursor}",
+        "clock://events?cursor={cursor}",
+        "clock://events{?cursor,cursor}",
+        "clock://events/{id}{?id}",
+        "clock://events//",
+    ] {
+        let result = AuthorizationBuilder::<ClockPermission>::new()
+            .resource_template(template(uri), ClockPermission::Read)
+            .build(&slug(), &scheme());
+        assert!(
+            matches!(result, Err(DeclarationError::UnsupportedTemplate { .. })),
+            "{uri}: {result:?}"
+        );
+    }
 }
 
 #[test]

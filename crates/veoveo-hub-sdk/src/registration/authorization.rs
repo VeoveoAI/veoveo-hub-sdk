@@ -7,11 +7,13 @@ use crate::identity::{LocalToolName, PromptName};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use veoveo_types::{
-    PermissionName, ResourceScheme, ResourceTemplateUri, ResourceTypeName, ResourceUri,
-    ResourceUriTemplate, ServerSlug, Vocabulary,
+    PermissionName, ResourceScheme, ResourceTemplateUri, ResourceTypeName, ResourceUri, ServerSlug,
+    Vocabulary,
 };
 
-use crate::registration::{Access, DeclarationError, Risk};
+use crate::registration::{
+    Access, DeclarationError, Risk, authorization_template::AuthorizationTemplate,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -189,7 +191,7 @@ impl AuthorizationDeclaration {
                     uri: template.as_str().to_owned(),
                 });
             }
-            if ResourceUriTemplate::new(template.as_str()).is_err() {
+            if AuthorizationTemplate::parse(template).is_none() {
                 return Err(DeclarationError::UnsupportedTemplate {
                     template: template.as_str().to_owned(),
                 });
@@ -253,8 +255,8 @@ impl AuthorizationDeclaration {
                     .resource_templates
                     .iter()
                     .filter(|(template, _)| {
-                        ResourceUriTemplate::new(template.as_str())
-                            .is_ok_and(|template| template.matches_uri(uri))
+                        AuthorizationTemplate::parse(template)
+                            .is_some_and(|template| template.matches(uri))
                     })
                     .map(|(_, permission)| permission);
                 let first = matched.next()?;

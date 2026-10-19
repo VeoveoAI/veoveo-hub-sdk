@@ -17,7 +17,9 @@ pub enum DeclarationError {
     ConflictingRequirement { target: String },
     #[error("resource requirement {uri} is outside the server's URI scheme")]
     ResourceOutsideScheme { uri: String },
-    #[error("resource template {template} must use simple {{variable}} expressions")]
+    #[error(
+        "resource template {template} is outside the native path and optional-query route profile"
+    )]
     UnsupportedTemplate { template: String },
     #[error("tool {tool} is annotated read-only but requires a write permission")]
     ReadOnlyToolRequiresWrite { tool: LocalToolName },

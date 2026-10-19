@@ -607,9 +607,12 @@ impl<R: ResourceRead> Read<R> {
         Until { read: self, ready }
     }
 
-    /// The content now and each time it changes, until the subscription to the
-    /// resource ends. An item is an error when a read or the subscription fails; the
-    /// stream ends after it. [`Read::timeout`] does not apply to the stream.
+    /// The content now and each time it changes. Typed subscription ends reopen
+    /// with bounded backoff and a fresh snapshot; they do not end the observation.
+    /// Dropping the stream stops observation and pending recovery. A read,
+    /// acknowledgment, decode or subscription error yields one error and then ends
+    /// the stream. [`Read::timeout`] intentionally does not apply; use an external
+    /// deadline when consuming an otherwise untimed stream.
     pub fn updates(self) -> ResourceUpdates<R::Content> {
         let uri = self.request.uri();
         let provider = R::Provider::slug();
@@ -713,10 +716,46 @@ impl<C> futures::Stream for ResourceUpdates<C> {
     }
 }
 
-/// How often a followed resource's subscription is opened again after it ends before
-/// the resource reached a state. A reopened subscription reads the content again, so
-/// it misses no change.
-const SUBSCRIPTION_OPENINGS: u8 = 3;
+const SUBSCRIPTION_REOPEN_FIRST_DELAY: Duration = Duration::from_millis(100);
+const SUBSCRIPTION_REOPEN_MAX_DELAY: Duration = Duration::from_secs(5);
+
+/// Rate-limit ended subscriptions without limiting a healthy observation's lifetime.
+/// Only observed time awaiting notifications counts as listening: a slow snapshot
+/// read or a successful acknowledgment cannot establish stream health by itself.
+struct SubscriptionRecovery {
+    delay: Duration,
+    listening: Duration,
+}
+
+impl Default for SubscriptionRecovery {
+    fn default() -> Self {
+        Self {
+            delay: SUBSCRIPTION_REOPEN_FIRST_DELAY,
+            listening: Duration::ZERO,
+        }
+    }
+}
+
+impl SubscriptionRecovery {
+    async fn next(
+        &mut self,
+        subscription: &mut Subscription,
+    ) -> Result<Option<ServerNotification>, ServiceError> {
+        let started = tokio::time::Instant::now();
+        let result = subscription.next().await;
+        self.listening = self.listening.saturating_add(started.elapsed());
+        result
+    }
+
+    async fn after_end(&mut self) {
+        if self.listening >= SUBSCRIPTION_REOPEN_MAX_DELAY {
+            self.delay = SUBSCRIPTION_REOPEN_FIRST_DELAY;
+        }
+        self.listening = Duration::ZERO;
+        tokio::time::sleep(self.delay).await;
+        self.delay = (self.delay * 2).min(SUBSCRIPTION_REOPEN_MAX_DELAY);
+    }
+}
 
 /// The state of a followed resource.
 enum Follow {
@@ -738,7 +777,7 @@ struct Listening {
     last: Option<String>,
     /// Whether the next step reads the resource before waiting for an update.
     stale: bool,
-    openings: u8,
+    recovery: SubscriptionRecovery,
 }
 
 impl Follow {
@@ -757,7 +796,7 @@ impl Follow {
                     subscription,
                     last: None,
                     stale: true,
-                    openings: 1,
+                    recovery: SubscriptionRecovery::default(),
                 }),
                 Err(error) => return Some((Err(error), Self::Failed(None))),
             },
@@ -785,7 +824,7 @@ impl Follow {
                     return Some((content, next));
                 }
             }
-            match listening.subscription.next().await {
+            match listening.recovery.next(&mut listening.subscription).await {
                 Ok(Some(ServerNotification::ResourceUpdatedNotification(update)))
                     if update.params.uri == listening.uri =>
                 {
@@ -794,24 +833,15 @@ impl Follow {
                 Ok(Some(_)) => {}
                 // The provider or the Hub ended the subscription: open another and
                 // read again, so a change made in between is not missed.
-                Ok(None) if listening.openings < SUBSCRIPTION_OPENINGS => {
+                Ok(None) => {
+                    listening.recovery.after_end().await;
                     match subscribe(&listening.client, &listening.provider, &listening.uri).await {
                         Ok(subscription) => {
                             listening.subscription = subscription;
-                            listening.openings += 1;
                             listening.stale = true;
                         }
                         Err(error) => return Some((Err(error), Self::Failed(None))),
                     }
-                }
-                Ok(None) => {
-                    return Some((
-                        Err(CallError::Transport(format!(
-                            "the subscription to {} kept ending",
-                            listening.uri
-                        ))),
-                        Self::Failed(None),
-                    ));
                 }
                 Err(error) => return Some((Err(error.into()), Self::Failed(None))),
             }
@@ -1083,9 +1113,10 @@ impl<O: DeserializeOwned + Send + 'static> TaskHandle<O> {
 /// subscription on `connection`.
 async fn task_result(connection: &Connection, task: &str) -> Result<CallToolResult, CallError> {
     let filter = SubscriptionFilter::builder().task_id(task).build();
-    // A subscription first delivers the Task's current status, so a reopened one
-    // misses no outcome. Three openings without one end the wait.
-    for _ in 0..3 {
+    // Each acknowledged subscription delivers current status. Reopen only ended
+    // observations, within the caller's deadline, without replaying the tool call.
+    let mut recovery = SubscriptionRecovery::default();
+    loop {
         let mut subscription = connection.service.listen(filter.clone()).await?;
         if subscription
             .acknowledged()
@@ -1097,7 +1128,7 @@ async fn task_result(connection: &Connection, task: &str) -> Result<CallToolResu
                 "the Hub did not acknowledge a subscription to Task {task}"
             )));
         }
-        while let Some(notification) = subscription.next().await? {
+        while let Some(notification) = recovery.next(&mut subscription).await? {
             let ServerNotification::TaskStatusNotification(notification) = notification else {
                 continue;
             };
@@ -1110,10 +1141,8 @@ async fn task_result(connection: &Connection, task: &str) -> Result<CallToolResu
                 return outcome;
             }
         }
+        recovery.after_end().await;
     }
-    Err(CallError::Transport(format!(
-        "the subscription to Task {task} kept ending before it finished"
-    )))
 }
 
 impl<O: DeserializeOwned + Send + 'static> IntoFuture for TaskHandle<O> {
@@ -1318,3 +1347,11 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "server"))]
+#[path = "client/observation_tests.rs"]
+mod observation_tests;
+
+#[cfg(test)]
+#[path = "client/recovery_policy_tests.rs"]
+mod recovery_policy_tests;

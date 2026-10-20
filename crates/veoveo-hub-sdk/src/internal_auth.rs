@@ -2,7 +2,8 @@ mod exchange;
 mod forwarded;
 mod request;
 pub use exchange::{
-    DelegatedCaller, ExchangeGrant, ExchangedIdentity, ExchangedTokenVerifier, IssuedExchangedToken,
+    DelegatedCaller, DelegatingTask, DelegationContext, ExchangeGrant, ExchangedIdentity,
+    ExchangedTokenVerifier, IssuedExchangedToken, MAX_DELEGATION_DEPTH,
 };
 pub use forwarded::{
     ForwardedTokenVerifier, KEY_DOCUMENT_LIMIT, KEY_FETCH_TIMEOUT, KEY_REFRESH_INTERVAL,
@@ -233,6 +234,9 @@ pub struct HubInternalIdentity {
     /// its Tasks: the Task's identifier as the acting server issued it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acting_task: Option<OpaqueTaskId>,
+    /// Earlier registered actors and constraints inherited by a nested request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delegation_context: Option<DelegationContext>,
     pub jwt_id: JwtId,
     pub issued_at: DateTime<Utc>,
     pub not_before: DateTime<Utc>,
@@ -254,6 +258,22 @@ impl HubInternalIdentity {
     /// its Tasks.
     pub fn acting_task(&self) -> Option<&OpaqueTaskId> {
         self.acting_task.as_ref()
+    }
+
+    /// Originating Task constraint, which can belong to an earlier actor.
+    pub fn delegating_task(&self) -> Option<DelegatingTask> {
+        self.delegation_context
+            .as_ref()
+            .and_then(|context| context.task.clone())
+            .or_else(|| {
+                self.acting_server
+                    .as_ref()
+                    .zip(self.acting_task.as_ref())
+                    .map(|(acting, task)| DelegatingTask {
+                        server: acting.server.clone(),
+                        task: task.clone(),
+                    })
+            })
     }
 }
 
@@ -354,13 +374,20 @@ impl HubInternalTokenIssuer {
             request_context,
             acting_server,
             acting_task,
+            delegation_context,
             expires_at,
         } = request;
         ensure_jwt_crypto_provider();
         // Only a call another server made comes from that server's Task.
-        if acting_task.is_some() && acting_server.is_none() {
-            return Err(InternalTokenError::InconsistentClaims);
-        }
+        let expires_at = delegation_context
+            .as_ref()
+            .map_or(expires_at, |context| expires_at.min(context.expires_at));
+        exchange::validate_delegation(
+            acting_server.as_ref(),
+            acting_task.as_ref(),
+            delegation_context.as_ref(),
+            expires_at,
+        )?;
         let now = Utc::now();
         let expires_at = if let Some(context) = &request_context {
             context.validate_for(&actor, &authority)?;
@@ -392,6 +419,7 @@ impl HubInternalTokenIssuer {
             request_context,
             acting_server,
             acting_task,
+            delegation_context,
             jwt_id: fresh_jwt_id()?,
             issued_at: now,
             not_before: now,
@@ -421,6 +449,7 @@ pub struct ForwardedRequest {
     /// The acting server's Task the exchanged token was issued for, when its subject was
     /// one of that server's Tasks. It requires `acting_server`.
     pub acting_task: Option<OpaqueTaskId>,
+    pub delegation_context: Option<DelegationContext>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -525,15 +554,26 @@ impl HubInternalTokenVerifier {
             }
             _ => return Err(InternalTokenError::InconsistentClaims),
         };
-        let acting_server = match (claims.standard.act.act, invocation.acting_server) {
+        let acting_server = match (claims.standard.act.act.as_ref(), invocation.acting_server) {
             (None, None) => None,
             (Some(prior), Some(server)) => Some(ActingServer {
                 server,
-                client: prior.sub,
+                client: prior.sub.clone(),
             }),
             _ => return Err(InternalTokenError::InconsistentClaims),
         };
-        if invocation.acting_task.is_some() && acting_server.is_none() {
+        exchange::validate_delegation(
+            acting_server.as_ref(),
+            invocation.acting_task.as_ref(),
+            invocation.delegation_context.as_ref(),
+            timestamp_to_datetime(claims.standard.exp, "exp")?,
+        )?;
+        if claims.standard.act.act
+            != exchange::forwarded_actors(
+                invocation.delegation_context.as_ref(),
+                acting_server.as_ref(),
+            )
+        {
             return Err(InternalTokenError::InconsistentClaims);
         }
         if let Some(context) = &invocation.request_context {
@@ -557,6 +597,7 @@ impl HubInternalTokenVerifier {
             request_context: invocation.request_context,
             acting_server,
             acting_task: invocation.acting_task,
+            delegation_context: invocation.delegation_context,
             jwt_id: claims.standard.jti,
             issued_at: timestamp_to_datetime(claims.standard.iat, "iat")?,
             not_before: timestamp_to_datetime(claims.standard.nbf, "nbf")?,
@@ -637,8 +678,7 @@ struct StandardClaims {
 }
 
 /// RFC 8693 `act`: the Hub, identified by its issuer URL. In a call between
-/// servers its own `act` names the calling server's registration, the one prior actor
-/// a forwarded token admits.
+/// servers its own nested `act` preserves the complete bounded registered actor chain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ActingParty {
@@ -647,11 +687,13 @@ struct ActingParty {
     act: Option<PriorActor>,
 }
 
-/// The calling server's registration as the prior actor. It names no further actor.
+/// RFC 8693 prior actor, recursively nested with newest actor outermost.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PriorActor {
     sub: OAuthClientId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    act: Option<Box<PriorActor>>,
 }
 
 impl StandardClaims {
@@ -662,6 +704,7 @@ impl StandardClaims {
         actor: &Principal,
         audience: &str,
         acting_server: Option<&ActingServer>,
+        delegation_context: Option<&DelegationContext>,
         jwt_id: &JwtId,
         issued_at: DateTime<Utc>,
         not_before: DateTime<Utc>,
@@ -678,9 +721,7 @@ impl StandardClaims {
             jti: jwt_id.clone(),
             act: ActingParty {
                 sub: issuer.clone(),
-                act: acting_server.map(|acting| PriorActor {
-                    sub: acting.client.clone(),
-                }),
+                act: exchange::forwarded_actors(delegation_context, acting_server),
             },
             scope: scope_claim(actor),
             groups: actor.groups.clone(),
@@ -749,6 +790,8 @@ struct Invocation {
     /// The calling server's Task the call came from, only beside `acting_server`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     acting_task: Option<OpaqueTaskId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    delegation_context: Option<DelegationContext>,
 }
 
 impl AccessTokenClaims {
@@ -760,6 +803,7 @@ impl AccessTokenClaims {
                 &identity.actor,
                 identity.audience.as_str(),
                 identity.acting_server.as_ref(),
+                identity.delegation_context.as_ref(),
                 &identity.jwt_id,
                 identity.issued_at,
                 identity.not_before,
@@ -780,6 +824,7 @@ impl AccessTokenClaims {
                     .as_ref()
                     .map(|acting| acting.server.clone()),
                 acting_task: identity.acting_task.clone(),
+                delegation_context: identity.delegation_context.clone(),
             },
         }
     }
@@ -806,8 +851,8 @@ pub enum InternalTokenError {
     /// The JOSE header `typ` is not `at+jwt` (RFC 9068 §4).
     UnsupportedTokenType,
     ExpiredDelegation,
-    /// A delegated identity was presented as the subject of another exchange.
-    RedelegatedIdentity,
+    /// A token would carry more than eight registered server actors.
+    DelegationDepthExceeded,
     AudienceMismatch {
         expected: ServerSlug,
         actual: ServerSlug,
@@ -864,8 +909,8 @@ impl fmt::Display for InternalTokenError {
             Self::ExpiredDelegation => {
                 f.write_str("internal token expiration is not in the future")
             }
-            Self::RedelegatedIdentity => {
-                f.write_str("a delegated identity cannot be delegated again")
+            Self::DelegationDepthExceeded => {
+                f.write_str("delegation exceeds the maximum of eight registered server actors")
             }
             Self::AudienceMismatch { expected, actual } => write!(
                 f,
@@ -955,6 +1000,7 @@ pub(crate) mod tests {
             request_context: None,
             acting_server: None,
             acting_task: None,
+            delegation_context: None,
             expires_at: Utc::now() + TimeDelta::minutes(5),
         }
     }

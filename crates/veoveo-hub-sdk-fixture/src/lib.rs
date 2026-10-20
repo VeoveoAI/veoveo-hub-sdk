@@ -15,6 +15,8 @@ pub mod contract;
 #[cfg(feature = "server")]
 pub mod foundry;
 #[cfg(feature = "server")]
+pub mod gateway;
+#[cfg(feature = "server")]
 pub mod kiln;
 #[cfg(feature = "server")]
 pub mod ledger;

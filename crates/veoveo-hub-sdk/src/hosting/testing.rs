@@ -210,6 +210,7 @@ impl TestHub {
                 request_context: None,
                 acting_server: None,
                 acting_task: None,
+                delegation_context: None,
                 expires_at: Utc::now() + TimeDelta::minutes(5),
             })
             .unwrap()

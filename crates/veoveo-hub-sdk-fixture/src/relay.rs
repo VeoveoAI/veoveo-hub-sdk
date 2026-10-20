@@ -230,7 +230,7 @@ impl RelayDomain {
 
 #[derive(serde::Serialize, Deserialize, JsonSchema)]
 #[veoveo_hub_sdk::tool(provider=RelayContract,output=crate::calls::Inspection,name="relay_inspect")]
-struct InspectRelay {}
+pub struct InspectRelay {}
 #[derive(serde::Serialize, Deserialize, JsonSchema)]
 #[veoveo_hub_sdk::tool(provider=RelayContract,output=crate::calls::Seal,name="relay_seal")]
 struct SealRelay {}

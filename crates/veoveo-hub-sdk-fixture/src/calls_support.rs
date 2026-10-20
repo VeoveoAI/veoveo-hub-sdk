@@ -37,6 +37,20 @@ pub(crate) fn inspection(identity: &HubInternalIdentity) -> crate::calls::Inspec
         client: identity.client.to_string(),
         acting_server: identity.acting_server().map(ToString::to_string),
         acting_task: identity.acting_task().map(ToString::to_string),
+        prior_servers: identity
+            .delegation_context
+            .as_ref()
+            .map(|context| {
+                context
+                    .actors
+                    .iter()
+                    .map(|actor| actor.server.to_string())
+                    .collect()
+            })
+            .unwrap_or_default(),
+        originating_task: identity
+            .delegating_task()
+            .map(|task| (task.server.to_string(), task.task.to_string())),
         permissions: identity
             .permissions
             .iter()

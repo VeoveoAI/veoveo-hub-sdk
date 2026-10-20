@@ -27,7 +27,7 @@ other servers, described under [Calls Between Servers](#calls-between-servers).
 | JWT assertions, RFC 7523 §3 | Claim rules for the software statement: `iss` and `sub` name the server, `aud` is the URL the request is sent to, `jti` is a UUIDv7, and the lifetime is at most 60 seconds. The client assertion of a token exchange (§2.2) follows the same rules with `iss` and `sub` naming the registration's client identifier and `aud` the token endpoint. |
 | JWT access tokens, RFC 9068 | The forwarded identity: `typ: at+jwt`, `iss` is the Hub's HTTPS issuer URL, `aud` is the target server's resource URL, `client_id` names the OAuth client the caller used, `jti` is a UUIDv7, and `scope`, `groups` and `roles` restate the caller. A server, as resource server, takes the verification keys from the issuer's metadata `jwks_uri` as §4 describes. |
 | Resource indicators, RFC 8707 | A forwarded token's `aud` is an absolute URL: the target server's registered MCP endpoint. |
-| OAuth 2.0 Token Exchange, RFC 8693 | A server calls other servers with the §2.1 grant, presenting the forwarded token it received or one of its Tasks as the subject, the profile's MCP endpoint as `resource` and its client assertion; `actor_token`, `audience`, `scope` and `requested_token_type` are not used. The `act` claim (§4.1) of a forwarded token names the Hub as the party acting for the caller, with at most one prior actor: the calling server. |
+| OAuth 2.0 Token Exchange, RFC 8693 | A server calls other servers with the §2.1 grant, presenting the forwarded token it received or one of its Tasks as the subject, the profile's MCP endpoint as `resource` and its client assertion; `actor_token`, `audience`, `scope` and `requested_token_type` are not used. The `act` claim (§4.1) of a forwarded token names the Hub as the party acting for the caller, followed by a bounded nested chain of registered server actors. |
 | Rich Authorization Requests, RFC 9396 | `authorization_details` carries one entry of type `https://veoveo.ai/oauth/permissions` whose `actions` are the granted permissions, in forwarded and exchanged tokens. A token exchange requests permissions in the same form (§6.2), and its response returns the granted entry (§7). |
 | Authorization server metadata, RFC 8414 | A server reads `issuer`, `registration_endpoint`, `token_endpoint` and `jwks_uri` from the Hub's well-known metadata. The issuer is the forwarded tokens' `iss`, and the JWK Set at `jwks_uri` holds the keys that verify them. |
 | MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
@@ -360,8 +360,8 @@ server verifies the token and rejects it when:
   resource, the invocation claim names another server, or `exp` and `nbf` place the
   current time outside the token's lifetime, with no leeway;
 - `jti` is not a UUIDv7;
-- `act` is missing, names another party than `iss`, or carries anything but `sub` and
-  one prior actor;
+- `act` is missing, names another party than `iss`, or any actor carries members
+  other than `sub` and an optional nested `act`;
 - `act` names a prior actor without the invocation claim's `acting_server`, or the
   reverse, or the invocation claim names an `acting_task` without an `acting_server`;
 - `sub`, `groups`, `roles` and `scope` disagree with the embedded actor, or
@@ -370,6 +370,18 @@ server verifies the token and rejects it when:
   permission lies outside the server's namespace;
 - the request context disagrees with the actor or authority, or an undelegated token
   outlives the caller's own access token.
+
+Nested requests additionally carry `delegation_context` in the signed invocation:
+`actors`, an ordered list of earlier registered servers and their OAuth client IDs;
+optional `task`, the originating Task's `server` and `task`; and `expires_at`, the
+inherited request deadline. The list must be nonempty, must exactly match the earlier
+RFC 8693 `act` chain, and together with the immediate server may contain at most
+**eight registered server actors**, excluding the Hub. A nested token cannot outlive
+that deadline. An originating Task belongs to the first actor. A nested request cannot
+also claim its immediate actor's own Task, because a Task created by a delegated call
+acquires no further delegation. Unknown attribution fields and inconsistent histories
+are refused. These constraints are validated when issuing and verifying both exchanged
+and forwarded tokens.
 
 A call that another registered server makes for its caller carries a delegated token.
 The caller stays `sub`, `client_id` and the actor, and the Hub acts with the calling
@@ -396,6 +408,14 @@ return them, and the receiving server records both as provenance. A delegated to
 exchanged token that carried the call, which the Hub bounds by the caller's token
 or by the Task the call serves, so the verifier does not compare it with the caller's
 original access token.
+
+When a second server calls onward, the new immediate server is the outer registered
+actor and earlier actors stay nested inside it. The original caller's `sub`, OAuth
+client, actor, invocation authority and signed request context remain unchanged.
+`HubInternalIdentity::delegating_task` and `ExchangedIdentity::delegating_task` expose
+the originating Task constraint independently of the new immediate actor; it is not
+misreported as that actor's own Task. The Hub rechecks the originating Task's native
+route and session revocation on each further exchange and exchanged-token admission.
 
 A rejected request receives HTTP 401 with `WWW-Authenticate: Bearer`, adding
 `error="invalid_token"` when a token was sent. An ordinary request's token lives at
@@ -459,9 +479,14 @@ The exchange is one RFC 8693 request to the Hub's `token_endpoint`:
 | `resource` | The profile's MCP endpoint, `{issuer}/mcp/{profile}`, of the profile the subject came through |
 | `authorization_details` | Optional: one `https://veoveo.ai/oauth/permissions` entry naming declared uses in one provider's namespace; without it the request names every declared use |
 
-A forwarded token is a subject only for the server it was addressed to, and only when
-no other server made that call: an exchanged identity is never exchanged again. A Task
-is a subject while it runs, if the call that created it came through the Hub. The
+A forwarded token is a subject only for the server it was addressed to. That server
+can continue a delegated request within the bounded actor chain and inherited
+deadline. At each hop it authenticates with its own registration and requests its own
+declared `uses`; the Hub narrows them to the original caller's currently authorized
+provider permissions under the retained signed authority. An exchanged token itself
+is not a server-addressed subject. A Task is a subject while it runs, if the call that
+created it came directly through the Hub; a delegated child Task acquires no further
+delegation. The
 Hub records each such Task when the call that created it returns, so a Task that
 calls another server at once may reach the Hub first; the SDK repeats a Task's
 exchange that the Hub refuses as an invalid grant for up to two seconds.
@@ -482,7 +507,7 @@ document with `issued_token_type` `urn:ietf:params:oauth:token-type:access_token
 | A malformed request or a missing subject | `invalid_request` |
 | No registration, or an assertion that does not verify or is replayed | `invalid_client` |
 | A registration without the token exchange grant | `unauthorized_client` |
-| A subject that is another server's, delegated, expired or an ended Task | `invalid_grant` |
+| A subject that is another server's, expired, beyond the actor bound, constrained by an ended Task or revoked originating session, or a delegated child Task | `invalid_grant` |
 | A `resource` that is not the subject's profile, or a permission no registered server provides, named in `error_description` | `invalid_target` |
 | A requested permission the server did not declare in `uses` | `invalid_authorization_details` |
 

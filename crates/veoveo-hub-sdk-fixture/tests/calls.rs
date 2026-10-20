@@ -11,6 +11,7 @@ use veoveo_hub_sdk::{
 };
 use veoveo_hub_sdk_fixture::{
     calls::{EntryState, FollowedEntry, Inspection},
+    gateway::{self, Gateway},
     ledger::{self, LedgerDomain, LedgerTasks},
     relay::{self, RelayDomain},
 };
@@ -96,6 +97,95 @@ async fn a_caller_holding_the_permission_reads_through_relay() {
     assert_eq!(seal["value"], "seal-7");
 }
 
+async fn three_servers(
+    granted: &[&str],
+    declared: bool,
+    relay_declared: bool,
+) -> testing::RunningMesh {
+    let mut mesh = bind().await;
+    let mut declaration = gateway::authorization();
+    if !declared {
+        declaration.uses.clear();
+    }
+    let gateway_calls = mesh.register(declaration);
+    mesh.serve(
+        testing::for_domain::<Gateway>()
+            .calls(gateway_calls)
+            .handler(gateway::hosted)
+            .build(),
+    );
+    let mut relay_declaration = relay::authorization().unwrap();
+    if !relay_declared {
+        relay_declaration.uses.clear();
+    }
+    let relay_calls = mesh.register(relay_declaration);
+    mesh.serve(
+        testing::for_domain::<RelayDomain>()
+            .calls(relay_calls)
+            .handler(relay::hosted)
+            .build(),
+    );
+    mesh.register(ledger::authorization().unwrap());
+    mesh.serve(
+        testing::for_domain::<LedgerDomain>()
+            .handler(|| ledger::hosted(LedgerTasks::default()))
+            .build(),
+    );
+    mesh.granting(
+        granted
+            .iter()
+            .map(|name| permission(name))
+            .chain([permission("gateway.calls.make")]),
+    )
+    .start()
+}
+
+#[tokio::test]
+async fn three_servers_preserve_the_caller_and_both_server_actors() {
+    let mesh = three_servers(&["relay.calls.make", "ledger.entries.read"], true, true).await;
+    let seen: Inspection = serde_json::from_value(
+        relayed(&mesh.call("gateway", "gateway_inspect", json!({})).await).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(seen.caller, testing::principal().id.to_string());
+    assert_eq!(seen.client, TEST_CLIENT);
+    assert_eq!(seen.acting_server.as_deref(), Some("relay"));
+    assert_eq!(seen.prior_servers, ["gateway"]);
+    assert_eq!(seen.originating_task, None);
+    assert_eq!(seen.permissions, ["ledger.entries.read"]);
+}
+
+#[tokio::test]
+async fn nested_calls_require_each_servers_uses_and_the_callers_permission() {
+    let missing_use =
+        three_servers(&["relay.calls.make", "ledger.entries.read"], false, true).await;
+    let refused = relayed(
+        &missing_use
+            .call("gateway", "gateway_inspect", json!({}))
+            .await,
+    )
+    .unwrap_err();
+    assert!(refused.contains("declares no use of relay"), "{refused}");
+    let missing_nested_use =
+        three_servers(&["relay.calls.make", "ledger.entries.read"], true, false).await;
+    let refused = relayed(
+        &missing_nested_use
+            .call("gateway", "gateway_inspect", json!({}))
+            .await,
+    )
+    .unwrap_err();
+    assert!(refused.contains("declares no use of ledger"), "{refused}");
+    let missing_permission = three_servers(&["relay.calls.make"], true, true).await;
+    let refused = relayed(
+        &missing_permission
+            .call("gateway", "gateway_inspect", json!({}))
+            .await,
+    )
+    .unwrap_err();
+    // Native discovery hides a provider whose permissions this caller does not hold.
+    assert!(refused.contains("404 Not Found"), "{refused}");
+}
+
 #[tokio::test]
 async fn a_task_handle_resolves_with_the_providers_task_result() {
     let mesh = mesh(&["relay.calls.make", "ledger.entries.read"], true).await;
@@ -141,8 +231,8 @@ async fn an_undeclared_provider_is_refused_before_any_exchange() {
 }
 
 /// A Ledger Task calls Relay for the Task's caller while it runs. Relay's own call
-/// back to Ledger is refused, because a delegated identity is not delegated again,
-/// and the Task's delegation ends with the Task.
+/// back to Ledger preserves the original Task constraint through Relay, and the
+/// Task's delegation ends with the Task.
 #[tokio::test]
 async fn a_task_calls_for_its_caller_while_it_runs() {
     let mut mesh = bind().await;
@@ -186,14 +276,17 @@ async fn a_task_calls_for_its_caller_while_it_runs() {
     assert_eq!(seen.acting_task.as_deref(), Some(task.as_str()));
     assert_eq!(seen.permissions, ["relay.calls.make"]);
 
-    // Relay answers the Task's call; its own call to Ledger is refused.
-    let relayed_back: Result<Inspection, CallError> = from_task.call(RelayInspect {}).await;
-    match relayed_back {
-        Err(CallError::Tool { message }) => {
-            assert!(message.contains("InvalidGrant"), "{message}")
-        }
-        other => panic!("expected Relay to report a refused re-delegation, got {other:?}"),
-    }
+    // Relay's nested request names Relay immediately and retains Ledger's Task.
+    let relayed_back: Inspection = from_task.call(RelayInspect {}).await.unwrap();
+    assert_eq!(relayed_back.caller, testing::principal().id.to_string());
+    assert_eq!(relayed_back.client, TEST_CLIENT);
+    assert_eq!(relayed_back.acting_server.as_deref(), Some("relay"));
+    assert_eq!(relayed_back.acting_task, None);
+    assert_eq!(relayed_back.prior_servers, ["ledger"]);
+    assert_eq!(
+        relayed_back.originating_task,
+        Some(("ledger".to_owned(), task.clone()))
+    );
 
     // Once the Task ends, it no longer acts for its caller.
     tokio::time::timeout(Duration::from_secs(10), async {

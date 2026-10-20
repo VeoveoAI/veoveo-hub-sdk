@@ -81,12 +81,13 @@ pub use host::{
 };
 #[cfg(feature = "server")]
 pub use internal_auth::{
-    ACCESS_TOKEN_TYPE, ActingServer, DelegatedCaller, ExchangeGrant, ExchangedIdentity,
-    ExchangedTokenVerifier, ForwardedRequest, ForwardedTokenVerifier, HUB_ROUTING_REQUIRED,
-    HubInternalIdentity, HubInternalSigningKey, HubInternalTokenIssuer, HubInternalTokenVerifier,
-    HubInternalTrustBundle, HubRequestContext, INVOCATION_CLAIM, InternalTokenError,
-    IssuedExchangedToken, IssuedHubInternalToken, KEY_DOCUMENT_LIMIT, KEY_FETCH_TIMEOUT,
-    KEY_REFRESH_INTERVAL, TokenAudience,
+    ACCESS_TOKEN_TYPE, ActingServer, DelegatedCaller, DelegatingTask, DelegationContext,
+    ExchangeGrant, ExchangedIdentity, ExchangedTokenVerifier, ForwardedRequest,
+    ForwardedTokenVerifier, HUB_ROUTING_REQUIRED, HubInternalIdentity, HubInternalSigningKey,
+    HubInternalTokenIssuer, HubInternalTokenVerifier, HubInternalTrustBundle, HubRequestContext,
+    INVOCATION_CLAIM, InternalTokenError, IssuedExchangedToken, IssuedHubInternalToken,
+    KEY_DOCUMENT_LIMIT, KEY_FETCH_TIMEOUT, KEY_REFRESH_INTERVAL, MAX_DELEGATION_DEPTH,
+    TokenAudience,
 };
 #[cfg(feature = "server")]
 pub use pagination::{CatalogPage, PaginationError, paginate};

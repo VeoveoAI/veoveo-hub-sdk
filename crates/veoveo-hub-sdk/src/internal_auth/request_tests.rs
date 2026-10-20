@@ -25,6 +25,7 @@ fn forwarded_with(
         request_context: Some(context),
         acting_server: None,
         acting_task: None,
+        delegation_context: None,
         expires_at: Utc::now() + TimeDelta::seconds(60),
     }
 }

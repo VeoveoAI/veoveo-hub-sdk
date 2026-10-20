@@ -76,6 +76,7 @@ struct Registered {
 struct Route {
     server: ServerSlug,
     caller: DelegatedCaller,
+    delegates: bool,
 }
 
 struct Shared {
@@ -330,10 +331,14 @@ impl RunningMesh {
         .await;
         let answer = json_body(response).await;
         if let Some(task) = answer["result"]["taskId"].as_str() {
-            self.shared
-                .routes
-                .lock()
-                .insert(task.to_owned(), Route { server, caller });
+            self.shared.routes.lock().insert(
+                task.to_owned(),
+                Route {
+                    server,
+                    caller,
+                    delegates: true,
+                },
+            );
         }
         answer
     }
@@ -381,6 +386,7 @@ fn user_caller() -> DelegatedCaller {
         },
         actor,
         authority,
+        delegation_context: None,
     }
 }
 
@@ -390,6 +396,7 @@ struct Delegation<'a> {
     acting: &'a ActingServer,
     permissions: &'a BTreeSet<PermissionName>,
     task: Option<&'a OpaqueTaskId>,
+    expires_at: chrono::DateTime<Utc>,
 }
 
 /// Sends one JSON-RPC request to `server` for `caller`, with the permissions the user
@@ -442,7 +449,12 @@ async fn forward(
             acting_task: delegation
                 .as_ref()
                 .and_then(|delegation| delegation.task.cloned()),
-            expires_at: Utc::now() + TimeDelta::seconds(60),
+            delegation_context: caller.delegation_context.clone(),
+            expires_at: delegation
+                .as_ref()
+                .map_or(Utc::now() + TimeDelta::seconds(60), |delegation| {
+                    (Utc::now() + TimeDelta::seconds(60)).min(delegation.expires_at)
+                }),
         })
         .expect("the mesh signs forwarded tokens")
         .bearer_token;
@@ -619,9 +631,19 @@ async fn token(State(shared): State<Arc<Shared>>, Form(form): Form<ExchangeForm>
             let Ok(caller) = DelegatedCaller::of(&identity) else {
                 return refused(
                     TokenErrorCode::InvalidGrant,
-                    "a delegated identity cannot be delegated again",
+                    "the forwarded identity has invalid delegation constraints",
                 );
             };
+            if let Some(task) = identity.delegating_task()
+                && live_route(&shared, &task.server, task.task.as_str())
+                    .await
+                    .is_none()
+            {
+                return refused(
+                    TokenErrorCode::InvalidGrant,
+                    "the originating Task has ended",
+                );
+            }
             (caller, None, identity.expires_at)
         }
         (Some(task), Some(TASK_TOKEN_TYPE)) => {
@@ -637,6 +659,12 @@ async fn token(State(shared): State<Arc<Shared>>, Form(form): Form<ExchangeForm>
                     "the Task has ended or is not this server's",
                 );
             };
+            if !route.delegates {
+                return refused(
+                    TokenErrorCode::InvalidGrant,
+                    "a delegated child Task acquires no delegation",
+                );
+            }
             (route.caller, Some(task), Utc::now() + TASK_DELEGATION)
         }
         _ => {
@@ -765,9 +793,9 @@ async fn mcp(
     });
     // A Task's delegation lasts while the Task runs.
     let identity = match identity {
-        Some(identity) => match &identity.task {
+        Some(identity) => match identity.delegating_task() {
             Some(task)
-                if live_route(&shared, &identity.acting_server.server, task.as_str())
+                if live_route(&shared, &task.server, task.task.as_str())
                     .await
                     .is_none() =>
             {
@@ -859,6 +887,7 @@ async fn mcp(
             acting: &identity.acting_server,
             permissions: &identity.permissions,
             task: identity.task.as_ref(),
+            expires_at: identity.expires_at,
         }),
         &method,
         name.as_deref(),
@@ -886,6 +915,7 @@ async fn mcp(
             Route {
                 server: provider,
                 caller: identity.caller.clone(),
+                delegates: false,
             },
         );
     }

@@ -90,6 +90,11 @@ pub struct Inspection {
     /// That server's Task, when it called from one.
     #[serde(default)]
     pub acting_task: Option<String>,
+    /// Earlier registered actors, first caller first.
+    #[serde(default)]
+    pub prior_servers: Vec<String>,
+    #[serde(default)]
+    pub originating_task: Option<(String, String)>,
     /// The permissions the call carried in the called server's namespace.
     pub permissions: Vec<String>,
 }

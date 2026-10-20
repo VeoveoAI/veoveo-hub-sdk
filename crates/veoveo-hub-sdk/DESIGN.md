@@ -610,6 +610,16 @@ consumer depends on the provider's `contract` feature by Git revision and declar
 permissions it uses with the ready route builder's `.uses`, passing the provider's
 typed permission name, for example `.uses(ArtifactPermission::ArtifactsRead.name())`.
 
+A request binding can continue another server's delegated request. The signed
+RFC 8693 actor chain retains each prior registered server, with at most eight server
+actors, and preserves the original caller, authority and request context. Its
+inherited deadline cannot be renewed by further forwarding or exchange. An
+originating native Task remains a live constraint owned by its original server,
+independently of the immediate actor; a delegated child Task acquires no delegation.
+Each hop still uses its own authenticated registration, declared uses and the
+caller's current provider permissions. The exact signed representation and checks
+are in [calls between servers](src/registration/DESIGN.md#calls-between-servers).
+
 Calls are builders that run when awaited:
 
 ```rust

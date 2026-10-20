@@ -48,6 +48,14 @@ shows the Task as provenance. With core's Task runtime Relay also runs `relay_la
 a durable Task whose worker calls Ledger for the Task's caller. The SDK's mesh tests
 and the Hub's integration tests use both.
 
+Gateway is a third independent calls fixture. Its one native hosted tool calls
+Relay, which calls Ledger. The loopback mesh checks that both server actors and the
+original caller survive this chain, that each hop needs its declared use and the
+caller's permission, and that a Ledger Task's nested Relay request retains Ledger's
+Task as the originating constraint while Relay is the immediate actor. The fixture
+reports earlier server slugs and originating Task identity separately from immediate
+provenance. These are synthetic authorization fixtures, not deployed acceptance.
+
 ## Operations Fixture
 
 Foundry is a hosted server whose `foundry_cast` runs as a durable Task in core's Task

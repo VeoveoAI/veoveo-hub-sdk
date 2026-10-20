@@ -84,6 +84,10 @@
         "trace_id": "00000000000000000000000000000001",
         "span_id": "0000000000000001",
         "source_ip": "192.0.2.1"
+      },
+      "execution": {
+        "environment": "019a05cb-6c00-7000-8712-3456789abcdf",
+        "composition": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     }
   },
@@ -167,6 +171,10 @@
         "trace_id": "00000000000000000000000000000002",
         "span_id": "0000000000000002",
         "source_ip": "2001:db8::1"
+      },
+      "execution": {
+        "environment": "019a05cb-6c00-7000-8712-3456789abcdf",
+        "composition": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     }
   },
@@ -246,6 +254,10 @@
         "trace_id": "00000000000000000000000000000003",
         "span_id": "0000000000000003",
         "source_ip": null
+      },
+      "execution": {
+        "environment": "019a05cb-6c00-7000-8712-3456789abcdf",
+        "composition": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     }
   }

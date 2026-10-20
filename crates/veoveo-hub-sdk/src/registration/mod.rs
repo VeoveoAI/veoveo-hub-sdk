@@ -39,7 +39,7 @@ pub use oauth::{
     AccessTokenTrust, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
     ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DatabaseIdentifier, DatabaseUrl,
     GrantType, RegistrationAccessToken, RegistrationErrorCode, RegistrationErrorResponse,
-    ResponseType, SoftwareStatement, TokenEndpointAuthMethod, issuer_url,
+    ResponseType, SoftwareStatement, StorageBinding, TokenEndpointAuthMethod, issuer_url,
 };
 
 /// MCP extension advertising [`RegistrationDeclaration`].

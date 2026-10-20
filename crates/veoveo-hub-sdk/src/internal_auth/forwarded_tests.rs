@@ -126,6 +126,7 @@ impl KeyServer {
     /// `keys` and the server's resource URL.
     pub(crate) fn trust(&self, keys: &[&HubInternalSigningKey], server: &str) -> AccessTokenTrust {
         AccessTokenTrust {
+            deployment: super::tests::deployment_id(),
             issuer: self.issuer.clone(),
             jwks: key_set(keys),
             resource: resource(server),

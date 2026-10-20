@@ -14,6 +14,36 @@ granted-permissions detail and the registration client that servers run. The
 [Forwarded Identity](#forwarded-identity), and the token a server exchanges to call
 other servers, described under [Calls Between Servers](#calls-between-servers).
 
+## Execution And Deployment Contract
+
+Every declaration identifies an admitted `DeploymentId`, separate from its logical
+slug. MCP registration exposes `deployment`; RFC 7591 metadata carries the same
+identity as required `veoveo_deployment_id`. A namespace's private key and the global
+initial registration secret are not credentials to distribute to user overrides.
+The SDK wire identity does not authorize a new key: namespace-owner admission remains
+in place until the Hub explicitly admits a separately keyed deployment. The Hub
+must retain registrations by deployment rather than let the newest logical slug
+silently replace another environment's selection.
+
+The registration response's `veoveo_access_tokens.deployment` must equal the declared
+deployment. Verifiers derive the expected target from that admitted trust and reject
+another deployment's token even for the same slug and resource URL. Signed invocation
+claims carry that target separately from `HubRequestContext.execution`; downstream
+calls retain the environment/composition capture rather than select the latest map.
+The runtime-free resolved-composition and HTTP selector contract is documented in
+[`docs/CONVENTIONS.md`](../../../../docs/CONVENTIONS.md#execution-selection-and-deployment-identity).
+Hub admission, per-request routing and retained Task resolution remain Hub-owned work;
+these SDK types do not implement that routing by themselves.
+
+`veoveo_database.binding` explicitly identifies the admitted storage contract. The
+currently supported `shared_logical_schema` binding names the registered logical
+server and grants shared data under the existing native runtime/ACL contract. The
+client rejects another logical server's binding. The Hub must authorize use of this
+binding before issuing a login; permission to edit an environment is insufficient.
+This does not provide owner-isolated schemas or cloned data. Unsupported isolation
+must be rejected, and a missing domain-storage grant does not make a runtime's
+required kernel login optional.
+
 ## Standards And Protocols
 
 | Standard | Profile |
@@ -426,7 +456,7 @@ The server checks the required permission again with
 `HubInternalIdentity::grants`. Per-object rules, such as an owner-only event,
 stay with the server. `veoveo-hub-sdk` issues these tokens with
 `HubInternalTokenIssuer::issue` from a `ForwardedRequest`.
-`ForwardedTokenVerifier::new` verifies them against the issuer, keys and resource in
+`ForwardedTokenVerifier::new` verifies them against the issuer, keys, deployment and resource in
 `veoveo_access_tokens` and refreshes the keys through the HTTP client it is given. The
 hosted runtime takes the same values through `HostedServerBuilder::internal_trust`.
 

@@ -79,9 +79,26 @@ pub fn trust_bundle() -> HubInternalTrustBundle {
     HubInternalTrustBundle::from_key_set(&test_keys()).unwrap()
 }
 
+/// Fixed deployment identity of the in-process fixture, never an installation identity.
+pub fn deployment_id() -> crate::DeploymentId {
+    crate::DeploymentId::parse("019a05cb-6c00-7000-8712-3456789abcde")
+        .expect("fixture deployment UUIDv7")
+}
+
+/// The fixture's captured execution selection.
+pub fn execution_context() -> crate::ExecutionContext {
+    crate::ResolvedComposition::new(
+        crate::EnvironmentId::parse("019a05cb-6c00-7000-8712-3456789abcdf")
+            .expect("fixture environment UUIDv7"),
+        Default::default(),
+    )
+    .context()
+}
+
 /// The test Hub's issuer, key and audience, as a registration response names them.
 pub fn access_token_trust() -> AccessTokenTrust {
     AccessTokenTrust {
+        deployment: deployment_id(),
         issuer: TokenIssuer::parse(TEST_ISSUER).unwrap(),
         jwks: test_keys(),
         resource: ResourceIndicator::parse(TEST_RESOURCE).unwrap(),
@@ -200,6 +217,7 @@ impl TestHub {
         HubInternalTokenIssuer::new(TokenIssuer::parse(TEST_ISSUER).unwrap(), signing_key())
             .unwrap()
             .issue(ForwardedRequest {
+                deployment: crate::hosting::testing::deployment_id(),
                 profile: HubProfileId::parse("operations").unwrap(),
                 server: self.slug.clone(),
                 audience: ResourceIndicator::parse(TEST_RESOURCE).unwrap(),

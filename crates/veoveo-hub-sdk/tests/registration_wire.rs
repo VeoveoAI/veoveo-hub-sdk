@@ -396,6 +396,7 @@ fn uses_name_other_servers_permissions() {
 
 fn registration() -> RegistrationDeclaration {
     RegistrationDeclaration {
+        deployment: veoveo_hub_sdk::hosting::testing::deployment_id(),
         slug: slug(),
         uri_scheme: scheme(),
         version: ServerVersion::new("0.1.0").unwrap(),
@@ -411,6 +412,7 @@ fn registration_declaration_wire_format() {
         wire,
         json!({
             "slug": "clock",
+            "deployment": veoveo_hub_sdk::hosting::testing::deployment_id(),
             "uriScheme": "clock",
             "version": "0.1.0",
             "endpoint": "https://clock.example/clock/mcp"
@@ -529,6 +531,16 @@ fn registration_request() -> ClientRegistrationRequest {
 #[test]
 fn registration_requests_are_rfc7591_client_metadata() {
     let wire = serde_json::to_value(registration_request()).unwrap();
+    assert_eq!(
+        wire["veoveo_deployment_id"],
+        serde_json::to_value(registration().deployment).unwrap()
+    );
+    let mut missing_deployment = wire.clone();
+    missing_deployment
+        .as_object_mut()
+        .unwrap()
+        .remove("veoveo_deployment_id");
+    assert!(serde_json::from_value::<ClientRegistrationRequest>(missing_deployment).is_err());
     assert_eq!(wire["token_endpoint_auth_method"], "private_key_jwt");
     assert_eq!(wire["grant_types"], json!([]));
     assert_eq!(wire["response_types"], json!([]));
@@ -620,6 +632,7 @@ fn information() -> serde_json::Value {
             "veoveo_access_tokens",
             json!({
                 "issuer": "https://hub.example",
+                "deployment": registration().deployment,
                 "jwks": {"keys": [{
                     "kty": "OKP", "crv": "Ed25519", "x": RFC8037_X,
                     "kid": RFC8037_THUMBPRINT, "alg": "EdDSA", "use": "sig"
@@ -630,6 +643,7 @@ fn information() -> serde_json::Value {
         (
             "veoveo_database",
             json!({
+                "binding": {"kind":"shared_logical_schema", "server":"clock"},
                 "url": "postgres://postgres.internal:5432/veoveo?sslmode=verify-full",
                 "username": "clock_0b6f",
                 "password": "hunter2"
@@ -679,6 +693,31 @@ fn client_information_carries_token_trust_and_database_login() {
         .remove("veoveo_database");
     let received: ClientInformation = serde_json::from_value(without_database).unwrap();
     assert!(received.database.is_none());
+}
+
+#[test]
+fn explicit_storage_binding_must_match_the_registered_logical_server() {
+    let mut wire = information();
+    wire["veoveo_database"]["binding"]["server"] = json!("another-server");
+    let information: ClientInformation = serde_json::from_value(wire).unwrap();
+    assert!(information.check().is_err());
+    let mut wire = self::information();
+    wire["veoveo_database"]
+        .as_object_mut()
+        .unwrap()
+        .remove("binding");
+    assert!(serde_json::from_value::<ClientInformation>(wire).is_err());
+    let mut wire = self::information();
+    wire["veoveo_database"]["binding"] = json!({"kind":"isolated", "server":"clock"});
+    assert!(serde_json::from_value::<ClientInformation>(wire).is_err());
+}
+
+#[test]
+fn token_trust_cannot_name_another_registered_deployment() {
+    let mut wire = information();
+    wire["veoveo_access_tokens"]["deployment"] = json!(veoveo_hub_sdk::DeploymentId::new());
+    let information: ClientInformation = serde_json::from_value(wire).unwrap();
+    assert!(information.check().is_err());
 }
 
 #[test]

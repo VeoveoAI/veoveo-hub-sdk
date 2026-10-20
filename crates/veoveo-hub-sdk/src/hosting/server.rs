@@ -321,7 +321,8 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         self.with_deployment(Mount::InternalRoot, allowed_hosts.into_iter().collect())
     }
 
-    /// Admits the Hub's access tokens addressed to this server's slug, from the
+    /// Admits the Hub's access tokens addressed to this server's slug and the exact
+    /// deployment in the admitted trust, from the
     /// issuer, keys and audience its registration response names in
     /// `veoveo_access_tokens`. When a token names a key the server does not hold,
     /// `http` fetches the issuer's JWK Set through its RFC 8414 metadata, at most once

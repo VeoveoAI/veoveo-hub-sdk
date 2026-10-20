@@ -107,6 +107,7 @@ fn information(
         .insert(client_id.to_owned(), (token.clone(), metadata.clone()));
     let grant = || {
         serde_json::from_value(json!({
+            "binding": {"kind":"shared_logical_schema", "server":metadata.slug()},
             "url": "postgres://postgres.internal:5432/veoveo",
             "username": format!("{}_0b6f", metadata.slug()),
             "password": "issued-password"
@@ -121,6 +122,7 @@ fn information(
             .unwrap(),
         database: database.then(grant),
         access_tokens: AccessTokenTrust {
+            deployment: metadata.registration.deployment,
             issuer: TokenIssuer::parse("https://hub.example").unwrap(),
             jwks: Ed25519JwkSet::new(vec![Ed25519Jwk::new(ServerPublicKey::from_bytes([9; 32]))])
                 .unwrap(),
@@ -253,6 +255,7 @@ fn client(endpoint: &url::Url, key: ServerKeyPair, secret: &str) -> Registration
     let metadata = ClientMetadata::new(
         *key.public_key(),
         RegistrationDeclaration {
+            deployment: veoveo_hub_sdk::hosting::testing::deployment_id(),
             slug: ServerSlug::parse("clock").unwrap(),
             uri_scheme: ResourceScheme::parse("clock").unwrap(),
             version: ServerVersion::new("0.1.0").unwrap(),

@@ -135,6 +135,7 @@ impl TestMesh {
         let metadata = ClientMetadata::new(
             *key.public_key(),
             RegistrationDeclaration {
+                deployment: crate::hosting::testing::deployment_id(),
                 slug: slug.clone(),
                 uri_scheme: ResourceScheme::parse(slug.as_str()).expect("a scheme"),
                 version: ServerVersion::new("0.1.0").expect("a version"),
@@ -364,6 +365,7 @@ fn user_caller() -> DelegatedCaller {
     DelegatedCaller {
         client: ClientId::parse(super::TEST_CLIENT).expect("the test client"),
         request_context: HubRequestContext {
+            execution: crate::hosting::testing::execution_context(),
             audit: veoveo_audit_contract::AuditRequest::background(),
             access_token: AccessTokenSubject {
                 issuer: actor.issuer.clone(),
@@ -435,6 +437,7 @@ async fn forward(
     let token = shared
         .issuer
         .issue(ForwardedRequest {
+            deployment: crate::hosting::testing::deployment_id(),
             profile: HubProfileId::parse(MESH_PROFILE).expect("the mesh profile"),
             server: server.clone(),
             audience: ResourceIndicator::parse(super::TEST_RESOURCE).expect("the test resource"),

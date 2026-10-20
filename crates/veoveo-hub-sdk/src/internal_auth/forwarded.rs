@@ -51,7 +51,8 @@ struct KeyRefresh {
 
 impl ForwardedTokenVerifier {
     /// Verify tokens addressed to `server` with the issuer, keys and audience a
-    /// registration response names in `veoveo_access_tokens`, and fetch the issuer's
+    /// registration response names in `veoveo_access_tokens`, including its exact deployment,
+    /// and fetch the issuer's
     /// keys through `http`. The caller installs a rustls crypto provider before it
     /// builds `http`.
     pub fn new(

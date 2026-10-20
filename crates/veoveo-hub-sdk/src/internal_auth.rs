@@ -38,7 +38,10 @@ use crate::registration::{
     AccessTokenTrust, Ed25519Jwk, Ed25519JwkSet, PermissionsDetail, ResourceIndicator,
     ServerPublicKey, issuer_url, statement::ServerKeyPair,
 };
-use crate::{HubProfileId, JwtId, OAuthClientId, OpaqueTaskId, Principal, ServerSlug, TokenIssuer};
+use crate::{
+    DeploymentId, HubProfileId, JwtId, OAuthClientId, OpaqueTaskId, Principal, ServerSlug,
+    TokenIssuer,
+};
 use veoveo_types::{
     GroupId, IdentifierError, InvocationAuthority, PermissionName, PrincipalId, RoleId,
 };
@@ -212,6 +215,8 @@ pub struct HubInternalIdentity {
     pub issuer: TokenIssuer,
     pub profile: HubProfileId,
     pub server: ServerSlug,
+    /// Exact admitted recipient deployment; does not change inherited execution selection.
+    pub deployment: DeploymentId,
     /// The token's `aud`: the server's resource URL.
     #[schemars(with = "String")]
     pub audience: ResourceIndicator,
@@ -366,6 +371,7 @@ impl HubInternalTokenIssuer {
         let ForwardedRequest {
             profile,
             server,
+            deployment,
             audience,
             client,
             actor,
@@ -411,6 +417,7 @@ impl HubInternalTokenIssuer {
             issuer: self.issuer.clone(),
             profile,
             server,
+            deployment,
             audience,
             client,
             actor,
@@ -434,6 +441,8 @@ pub struct ForwardedRequest {
     pub profile: HubProfileId,
     /// The registered server that receives the request.
     pub server: ServerSlug,
+    /// Exact admitted recipient deployment; does not change inherited execution selection.
+    pub deployment: DeploymentId,
     /// The token's `aud`: that server's resource URL, its registered MCP endpoint.
     pub audience: ResourceIndicator,
     /// The OAuth client the caller used to reach the Hub.
@@ -457,6 +466,8 @@ pub struct ForwardedRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenAudience {
     pub server: ServerSlug,
+    /// Exact admitted recipient deployment; does not change inherited execution selection.
+    pub deployment: DeploymentId,
     pub resource: ResourceIndicator,
 }
 
@@ -491,6 +502,7 @@ impl HubInternalTokenVerifier {
             trust.issuer.clone(),
             TokenAudience {
                 server,
+                deployment: trust.deployment,
                 resource: trust.resource.clone(),
             },
             HubInternalTrustBundle::from_key_set(&trust.jwks)?,
@@ -534,6 +546,9 @@ impl HubInternalTokenVerifier {
                 expected: self.audience.server.clone(),
                 actual: server,
             });
+        }
+        if self.audience.deployment != claims.invocation.deployment {
+            return Err(InternalTokenError::DeploymentMismatch);
         }
         let audience = self.audience.resource.clone();
         let invocation = claims.invocation;
@@ -589,6 +604,7 @@ impl HubInternalTokenVerifier {
             issuer: claims.standard.iss,
             profile: invocation.profile,
             server,
+            deployment: invocation.deployment,
             audience,
             client: claims.standard.client_id,
             actor: invocation.actor,
@@ -780,6 +796,7 @@ struct AccessTokenClaims {
 struct Invocation {
     profile: HubProfileId,
     server: ServerSlug,
+    deployment: DeploymentId,
     actor: Principal,
     authority: InvocationAuthority,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -816,6 +833,7 @@ impl AccessTokenClaims {
             invocation: Invocation {
                 profile: identity.profile.clone(),
                 server: identity.server.clone(),
+                deployment: identity.deployment,
                 actor: identity.actor.clone(),
                 authority: identity.authority.clone(),
                 request_context: identity.request_context.clone(),
@@ -832,6 +850,7 @@ impl AccessTokenClaims {
 
 #[derive(Debug)]
 pub enum InternalTokenError {
+    DeploymentMismatch,
     EmptyPrivateKey,
     /// The signing key is not an Ed25519 PKCS#8 document.
     InvalidSigningKey,
@@ -876,6 +895,7 @@ pub enum InternalTokenError {
 impl fmt::Display for InternalTokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::DeploymentMismatch => f.write_str("internal token targets another deployment"),
             Self::EmptyPrivateKey => f.write_str("internal signing private key is empty"),
             Self::InvalidSigningKey => {
                 f.write_str("internal signing key is not an Ed25519 PKCS#8 document")
@@ -961,6 +981,10 @@ pub(crate) mod tests {
         TEST_CLIENT, TEST_ISSUER, authority, principal, signing_key, trust_bundle,
     };
 
+    pub(crate) fn deployment_id() -> DeploymentId {
+        DeploymentId::parse("019a05cb-6c00-7000-8712-3456789abcde").unwrap()
+    }
+
     /// The resource URL of test server `server`.
     pub(crate) fn resource(server: &str) -> ResourceIndicator {
         ResourceIndicator::parse(&format!("https://{server}.veoveo.test/mcp")).unwrap()
@@ -977,6 +1001,7 @@ pub(crate) mod tests {
         HubInternalTokenVerifier::new(
             TokenIssuer::parse(TEST_ISSUER).unwrap(),
             TokenAudience {
+                deployment: deployment_id(),
                 server: ServerSlug::parse(server).unwrap(),
                 resource: resource(server),
             },
@@ -987,6 +1012,7 @@ pub(crate) mod tests {
     /// A request from the test user through the test client, granting `permissions`.
     pub(crate) fn forwarded(server: &str, permissions: &[&str]) -> ForwardedRequest {
         ForwardedRequest {
+            deployment: deployment_id(),
             profile: HubProfileId::parse("default").unwrap(),
             server: ServerSlug::parse(server).unwrap(),
             audience: resource(server),
@@ -1272,6 +1298,7 @@ pub(crate) mod tests {
         let crossed = HubInternalTokenVerifier::new(
             TokenIssuer::parse(TEST_ISSUER).unwrap(),
             TokenAudience {
+                deployment: deployment_id(),
                 server: ServerSlug::parse("simulation").unwrap(),
                 resource: resource("media"),
             },
@@ -1326,6 +1353,7 @@ pub(crate) mod tests {
     #[test]
     fn registration_key_sets_become_trust_bundles() {
         let trust = AccessTokenTrust {
+            deployment: deployment_id(),
             issuer: TokenIssuer::parse(TEST_ISSUER).unwrap(),
             jwks: Ed25519JwkSet::new(vec![signing_key().verification_key()]).unwrap(),
             resource: resource("time"),

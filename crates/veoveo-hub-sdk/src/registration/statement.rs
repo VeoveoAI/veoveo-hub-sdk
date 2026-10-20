@@ -2,7 +2,7 @@
 //! holds the key in its `jwks`.
 //!
 //! The statement is a JWT signed with the server's Ed25519 key. Its claims are the
-//! request's client metadata together with the RFC 7523 §3 assertion claims: issuer and
+//! request's client metadata, including the deployment identity, together with the RFC 7523 §3 assertion claims: issuer and
 //! subject name the server's slug, the audience is the URL the request is sent to, the
 //! `jti` is a UUIDv7, and it lives at most 60 seconds. The Hub rejects a statement
 //! whose metadata differs from the request's, so the signature covers every declaration.
@@ -213,6 +213,7 @@ mod tests {
         ClientMetadata::new(
             *key.public_key(),
             RegistrationDeclaration {
+                deployment: crate::hosting::testing::deployment_id(),
                 slug: ServerSlug::parse("time").unwrap(),
                 uri_scheme: ResourceScheme::parse("time").unwrap(),
                 version: ServerVersion::new("0.1.0").unwrap(),
@@ -281,6 +282,10 @@ mod tests {
         let mut changed = metadata.clone();
         changed.registration.version = ServerVersion::new("0.2.0").unwrap();
         assert!(verify_statement(&statement, &changed, None, &audience(), now).is_err());
+
+        let mut replacement = metadata.clone();
+        replacement.registration.deployment = crate::DeploymentId::new();
+        assert!(verify_statement(&statement, &replacement, None, &audience(), now).is_err());
 
         let elsewhere = url::Url::parse("https://other.example/oauth/register").unwrap();
         assert!(verify_statement(&statement, &metadata, None, &elsewhere, now).is_err());

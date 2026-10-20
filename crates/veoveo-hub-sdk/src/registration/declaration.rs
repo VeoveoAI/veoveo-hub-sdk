@@ -3,13 +3,15 @@ use std::fmt;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use veoveo_types::{ResourceScheme, ServerSlug};
+use veoveo_types::{DeploymentId, ResourceScheme, ServerSlug};
 
 use crate::registration::DeclarationError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RegistrationDeclaration {
+    /// One independently admitted deployment; not the logical namespace's signing authority.
+    pub deployment: DeploymentId,
     pub slug: ServerSlug,
     pub uri_scheme: ResourceScheme,
     pub version: ServerVersion,

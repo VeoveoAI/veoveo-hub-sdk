@@ -16,6 +16,7 @@ pub mod audit;
 pub mod calls;
 pub mod definition;
 pub mod docs;
+pub mod execution;
 pub use veoveo_hub_sdk_macros::{
     SingleOutput, collection_resource, collection_tool, resource_read, tool,
 };
@@ -65,11 +66,16 @@ pub mod transport;
 #[cfg(feature = "server")]
 pub mod uri;
 
+pub use execution::{
+    CompositionError, CompositionRevision, ENVIRONMENT_HEADER, EnvironmentSelector,
+    ExecutionContext, RESOLVED_COMPOSITION_FORMAT, ResolvedComponent, ResolvedComposition,
+};
 pub use identity::{
     AccessTokenSubject, CanonicalTaskId, GroupMembership, GroupRole, HubProfileId,
     HubRefreshFamilyId, JwtId, LocalToolName, McpMethodName, OpaqueTaskId, Principal,
     PrincipalAssurance, PrincipalKind, PromptName, ProtectedResourceId, role_in_group,
 };
+pub use veoveo_types::{BuildId, DeploymentId, EnvironmentId};
 pub use veoveo_types::{OAuthClientId, ServerSlug, TokenIssuer, TokenSubject};
 
 #[cfg(feature = "server")]

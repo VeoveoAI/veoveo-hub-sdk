@@ -15,6 +15,7 @@ fn forwarded_with(
     context: HubRequestContext,
 ) -> ForwardedRequest {
     ForwardedRequest {
+        deployment: tests::deployment_id(),
         profile: HubProfileId::parse("operator").unwrap(),
         server: ServerSlug::parse("computers").unwrap(),
         audience: tests::resource("computers"),
@@ -65,6 +66,63 @@ fn all_invocation_modes_preserve_signed_source_and_session_context() {
             fixture.name
         );
     }
+}
+
+#[test]
+fn execution_capture_survives_a_downstream_hop_to_a_different_deployment() {
+    let first = tests::issuer()
+        .issue(direct_call("first"))
+        .unwrap()
+        .identity;
+    let delegated = DelegatedCaller::of(&first).unwrap();
+    let captured = delegated.request_context.execution.clone();
+    let mut next = forwarded_with(
+        &delegated.actor,
+        delegated.authority,
+        delegated.request_context,
+    );
+    next.server = ServerSlug::parse("second").unwrap();
+    next.audience = tests::resource("second");
+    next.deployment = DeploymentId::new();
+    next.acting_server = Some(ActingServer {
+        server: first.server,
+        client: OAuthClientId::parse("first-registration").unwrap(),
+    });
+    let verifier = HubInternalTokenVerifier::new(
+        TokenIssuer::parse(tests::TEST_ISSUER).unwrap(),
+        TokenAudience {
+            server: next.server.clone(),
+            deployment: next.deployment,
+            resource: next.audience.clone(),
+        },
+        tests::trust_bundle(),
+    );
+    let received = verifier
+        .verify(&tests::issuer().issue(next).unwrap().bearer_token)
+        .unwrap();
+    assert_ne!(first.deployment, received.deployment);
+    assert_eq!(received.request_context.unwrap().execution, captured);
+}
+
+#[test]
+fn same_slug_and_resource_cannot_accept_another_deployments_token() {
+    let request = direct_call("computers");
+    let mut audience = TokenAudience {
+        server: request.server.clone(),
+        resource: request.audience.clone(),
+        deployment: request.deployment,
+    };
+    let issued = tests::issuer().issue(request).unwrap();
+    audience.deployment = DeploymentId::new();
+    let verifier = HubInternalTokenVerifier::new(
+        TokenIssuer::parse(tests::TEST_ISSUER).unwrap(),
+        audience,
+        tests::trust_bundle(),
+    );
+    assert!(matches!(
+        verifier.verify(&issued.bearer_token),
+        Err(InternalTokenError::DeploymentMismatch)
+    ));
 }
 
 #[test]

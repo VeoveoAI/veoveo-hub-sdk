@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use veoveo_types::{OAuthClientId, ResourceScheme, ServerSlug, TokenIssuer};
+use veoveo_types::{DeploymentId, OAuthClientId, ResourceScheme, ServerSlug, TokenIssuer};
 
 use crate::registration::{
     AuthorizationDeclaration, DeclarationError, Ed25519JwkSet, RegistrationDeclaration,
@@ -75,6 +75,7 @@ struct ClientMetadataWire {
     /// The server's slug.
     software_id: ServerSlug,
     software_version: ServerVersion,
+    veoveo_deployment_id: DeploymentId,
     veoveo_uri_scheme: ResourceScheme,
     veoveo_mcp_endpoint: ServerEndpoint,
     veoveo_authorization: AuthorizationDocument,
@@ -88,6 +89,7 @@ impl From<ClientMetadataWire> for ClientMetadata {
             grant_types: wire.grant_types,
             response_types: wire.response_types,
             registration: RegistrationDeclaration {
+                deployment: wire.veoveo_deployment_id,
                 slug: wire.software_id,
                 uri_scheme: wire.veoveo_uri_scheme,
                 version: wire.software_version,
@@ -106,6 +108,7 @@ impl From<ClientMetadata> for ClientMetadataWire {
             response_types: metadata.response_types,
             software_id: metadata.registration.slug,
             software_version: metadata.registration.version,
+            veoveo_deployment_id: metadata.registration.deployment,
             veoveo_uri_scheme: metadata.registration.uri_scheme,
             veoveo_mcp_endpoint: metadata.registration.endpoint,
             veoveo_authorization: metadata.authorization.into(),
@@ -274,6 +277,12 @@ impl ClientInformation {
     pub fn check(&self) -> Result<(), DeclarationError> {
         http_url(&self.registration_client_uri, "registration_client_uri")?;
         self.access_tokens.check()?;
+        if self.access_tokens.deployment != self.metadata.registration.deployment {
+            return Err(DeclarationError::invalid(
+                "veoveo_access_tokens",
+                "the token target must be the registered deployment",
+            ));
+        }
         if self.access_tokens.resource
             != ResourceIndicator::from(&self.metadata.registration.endpoint)
         {
@@ -281,6 +290,15 @@ impl ClientInformation {
                 "veoveo_access_tokens",
                 "the token audience must be the registered MCP endpoint",
             ));
+        }
+        if let Some(database) = &self.database {
+            let StorageBinding::SharedLogicalSchema { server } = &database.binding;
+            if server != self.metadata.slug() {
+                return Err(DeclarationError::invalid(
+                    "veoveo_database",
+                    "the admitted shared storage binding must name the registered server",
+                ));
+            }
         }
         self.metadata.check()
     }
@@ -318,6 +336,8 @@ fn expose<S: serde::Serializer>(secret: &SecretString, serializer: S) -> Result<
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AccessTokenTrust {
+    /// Exact admitted deployment addressed by these tokens, independent of logical slug.
+    pub deployment: DeploymentId,
     /// The Hub's HTTPS issuer URL, as its RFC 8414 metadata announces it.
     pub issuer: TokenIssuer,
     pub jwks: Ed25519JwkSet,
@@ -340,11 +360,21 @@ pub fn issuer_url(issuer: &TokenIssuer) -> Result<(), DeclarationError> {
     http_url(&url, "issuer")
 }
 
+/// Current native domain-storage contract. Sharing requires explicit Hub admission;
+/// environment edit authority alone does not grant access. This is not owner isolation.
+/// Unsupported isolated storage must be rejected, not approximated with a search path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum StorageBinding {
+    SharedLogicalSchema { server: ServerSlug },
+}
+
 /// `veoveo_database`: the PostgreSQL login the Hub created for one registration.
 /// The login is a member of the server's group role, which owns the server's schema.
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DatabaseGrant {
+    pub binding: StorageBinding,
     /// The installation database, without credentials.
     pub url: DatabaseUrl,
     pub username: DatabaseIdentifier,
@@ -356,6 +386,7 @@ pub struct DatabaseGrant {
 impl fmt::Debug for DatabaseGrant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DatabaseGrant")
+            .field("binding", &self.binding)
             .field("url", &self.url.as_str())
             .field("username", &self.username)
             .field("password", &"[REDACTED]")

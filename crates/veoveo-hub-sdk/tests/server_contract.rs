@@ -173,6 +173,7 @@ macro_rules! fixture {
                             ServerEndpoint, ServerVersion, mcp,
                         };
                         let declaration = RegistrationDeclaration {
+                            deployment: veoveo_hub_sdk::hosting::testing::deployment_id(),
                             slug: Independent::slug(),
                             uri_scheme: Self::scheme(),
                             version: ServerVersion::new("1").unwrap(),

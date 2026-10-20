@@ -6,6 +6,8 @@ use veoveo_types::{InvocationMode, InvocationProvenance};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HubRequestContext {
+    /// Hub-admitted immutable routing selection; not business data authorization.
+    pub execution: crate::ExecutionContext,
     /// Hub-established HTTP correlation, authenticated by the internal assertion.
     pub audit: veoveo_audit_contract::AuditRequest,
     pub access_token: AccessTokenSubject,

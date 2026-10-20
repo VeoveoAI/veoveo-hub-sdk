@@ -217,7 +217,7 @@ impl TestHub {
         HubInternalTokenIssuer::new(TokenIssuer::parse(TEST_ISSUER).unwrap(), signing_key())
             .unwrap()
             .issue(ForwardedRequest {
-                deployment: crate::hosting::testing::deployment_id(),
+                deployment: deployment_id(),
                 profile: HubProfileId::parse("operations").unwrap(),
                 server: self.slug.clone(),
                 audience: ResourceIndicator::parse(TEST_RESOURCE).unwrap(),

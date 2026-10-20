@@ -18,6 +18,7 @@ pub const MAX_DELEGATION_DEPTH: usize = 8;
 #[serde(deny_unknown_fields)]
 pub struct DelegatingTask {
     pub server: ServerSlug,
+    pub deployment: DeploymentId,
     pub task: OpaqueTaskId,
 }
 
@@ -39,11 +40,9 @@ impl DelegationContext {
         }
         // Delegated child Tasks cannot acquire delegation, so only the first actor
         // can own the originating Task. A later actor cannot rename its owner.
-        if self
-            .task
-            .as_ref()
-            .is_some_and(|task| task.server != self.actors[0].server)
-        {
+        if self.task.as_ref().is_some_and(|task| {
+            task.server != self.actors[0].server || task.deployment != self.actors[0].deployment
+        }) {
             return Err(InternalTokenError::InconsistentClaims);
         }
         Ok(())
@@ -137,6 +136,7 @@ impl DelegatedCaller {
                 .or_else(|| {
                     identity.acting_task.clone().map(|task| DelegatingTask {
                         server: acting.server.clone(),
+                        deployment: acting.deployment,
                         task,
                     })
                 });
@@ -197,6 +197,7 @@ impl ExchangedIdentity {
             .or_else(|| {
                 self.task.clone().map(|task| DelegatingTask {
                     server: self.acting_server.server.clone(),
+                    deployment: self.acting_server.deployment,
                     task,
                 })
             })
@@ -240,6 +241,7 @@ struct ExchangedClaims {
 struct ExchangedInvocation {
     profile: HubProfileId,
     acting_server: ServerSlug,
+    acting_deployment: DeploymentId,
     caller: DelegatedCaller,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     task: Option<OpaqueTaskId>,
@@ -311,6 +313,7 @@ impl HubInternalTokenIssuer {
             invocation: ExchangedInvocation {
                 profile: identity.profile.clone(),
                 acting_server: identity.acting_server.server.clone(),
+                acting_deployment: identity.acting_server.deployment,
                 caller: identity.caller.clone(),
                 task: identity.task.clone(),
             },
@@ -361,6 +364,7 @@ impl ExchangedTokenVerifier {
         }
         let acting_server = ActingServer {
             server: invocation.acting_server.clone(),
+            deployment: invocation.acting_deployment,
             client: claims.client_id.clone(),
         };
         validate_delegation(
@@ -400,10 +404,7 @@ impl ExchangedTokenVerifier {
             profile: invocation.profile,
             resource: resource.clone(),
             caller: invocation.caller,
-            acting_server: ActingServer {
-                server: invocation.acting_server,
-                client: claims.client_id,
-            },
+            acting_server,
             permissions,
             task: invocation.task,
             jwt_id: claims.jti,
@@ -428,6 +429,7 @@ mod tests {
 
     fn acting() -> ActingServer {
         ActingServer {
+            deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcde").unwrap(),
             server: ServerSlug::parse("media").unwrap(),
             client: OAuthClientId::parse("media-0123456789abcd").unwrap(),
         }
@@ -531,6 +533,7 @@ mod tests {
         let mut next = grant();
         next.caller = DelegatedCaller::of(&identity).unwrap();
         next.acting_server = ActingServer {
+            deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcde").unwrap(),
             server: ServerSlug::parse(destination).unwrap(),
             client: OAuthClientId::parse(format!("{destination}-0123456789abcd")).unwrap(),
         };
@@ -569,6 +572,7 @@ mod tests {
             identity.delegating_task(),
             Some(DelegatingTask {
                 server: acting().server,
+                deployment: acting().deployment,
                 task: first.identity.task.unwrap()
             })
         );
@@ -660,6 +664,7 @@ mod tests {
         let mut invalid = next_grant(&first.identity, "ledger");
         invalid.caller.delegation_context.as_mut().unwrap().task = Some(DelegatingTask {
             server: ServerSlug::parse("unrelated").unwrap(),
+            deployment: acting().deployment,
             task: OpaqueTaskId::parse("some-task").unwrap(),
         });
         assert!(matches!(
@@ -672,6 +677,27 @@ mod tests {
             issuer().issue_exchanged(invalid),
             Err(InternalTokenError::InconsistentClaims)
         ));
+    }
+
+    #[test]
+    fn same_slug_originating_task_cannot_move_to_another_deployment() {
+        let mut initial = grant();
+        initial.task = Some(OpaqueTaskId::parse("origin-task").unwrap());
+        let first = issuer().issue_exchanged(initial).unwrap();
+        let mut nested = next_grant(&first.identity, "ledger");
+        let inherited = nested.caller.delegation_context.as_mut().unwrap();
+        assert_eq!(
+            inherited.task.as_ref().unwrap().server,
+            inherited.actors[0].server
+        );
+        inherited.task.as_mut().unwrap().deployment = DeploymentId::new();
+        assert!(matches!(
+            issuer().issue_exchanged(nested),
+            Err(InternalTokenError::InconsistentClaims)
+        ));
+        let identity = first.identity;
+        let expected = identity.acting_server.deployment;
+        assert_eq!(identity.delegating_task().unwrap().deployment, expected);
     }
 
     #[test]

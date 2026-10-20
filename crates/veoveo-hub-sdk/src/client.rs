@@ -148,6 +148,9 @@ impl BearerSource for StaticBearer {
 /// Why a call produced no result.
 #[derive(Debug, thiserror::Error)]
 pub enum CallError {
+    /// A request or durable Task belongs to another immutable worker deployment.
+    #[error("the invocation belongs to another server deployment")]
+    DeploymentMismatch,
     /// The Hub refused to issue a token for the call, with the OAuth error of its
     /// token endpoint, such as `invalid_target` when no registered server provides a
     /// permission the call needs.

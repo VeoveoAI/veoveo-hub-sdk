@@ -48,7 +48,7 @@ impl Worker {
     async fn start(db: &TestDb, callbacks: &CallbackUrls, furnace: &Furnace) -> Self {
         let store = db.server_store(&slug()).await;
         let instance = Arc::new(Instance::start(&store, &slug()).await.unwrap());
-        let runtime = TaskRuntime::new(store, slug(), instance);
+        let runtime = TaskRuntime::new(store, slug(), testing::deployment_id(), instance);
         let stop = CancellationToken::new();
         let worker = TaskWorker::new(runtime.clone())
             .callbacks(callbacks.clone())
@@ -96,6 +96,7 @@ async fn harness() -> Harness {
     let routes = TaskRuntime::new(
         store.clone(),
         slug(),
+        testing::deployment_id(),
         Arc::new(Instance::start(&store, &slug()).await.unwrap()),
     );
     UsageLedger::new(&routes)
@@ -236,6 +237,24 @@ async fn a_signed_callback_settles_a_parked_cast_and_its_cost_reaches_the_task()
         let task = harness.cast("bell").await;
         let runtime = harness.runtime();
         let job = harness.parked(&runtime, &task).await;
+        let snapshot = runtime
+            .get(TaskId::parse(&task).unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        let mut declaration = TestMesh::bind().await;
+        let calls = declaration.register(foundry::authorization().unwrap());
+        assert!(calls.for_task(&snapshot).is_ok());
+        let mut foreign = snapshot;
+        foreign.deployment = veoveo_types::DeploymentId::new();
+        assert!(matches!(
+            calls.for_task(&foreign),
+            Err(veoveo_hub_sdk::client::CallError::DeploymentMismatch)
+        ));
+        assert!(matches!(
+            veoveo_hub_sdk::durable_tasks::project_snapshot(&runtime, foreign).await,
+            Err(veoveo_task::TaskError::NotFound(_))
+        ));
         assert_eq!(harness.kiln.submissions(), 1);
 
         // Parked, the Task holds no worker and works on, asking its caller for nothing.

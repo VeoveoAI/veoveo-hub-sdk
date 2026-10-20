@@ -27,7 +27,7 @@ use reqwest::{
 use rmcp::{ErrorData, RoleServer, service::RequestContext};
 use secrecy::ExposeSecret;
 use veoveo_task::TaskSnapshot;
-use veoveo_types::{OAuthClientId, PermissionName, ServerSlug, TaskId};
+use veoveo_types::{DeploymentId, OAuthClientId, PermissionName, ServerSlug, TaskId};
 
 use super::auth::ForwardedBearer;
 use crate::{
@@ -61,6 +61,7 @@ pub struct ServerCalls {
 
 struct Inner {
     server: ServerSlug,
+    deployment: DeploymentId,
     client: OAuthClientId,
     key: ServerKeyPair,
     issuer: url::Url,
@@ -108,6 +109,11 @@ impl ServerCalls {
         token_endpoint: url::Url,
         http: reqwest::Client,
     ) -> Result<Self, ClientError> {
+        if registration.information().metadata != *metadata {
+            return Err(ClientError::ResponseMismatch(
+                "calls metadata differs from the admitted registration",
+            ));
+        }
         let issuer = url::Url::parse(registration.access_tokens().issuer.as_str())
             .map_err(|_| ClientError::ResponseMismatch("names an issuer that is no URL"))?;
         Self::with_identity(
@@ -136,6 +142,7 @@ impl ServerCalls {
         Ok(Self {
             inner: Arc::new(Inner {
                 server: metadata.slug().clone(),
+                deployment: metadata.registration.deployment,
                 client,
                 key: ServerKeyPair::from_pkcs8_der(key.pkcs8_der())?,
                 issuer,
@@ -202,17 +209,23 @@ impl ServerCalls {
         &self,
         identity: &HubInternalIdentity,
         bearer: &ForwardedBearer,
-    ) -> HubClient {
-        self.client(
+    ) -> Result<HubClient, CallError> {
+        if identity.server != self.inner.server || identity.deployment != self.inner.deployment {
+            return Err(CallError::DeploymentMismatch);
+        }
+        Ok(self.client(
             &identity.profile,
             Binding::Request(identity.jwt_id.clone()),
             ExchangeSubject::AccessToken(bearer.as_str().to_owned()),
-        )
+        ))
     }
 
     /// Calls for the caller that created `task` through the Hub, while the Task
     /// runs.
     pub fn for_task(&self, task: &TaskSnapshot) -> Result<HubClient, CallError> {
+        if task.server != self.inner.server || task.deployment != self.inner.deployment {
+            return Err(CallError::DeploymentMismatch);
+        }
         let profile = HubProfileId::parse(task.owner.surface.as_str()).map_err(|_| {
             CallError::Transport(format!(
                 "Task {} was not created through a Hub profile",
@@ -418,6 +431,8 @@ impl ClientContext for RequestContext<RoleServer> {
             .extensions
             .get::<ForwardedBearer>()
             .ok_or_else(|| ErrorData::invalid_request(crate::HUB_ROUTING_REQUIRED, None))?;
-        Ok(calls.for_request(identity, bearer))
+        calls
+            .for_request(identity, bearer)
+            .map_err(|error| ErrorData::invalid_request(error.to_string(), None))
     }
 }

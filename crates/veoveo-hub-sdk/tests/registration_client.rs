@@ -16,7 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::json;
 use veoveo_hub_sdk::registration::{
     client::{ClientError, KeyDirectory, RegistrationClient},
@@ -34,6 +34,8 @@ struct Hub {
     clients: HashMap<String, (String, ClientMetadata)>,
     issued: usize,
     updates: usize,
+    read_client_id: Option<OAuthClientId>,
+    read_uri: Option<url::Url>,
 }
 
 type Shared = Arc<Mutex<Hub>>;
@@ -175,7 +177,13 @@ async fn read(State(hub): State<Shared>, Path(id): Path<String>, headers: Header
         return unauthorized();
     };
     let statement = SoftwareStatement::new("e30.e30.c2ln").unwrap();
-    let read = information(&mut hub, &id, metadata, statement, false);
+    let mut read = information(&mut hub, &id, metadata, statement, false);
+    if let Some(client_id) = &hub.read_client_id {
+        read.client_id = client_id.clone();
+    }
+    if let Some(uri) = &hub.read_uri {
+        read.registration_client_uri = uri.clone();
+    }
     axum::Json(read).into_response()
 }
 
@@ -406,7 +414,7 @@ async fn registration_requires_the_initial_access_token() {
 }
 
 #[tokio::test]
-async fn maintain_keeps_the_registration_until_shutdown_then_deregisters() {
+async fn process_shutdown_does_not_retire_the_registration() {
     let (shared, endpoint) = hub().await;
     let client = client(&endpoint, ServerKeyPair::generate().unwrap(), SECRET);
     let registration = client.register().await.unwrap();
@@ -432,5 +440,153 @@ async fn maintain_keeps_the_registration_until_shutdown_then_deregisters() {
         .unwrap();
     let hub = shared.lock().unwrap();
     assert_eq!(hub.updates, 0, "maintaining sends no updates");
-    assert!(hub.clients.is_empty(), "shutdown removes the registration");
+    assert_eq!(
+        hub.clients.len(),
+        1,
+        "ordinary shutdown retains restart credentials"
+    );
+}
+
+#[test]
+fn offline_preparation_reuses_only_its_native_worker_key() {
+    let directory = scratch();
+    let keys = KeyDirectory::new(&directory);
+    let template = client(
+        &url::Url::parse("https://hub.example/register").unwrap(),
+        ServerKeyPair::generate().unwrap(),
+        SECRET,
+    );
+    let declaration = template.metadata().registration.clone();
+    let authorization = template.metadata().authorization.clone();
+    let first = keys
+        .prepare(declaration.clone(), authorization.clone())
+        .unwrap();
+    let second = keys.prepare(declaration, authorization).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first.key(), keys.load_or_generate().unwrap().public_key());
+    assert!(
+        !keys.registration_path().exists(),
+        "description performs no registration"
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn restart_resumes_and_persists_rotated_private_native_information_without_initial_admission()
+{
+    let (_, endpoint) = hub().await;
+    let directory = scratch();
+    let keys = KeyDirectory::new(&directory);
+    let first = client(&endpoint, keys.load_or_generate().unwrap(), SECRET);
+    let registration = first.resume_or_register(&keys).await.unwrap();
+    let restarted = RegistrationClient::new(
+        http(),
+        endpoint,
+        SecretString::from("already-consumed-admission"),
+        keys.load_or_generate().unwrap(),
+        first.metadata().clone(),
+    )
+    .unwrap();
+    for _ in 0..2 {
+        let resumed = restarted.resume_or_register(&keys).await.unwrap();
+        assert_eq!(resumed.client_id(), registration.client_id());
+        assert_eq!(
+            resumed.database().unwrap().username,
+            registration.database().unwrap().username
+        );
+        let saved: ClientInformation =
+            serde_json::from_slice(&std::fs::read(keys.registration_path()).unwrap()).unwrap();
+        assert_eq!(
+            saved.registration_access_token.expose_secret(),
+            resumed
+                .information()
+                .registration_access_token
+                .expose_secret()
+        );
+        assert!(
+            saved.database.is_some(),
+            "native private grant survives GET without password"
+        );
+        assert_eq!(
+            saved.database.as_ref().unwrap().password.expose_secret(),
+            registration.database().unwrap().password.expose_secret()
+        );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(keys.registration_path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn lost_registration_requires_explicit_fresh_admission_and_foreign_state_is_not_replaced() {
+    let (shared, endpoint) = hub().await;
+    let directory = scratch();
+    let keys = KeyDirectory::new(&directory);
+    let client = client(&endpoint, keys.load_or_generate().unwrap(), SECRET);
+    client.resume_or_register(&keys).await.unwrap();
+    shared.lock().unwrap().clients.clear();
+    let before = std::fs::read(keys.registration_path()).unwrap();
+    assert!(matches!(
+        client.resume_or_register(&keys).await,
+        Err(ClientError::FreshAdmissionRequired)
+    ));
+    assert!(
+        shared.lock().unwrap().clients.is_empty(),
+        "no implicit initial-admission retry"
+    );
+    assert_eq!(std::fs::read(keys.registration_path()).unwrap(), before);
+    client.register_and_store(&keys).await.unwrap();
+    assert_eq!(shared.lock().unwrap().clients.len(), 1);
+    let before = std::fs::read(keys.registration_path()).unwrap();
+    let mut foreign = client.metadata().clone();
+    foreign.registration.deployment = veoveo_hub_sdk::DeploymentId::new();
+    let foreign = RegistrationClient::new(
+        http(),
+        endpoint,
+        SecretString::from(SECRET),
+        keys.load_or_generate().unwrap(),
+        foreign,
+    )
+    .unwrap();
+    assert!(matches!(
+        foreign.register_and_store(&keys).await,
+        Err(ClientError::ResponseMismatch(_))
+    ));
+    assert_eq!(std::fs::read(keys.registration_path()).unwrap(), before);
+    assert_eq!(shared.lock().unwrap().clients.len(), 1);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn resumed_response_cannot_rebind_the_client_or_configuration_uri() {
+    for change_client in [true, false] {
+        let (shared, endpoint) = hub().await;
+        let directory = scratch();
+        let keys = KeyDirectory::new(&directory);
+        let client = client(&endpoint, keys.load_or_generate().unwrap(), SECRET);
+        client.resume_or_register(&keys).await.unwrap();
+        let before = std::fs::read(keys.registration_path()).unwrap();
+        if change_client {
+            shared.lock().unwrap().read_client_id =
+                Some(OAuthClientId::parse("another-client").unwrap());
+        } else {
+            shared.lock().unwrap().read_uri = Some(endpoint.join("another-registration").unwrap());
+        }
+        assert!(matches!(
+            client.resume_or_register(&keys).await,
+            Err(ClientError::ResponseMismatch(_))
+        ));
+        assert_eq!(std::fs::read(keys.registration_path()).unwrap(), before);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }

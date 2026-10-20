@@ -1,6 +1,7 @@
 //! The registration client a server runs. It keeps the server's key in a directory,
-//! registers with the installation's initial access token (RFC 7591), and removes the
-//! registration on shutdown (RFC 7592).
+//! prepares metadata offline and resumes private RFC 7592 registration state across
+//! process restarts. Initial RFC 7591 admission is used only for an explicit new
+//! registration; stopping the process does not retire its deployment.
 //!
 //! The caller supplies the `reqwest::Client`. A client that reaches the Hub over
 //! HTTPS needs a process-wide rustls crypto provider installed first.
@@ -20,14 +21,16 @@ use secrecy::{ExposeSecret, SecretString};
 use veoveo_types::OAuthClientId;
 
 use crate::registration::{
-    AccessTokenTrust, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
-    ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DeclarationError,
-    RegistrationErrorResponse,
+    AccessTokenTrust, AuthorizationDeclaration, AuthorizationServerMetadata, ClientInformation,
+    ClientMetadata, ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant,
+    DeclarationError, RegistrationDeclaration, RegistrationErrorResponse,
     statement::{ServerKeyPair, StatementError},
 };
 
 /// The file inside a [`KeyDirectory`] that holds the server's PKCS#8 private key.
 pub const KEY_FILE: &str = "server-key.p8";
+/// Standard private RFC 7592 ClientInformation, including its original database grant.
+pub const REGISTRATION_FILE: &str = "registration.json";
 /// The longest the client waits for one Hub response.
 pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -38,6 +41,17 @@ pub enum ClientError {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("registration state file {path}: {source}")]
+    RegistrationFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("stored registration state is invalid: {0}")]
+    InvalidStoredRegistration(serde_json::Error),
+    #[error(
+        "the saved registration is no longer authorized; obtain a fresh deployment-scoped initial admission and explicitly register_and_store"
+    )]
+    FreshAdmissionRequired,
     #[error(transparent)]
     Key(#[from] StatementError),
     #[error(transparent)]
@@ -88,6 +102,60 @@ impl KeyDirectory {
 
     pub fn key_path(&self) -> PathBuf {
         self.0.join(KEY_FILE)
+    }
+
+    pub fn registration_path(&self) -> PathBuf {
+        self.0.join(REGISTRATION_FILE)
+    }
+
+    /// Describe a candidate using its durable worker key, before admission. This
+    /// performs no network, database or registration operation and needs no token.
+    pub fn prepare(
+        &self,
+        declaration: RegistrationDeclaration,
+        authorization: AuthorizationDeclaration,
+    ) -> Result<ClientMetadata, ClientError> {
+        let key = self.load_or_generate()?;
+        Ok(ClientMetadata::new(
+            *key.public_key(),
+            declaration,
+            authorization,
+        )?)
+    }
+
+    fn load_registration(&self) -> Result<Option<ClientInformation>, ClientError> {
+        let path = self.registration_path();
+        match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map(Some)
+                .map_err(ClientError::InvalidStoredRegistration),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(source) => Err(ClientError::RegistrationFile { path, source }),
+        }
+    }
+
+    fn store_registration(&self, registration: &Registration) -> Result<(), ClientError> {
+        let path = self.registration_path();
+        let write = || -> std::io::Result<()> {
+            create_private_dir(&self.0)?;
+            let staged = self
+                .0
+                .join(format!(".{REGISTRATION_FILE}.{}", uuid::Uuid::new_v4()));
+            let mut file = private_file(&staged)?;
+            // Persist native ClientInformation, not a second credential envelope.
+            let bytes =
+                serde_json::to_vec(&registration.information).map_err(std::io::Error::other)?;
+            let result = (|| {
+                file.write_all(&bytes)?;
+                file.sync_all()?;
+                std::fs::rename(&staged, &path)
+            })();
+            if result.is_err() {
+                let _ = std::fs::remove_file(staged);
+            }
+            result
+        };
+        write().map_err(|source| ClientError::RegistrationFile { path, source })
     }
 
     /// Load the server's key, generating and storing one on first start. The file is
@@ -152,7 +220,6 @@ fn private_file(path: &Path) -> std::io::Result<std::fs::File> {
 #[derive(Debug, Clone)]
 pub struct Registration {
     information: ClientInformation,
-    database: Option<DatabaseGrant>,
 }
 
 impl Registration {
@@ -165,7 +232,7 @@ impl Registration {
     }
     /// The server's database user, kept from the response that last carried it.
     pub fn database(&self) -> Option<&DatabaseGrant> {
-        self.database.as_ref()
+        self.information.database.as_ref()
     }
     pub fn information(&self) -> &ClientInformation {
         &self.information
@@ -261,6 +328,68 @@ impl RegistrationClient {
         &self.metadata
     }
 
+    /// Resume the saved RFC 7592 registration, or register only when no state exists.
+    /// An expired/missing remote registration never falls back to initial admission.
+    pub async fn resume_or_register(
+        &self,
+        directory: &KeyDirectory,
+    ) -> Result<Registration, ClientError> {
+        self.check_directory_key(directory)?;
+        let Some(information) = directory.load_registration()? else {
+            return self.register_and_store(directory).await;
+        };
+        let stored = self.admit(information, None)?;
+        self.check_registration_authority(&stored)?;
+        let registration = match self.read(&stored).await {
+            Err(ClientError::Rejected {
+                status: StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND,
+                ..
+            }) => return Err(ClientError::FreshAdmissionRequired),
+            result => result?,
+        };
+        directory.store_registration(&registration)?;
+        Ok(registration)
+    }
+
+    /// Explicit new admission after trusted issuance/reissuance. Existing state may be
+    /// replaced only for the same immutable declaration/key, never a foreign deployment.
+    pub async fn register_and_store(
+        &self,
+        directory: &KeyDirectory,
+    ) -> Result<Registration, ClientError> {
+        self.check_directory_key(directory)?;
+        if let Some(information) = directory.load_registration()? {
+            let stored = self.admit(information, None)?;
+            self.check_registration_authority(&stored)?;
+        }
+        let registration = self.register().await?;
+        directory.store_registration(&registration)?;
+        Ok(registration)
+    }
+
+    fn check_directory_key(&self, directory: &KeyDirectory) -> Result<(), ClientError> {
+        if directory.load_or_generate()?.public_key() != self.key.public_key() {
+            return Err(ClientError::ResponseMismatch(
+                "registration state directory belongs to another worker key",
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_registration_authority(&self, registration: &Registration) -> Result<(), ClientError> {
+        if registration.information.metadata != self.metadata {
+            return Err(ClientError::ResponseMismatch(
+                "registration state names another deployment or declaration",
+            ));
+        }
+        if registration.information.registration_client_uri.origin() != self.endpoint.origin() {
+            return Err(ClientError::ResponseMismatch(
+                "saved registration belongs to another Hub authority",
+            ));
+        }
+        Ok(())
+    }
+
     /// RFC 7591 registration.
     pub async fn register(&self) -> Result<Registration, ClientError> {
         let request = ClientRegistrationRequest {
@@ -285,6 +414,7 @@ impl RegistrationClient {
 
     /// RFC 7592 read.
     pub async fn read(&self, registration: &Registration) -> Result<Registration, ClientError> {
+        self.check_registration_authority(registration)?;
         let information = self
             .exchange(
                 Method::GET,
@@ -297,11 +427,12 @@ impl RegistrationClient {
                 StatusCode::OK,
             )
             .await?;
-        self.admit(information, registration.database.clone())
+        self.admit(information, Some(registration))
     }
 
     /// RFC 7592 update: replace the registered metadata with this client's.
     pub async fn update(&self, registration: &mut Registration) -> Result<(), ClientError> {
+        self.check_registration_authority(registration)?;
         let uri = registration.information.registration_client_uri.clone();
         let request = ClientUpdateRequest {
             client_id: registration.information.client_id.clone(),
@@ -320,12 +451,13 @@ impl RegistrationClient {
                 StatusCode::OK,
             )
             .await?;
-        *registration = self.admit(information, registration.database.clone())?;
+        *registration = self.admit(information, Some(registration))?;
         Ok(())
     }
 
     /// RFC 7592 delete.
     pub async fn deregister(&self, registration: Registration) -> Result<(), ClientError> {
+        self.check_registration_authority(&registration)?;
         let response = self
             .send(
                 Method::DELETE,
@@ -343,16 +475,16 @@ impl RegistrationClient {
         }
     }
 
-    /// Keep the registration until `shutdown` completes, then remove it. Between the
-    /// two the Hub keeps the registration while the server's login holds a live
-    /// kernel instance.
+    /// Wait for process shutdown without deleting restart credentials. The Hub keeps
+    /// the registration while its login is live and applies its normal orphan grace.
+    /// Explicit retirement calls `deregister`; restarting uses `resume_or_register`.
     pub async fn maintain(
         &self,
-        registration: Registration,
+        _registration: Registration,
         shutdown: impl Future<Output = ()>,
     ) -> Result<(), ClientError> {
         shutdown.await;
-        self.deregister(registration).await
+        Ok(())
     }
 
     async fn exchange(
@@ -394,8 +526,8 @@ impl RegistrationClient {
     /// The Hub registers the metadata unchanged or rejects it.
     fn admit(
         &self,
-        information: ClientInformation,
-        previous_database: Option<DatabaseGrant>,
+        mut information: ClientInformation,
+        previous: Option<&Registration>,
     ) -> Result<Registration, ClientError> {
         information.check()?;
         if information.metadata != self.metadata {
@@ -403,11 +535,23 @@ impl RegistrationClient {
                 "registered other metadata than the server sent",
             ));
         }
-        let database = information.database.clone().or(previous_database);
-        Ok(Registration {
-            information,
-            database,
-        })
+        if let Some(previous) = previous {
+            if information.client_id != previous.information.client_id
+                || information.registration_client_uri
+                    != previous.information.registration_client_uri
+            {
+                return Err(ClientError::ResponseMismatch(
+                    "read/update changed the registered client identity or configuration URI",
+                ));
+            }
+            if information.database.is_none() {
+                information.database = previous.information.database.clone();
+            }
+        }
+        information.check()?;
+        let registration = Registration { information };
+        self.check_registration_authority(&registration)?;
+        Ok(registration)
     }
 }
 

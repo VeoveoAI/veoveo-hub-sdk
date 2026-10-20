@@ -613,6 +613,7 @@ async fn token(State(shared): State<Arc<Shared>>, Form(form): Form<ExchangeForm>
         );
     }
     let acting = ActingServer {
+        deployment: super::deployment_id(),
         server: server.clone(),
         client: registered.client.clone(),
     };

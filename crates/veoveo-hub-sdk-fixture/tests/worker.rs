@@ -77,7 +77,12 @@ fn owner() -> TaskOwner {
 async fn replica(db: &TestDb) -> TaskRuntime {
     let store = db.server_store(&slug()).await;
     let instance = Instance::start(&store, &slug()).await.unwrap();
-    TaskRuntime::new(store, slug(), Arc::new(instance))
+    TaskRuntime::new(
+        store,
+        slug(),
+        veoveo_hub_sdk::hosting::testing::deployment_id(),
+        Arc::new(instance),
+    )
 }
 
 async fn create(runtime: &TaskRuntime, mode: &str, recovery: RecoveryClass) -> TaskId {

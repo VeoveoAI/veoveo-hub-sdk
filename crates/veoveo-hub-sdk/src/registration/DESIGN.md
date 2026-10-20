@@ -562,7 +562,8 @@ API is described in the [crate design](../../DESIGN.md#calls-to-other-servers).
 The `client` feature provides the client every server runs:
 
 ```rust
-let key = KeyDirectory::new(&args.key_directory).load_or_generate()?;
+let keys = KeyDirectory::new(&args.key_directory);
+let key = keys.load_or_generate()?;
 let endpoint = RegistrationClient::discover(&http, &hub_issuer).await?;
 let metadata = ClientMetadata::new(
     *key.public_key(),
@@ -570,7 +571,7 @@ let metadata = ClientMetadata::new(
     <TimeDomain as DomainServer>::routes().authorization(),
 )?;
 let client = RegistrationClient::new(http, endpoint, registration_secret, key, metadata)?;
-let registration = client.register().await?;
+let registration = client.resume_or_register(&keys).await?;
 let database = registration.database();
 let server = HostedServer::for_domain::<TimeDomain>()
     .deployment(&deployment, false)?
@@ -580,10 +581,38 @@ tokio::spawn(async move { client.maintain(registration, shutdown_signal()).await
 
 `KeyDirectory` generates the Ed25519 key on first start and stores it as PKCS#8 in
 `server-key.p8`, readable only by its owner and written atomically. Restarts reuse the
-key, so the server keeps its namespace. `RegistrationClient::maintain` waits for the
-shutdown future and then deletes the registration; `update` sends an RFC 7592 update
-with the client's metadata. The caller supplies the `reqwest::Client` and installs a
-rustls crypto provider before reaching the Hub over HTTPS.
+key. `KeyDirectory::prepare(declaration, authorization)` emits exact `ClientMetadata`
+with that persisted key entirely offline: no Hub token, application database or
+registration is needed to describe a candidate before trusted scoped admission.
+
+Each immutable deployment owns its own `KeyDirectory`. A new deployment receives a
+new worker key/state directory; it never copies the namespace owner's private key or
+another deployment's registration. The trusted runtime selects the directory.
+
+`resume_or_register` stores the standard private `ClientInformation` in
+`registration.json` beside the key, with mode 0600 and atomic replacement. An existing
+record must match the worker key and full immutable declaration, including deployment,
+slug and endpoint. Its configuration URI must belong to the configured Hub authority.
+RFC 7592 GET must return the same client ID and configuration URI; only for that same
+verified registration is its original private database grant retained when GET omits
+the password. The restored grant remains in the native `ClientInformation` object.
+
+An absent local record can consume a new initial admission. A missing/unauthorized
+remote registration instead returns `FreshAdmissionRequired`; it never silently
+retries a consumed admission or falls back to namespace bootstrap. Trusted runtime
+reconciliation obtains a fresh deployment-scoped admission, and explicit
+`register_and_store` may replace stale credentials only for the same declaration/key.
+Malformed or foreign state is rejected without overwriting it. This does not promise
+an atomic transaction between the remote registration and local disk: a lost response
+or failed local write requires trusted recovery, not reusable bootstrap authority.
+
+`maintain` waits for process shutdown without deleting registration state. Explicit
+`deregister` retires the registration; the operator also removes its private state
+when retiring the deployment. The Hub's ordinary orphan grace may collect a stopped
+registration, after which restart needs a fresh scoped admission. `update` is still
+RFC 7592; immutable deployment metadata changes require a new deployment. Callers
+must store any explicitly rotated credentials before their next restart. The caller
+supplies `reqwest::Client` and installs a rustls crypto provider before HTTPS.
 
 ## Crate Features
 
@@ -607,3 +636,19 @@ between standard and Veoveo claims. Its key refresh tests run an issuer on a loo
 port: a rotated key, one fetch for concurrent requests, the 30-second interval, a set
 without the token's key, a foreign issuer, a missing or remote plain-HTTP `jwks_uri`, a
 redirect, an oversized document and an unreachable issuer.
+
+
+## Durable Deployment Affinity
+
+The Core Task runtime has a required immutable `DeploymentId`; creation attaches it,
+and reads, claims, recovery and idempotency remain in that deployment even when two
+logical service instances deliberately share a schema. SDK Task projections and
+`ServerCalls::for_task` reject snapshots from another deployment. Adopted component
+entrypoints must construct both runtime and call adapter from the same admitted
+registration, and use `resume_or_register` uniformly when repinning this contract.
+
+`ActingServer` and `DelegatingTask` retain the originating deployment. Signed nested
+Task constraints compare both logical slug and deployment; the per-hop target may
+change, while inherited `ExecutionContext` stays unchanged. Callback URLs and external
+provider ingress still require deployment-specific qualification by their owning
+adapter; queue affinity alone does not establish multi-deployment callback routing.

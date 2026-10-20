@@ -30,6 +30,9 @@ pub async fn project_snapshot(
     runtime: &TaskRuntime,
     snapshot: TaskSnapshot,
 ) -> Result<DetailedTask, TaskError> {
+    if snapshot.server != *runtime.server() || snapshot.deployment != runtime.deployment() {
+        return Err(TaskError::NotFound(snapshot.task_id));
+    }
     let mut task = task_seed(&snapshot);
     // A completed result carries the Task's cost in its `_meta`.
     let usage = match snapshot.status {

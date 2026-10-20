@@ -85,6 +85,7 @@ fn execution_capture_survives_a_downstream_hop_to_a_different_deployment() {
     next.audience = tests::resource("second");
     next.deployment = DeploymentId::new();
     next.acting_server = Some(ActingServer {
+        deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcde").unwrap(),
         server: first.server,
         client: OAuthClientId::parse("first-registration").unwrap(),
     });
@@ -369,6 +370,7 @@ fn audit_attribution_names_the_actor_the_acting_server_and_the_invocation_facts(
         fixture.request_context.clone(),
     );
     delegated.acting_server = Some(ActingServer {
+        deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcde").unwrap(),
         server: ServerSlug::parse("media").unwrap(),
         client: OAuthClientId::parse("media-client").unwrap(),
     });

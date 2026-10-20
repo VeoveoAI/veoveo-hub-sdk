@@ -276,6 +276,7 @@ impl HubInternalIdentity {
                     .zip(self.acting_task.as_ref())
                     .map(|(acting, task)| DelegatingTask {
                         server: acting.server.clone(),
+                        deployment: acting.deployment,
                         task: task.clone(),
                     })
             })
@@ -289,6 +290,7 @@ impl HubInternalIdentity {
 #[serde(deny_unknown_fields)]
 pub struct ActingServer {
     pub server: ServerSlug,
+    pub deployment: DeploymentId,
     pub client: OAuthClientId,
 }
 
@@ -569,10 +571,15 @@ impl HubInternalTokenVerifier {
             }
             _ => return Err(InternalTokenError::InconsistentClaims),
         };
-        let acting_server = match (claims.standard.act.act.as_ref(), invocation.acting_server) {
-            (None, None) => None,
-            (Some(prior), Some(server)) => Some(ActingServer {
+        let acting_server = match (
+            claims.standard.act.act.as_ref(),
+            invocation.acting_server,
+            invocation.acting_deployment,
+        ) {
+            (None, None, None) => None,
+            (Some(prior), Some(server), Some(deployment)) => Some(ActingServer {
                 server,
+                deployment,
                 client: prior.sub.clone(),
             }),
             _ => return Err(InternalTokenError::InconsistentClaims),
@@ -804,6 +811,8 @@ struct Invocation {
     /// The calling server's slug, present exactly when `act` names a prior actor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     acting_server: Option<ServerSlug>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    acting_deployment: Option<DeploymentId>,
     /// The calling server's Task the call came from, only beside `acting_server`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     acting_task: Option<OpaqueTaskId>,
@@ -841,6 +850,10 @@ impl AccessTokenClaims {
                     .acting_server
                     .as_ref()
                     .map(|acting| acting.server.clone()),
+                acting_deployment: identity
+                    .acting_server
+                    .as_ref()
+                    .map(|acting| acting.deployment),
                 acting_task: identity.acting_task.clone(),
                 delegation_context: identity.delegation_context.clone(),
             },
@@ -1136,6 +1149,7 @@ pub(crate) mod tests {
     #[test]
     fn delegated_calls_name_the_acting_server_as_the_prior_actor() {
         let acting = ActingServer {
+            deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcde").unwrap(),
             server: ServerSlug::parse("media").unwrap(),
             client: OAuthClientId::parse("media-0123456789abcd").unwrap(),
         };
@@ -1200,6 +1214,7 @@ pub(crate) mod tests {
     #[test]
     fn delegated_calls_from_a_task_name_the_acting_task() {
         let acting = ActingServer {
+            deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcde").unwrap(),
             server: ServerSlug::parse("media").unwrap(),
             client: OAuthClientId::parse("media-0123456789abcd").unwrap(),
         };

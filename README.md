@@ -52,6 +52,9 @@ contract = ["veoveo-hub-sdk/contract"]
 
 A new server starts from
 [veoveo-template-mcp-rust](https://github.com/VeoveoAI/veoveo-template-mcp-rust).
+Follow the [server authoring guide](docs/SERVER_AUTHORING.md) for the exact roles
+of traits, attributes, typestate builders, paging and deployment registration,
+including which wire fields belong to MCP and which belong to Veoveo.
 
 ## Gate
 

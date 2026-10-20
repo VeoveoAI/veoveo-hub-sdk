@@ -9,9 +9,10 @@
 //! `contract` feature names the tool and its result:
 //!
 //! ```ignore
-//! let usage = client.call(ReadStorageUsage {}).await?;
-//! let upload = client.start(VerifyArtifact { artifact }).await?;
-//! let verified = upload.await?;
+//! // Illustrative provider-owned request types, not SDK domain APIs.
+//! let capacity = client.call(QueryCapacity {}).await?;
+//! let generation = client.start(GenerateReport { input }).await?;
+//! let report = generation.await?;
 //! ```
 //!
 //! [`HubClient::call`] resolves with the tool's structured result, waiting for the
@@ -31,10 +32,11 @@
 //! changes, through a `subscriptions/listen` subscription to the resource:
 //!
 //! ```ignore
-//! let record = client.read(ReadArtifact { artifact }).await?;
-//! let verified = client
-//!     .read(ReadArtifact { artifact })
-//!     .until(|record| record.state != ArtifactState::Verifying)
+//! // Illustrative provider-owned resource and its readiness predicate.
+//! let current = client.read(ReadReport { report }).await?;
+//! let ready = client
+//!     .read(ReadReport { report })
+//!     .until(|report| report.ready)
 //!     .timeout(Duration::from_secs(600))
 //!     .await?;
 //! ```

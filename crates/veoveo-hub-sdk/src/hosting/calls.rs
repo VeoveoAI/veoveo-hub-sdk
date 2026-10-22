@@ -10,10 +10,11 @@
 //! Hub (RFC 8693). The subject is the forwarded token of the current request, or
 //! the server's own Task, which stands for the caller that created it while it runs.
 //! The request names the declared uses in the provider's namespace, and the Hub
-//! narrows them to what the caller holds. The token is cached per binding and provider
-//! until shortly before it expires.
+//! narrows them to what the caller holds. A token for the Hub's own routes names no
+//! permissions. Tokens are cached per binding and audience until shortly before they
+//! expire.
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -88,10 +89,18 @@ enum Binding {
     Task(String),
 }
 
+/// What a token is for: one provider's tools and resources, with its declared uses, or
+/// the Hub's own routes, with no permissions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Audience {
+    Provider(ServerSlug),
+    Hub,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TokenKey {
     binding: Binding,
-    provider: ServerSlug,
+    audience: Audience,
 }
 
 struct CachedToken {
@@ -288,15 +297,13 @@ impl ServerCalls {
         );
     }
 
-    /// RFC 8693 §2.1: exchange `subject` for a token at `resource` that carries the
-    /// declared uses in `provider`'s namespace, as far as the caller holds them.
-    async fn exchange(
-        &self,
-        subject: &ExchangeSubject,
-        resource: &url::Url,
-        provider: &ServerSlug,
-    ) -> Result<TokenExchangeResponse, CallError> {
-        let requested: std::collections::BTreeSet<PermissionName> = self
+    /// The permissions a token for `audience` requests: the declared uses in a
+    /// provider's namespace, or none for the Hub's own routes.
+    fn requested(&self, audience: &Audience) -> Result<BTreeSet<PermissionName>, CallError> {
+        let Audience::Provider(provider) = audience else {
+            return Ok(BTreeSet::new());
+        };
+        let requested: BTreeSet<PermissionName> = self
             .inner
             .uses
             .iter()
@@ -308,12 +315,23 @@ impl ServerCalls {
                 provider: provider.clone(),
             });
         }
+        Ok(requested)
+    }
+
+    /// RFC 8693 §2.1: exchange `subject` for a token at `resource` that carries the
+    /// `requested` permissions, as far as the caller holds them.
+    async fn exchange(
+        &self,
+        subject: &ExchangeSubject,
+        resource: &url::Url,
+        requested: &BTreeSet<PermissionName>,
+    ) -> Result<TokenExchangeResponse, CallError> {
         let assertion = self
             .inner
             .key
             .client_assertion(&self.inner.client, &self.inner.token_endpoint, Utc::now())
             .map_err(|error| CallError::Transport(error.to_string()))?;
-        let details = serde_json::to_string(&[PermissionsDetail::new(requested)])?;
+        let details = serde_json::to_string(&[PermissionsDetail::new(requested.clone())])?;
         let (subject_token, subject_token_type) = subject.parameters();
         let body = url::form_urlencoded::Serializer::new(String::new())
             .append_pair("grant_type", TOKEN_EXCHANGE_GRANT_TYPE)
@@ -364,46 +382,58 @@ struct ExchangeSource {
     resource: url::Url,
 }
 
+impl ExchangeSource {
+    /// The cached token for `audience`, or a new one from the Hub.
+    async fn token(&self, audience: Audience) -> Result<Bearer, CallError> {
+        let requested = self.calls.requested(&audience)?;
+        let key = TokenKey {
+            binding: self.binding.clone(),
+            audience,
+        };
+        if let Some(bearer) = self.calls.cached(&key) {
+            return Ok(bearer);
+        }
+        let started = Instant::now();
+        let issued = loop {
+            match self
+                .calls
+                .exchange(&self.subject, &self.resource, &requested)
+                .await
+            {
+                Err(CallError::Refused {
+                    error: TokenErrorCode::InvalidGrant,
+                    ..
+                }) if matches!(self.subject, ExchangeSubject::Task(_))
+                    && started.elapsed() < TASK_ROUTE_WAIT =>
+                {
+                    tokio::time::sleep(TASK_ROUTE_RETRY).await;
+                }
+                outcome => break outcome?,
+            }
+        };
+        let bearer = Bearer::new(issued.access_token);
+        self.calls
+            .cache(key, bearer.clone(), Duration::from_secs(issued.expires_in));
+        Ok(bearer)
+    }
+}
+
 impl BearerSource for ExchangeSource {
     fn bearer<'a>(&'a self, provider: &'a ServerSlug) -> BoxFuture<'a, Result<Bearer, CallError>> {
-        Box::pin(async move {
-            let key = TokenKey {
-                binding: self.binding.clone(),
-                provider: provider.clone(),
-            };
-            if let Some(bearer) = self.calls.cached(&key) {
-                return Ok(bearer);
-            }
-            let started = Instant::now();
-            let issued = loop {
-                match self
-                    .calls
-                    .exchange(&self.subject, &self.resource, provider)
-                    .await
-                {
-                    Err(CallError::Refused {
-                        error: TokenErrorCode::InvalidGrant,
-                        ..
-                    }) if matches!(self.subject, ExchangeSubject::Task(_))
-                        && started.elapsed() < TASK_ROUTE_WAIT =>
-                    {
-                        tokio::time::sleep(TASK_ROUTE_RETRY).await;
-                    }
-                    outcome => break outcome?,
-                }
-            };
-            let bearer = Bearer::new(issued.access_token);
-            self.calls
-                .cache(key, bearer.clone(), Duration::from_secs(issued.expires_in));
-            Ok(bearer)
-        })
+        Box::pin(self.token(Audience::Provider(provider.clone())))
     }
 
     fn forget(&self, provider: &ServerSlug) {
         self.calls.forget(&TokenKey {
             binding: self.binding.clone(),
-            provider: provider.clone(),
+            audience: Audience::Provider(provider.clone()),
         });
+    }
+
+    /// A token exchanged for the profile without permissions: the Hub's own routes
+    /// decide by the caller alone.
+    fn hub_bearer(&self) -> BoxFuture<'_, Result<Bearer, CallError>> {
+        Box::pin(self.token(Audience::Hub))
     }
 }
 

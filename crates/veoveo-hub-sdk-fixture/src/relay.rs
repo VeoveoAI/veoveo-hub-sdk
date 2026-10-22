@@ -1,7 +1,8 @@
 //! Relay, the consumer of the calls fixture: its tools call Ledger through the Hub
 //! for Relay's own caller, inline with `ctx.client()` and from a durable Task with
-//! `ServerCalls::for_task`, and read and follow Ledger's entries. It declares the
-//! Ledger permissions it uses, and reports the identity calls reach it with.
+//! `ServerCalls::for_task`, and read and follow Ledger's entries, and calls a Hub route
+//! for its caller. It declares the Ledger permissions it uses and that it calls the
+//! Hub, and reports the identity calls reach it with.
 use std::{collections::BTreeSet, sync::LazyLock};
 
 use futures::StreamExt;
@@ -35,8 +36,8 @@ use veoveo_task::{
 use veoveo_types::{ResourceScheme, TaskId, TaskTypeName, Vocabulary};
 
 use crate::calls::{
-    EntryName, EntryState, FollowedEntry, Inspect, OpenEntry, ReadEntry, ReadSeal, RelayPermission,
-    Tally,
+    EntryName, EntryState, FollowedEntry, HubCaller, HubCalls, Inspect, OpenEntry, ReadEntry,
+    ReadSeal, RelayPermission, Tally,
 };
 use crate::calls_support::{NoScope, contract_config, docs, require};
 
@@ -215,6 +216,58 @@ impl RelayDomain {
         relayed(outcome)
     }
 
+    /// What the Hub route `/hub/{profile}/caller` saw of a request with this client's
+    /// Hub bearer.
+    async fn hub_caller(
+        client: &veoveo_hub_sdk::client::HubClient,
+        identity: &HubInternalIdentity,
+    ) -> Result<HubCaller, CallError> {
+        let transport = |error: &dyn std::fmt::Display| CallError::Transport(error.to_string());
+        let route = client
+            .endpoint()
+            .join(&format!("/hub/{}/caller", identity.profile))
+            .map_err(|error| transport(&error))?;
+        let bearer = client.hub_bearer().await?;
+        reqwest::Client::new()
+            .get(route)
+            .bearer_auth(bearer.expose())
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|error| transport(&error))?
+            .json()
+            .await
+            .map_err(|error| transport(&error))
+    }
+
+    async fn relay_hub_caller(
+        &self,
+        context: RequestContext<RoleServer>,
+    ) -> Result<HubCaller, veoveo_hub_sdk::hosting::ToolError> {
+        let identity = require(&context, RelayPermission::CallsMake)?;
+        relayed(Self::hub_caller(&context.client()?, &identity).await)
+    }
+
+    async fn relay_hub(
+        &self,
+        context: RequestContext<RoleServer>,
+    ) -> Result<HubCalls, veoveo_hub_sdk::hosting::ToolError> {
+        let identity = require(&context, RelayPermission::CallsMake)?;
+        let client = context.client()?;
+        let outcome = async {
+            let first = Self::hub_caller(&client, &identity).await?;
+            let inspection = client.call(Inspect {}).await?;
+            let again = Self::hub_caller(&client, &identity).await?;
+            Ok(HubCalls {
+                first,
+                inspection,
+                again,
+            })
+        }
+        .await;
+        relayed(outcome)
+    }
+
     async fn relay_later(
         &self,
         context: RequestContext<RoleServer>,
@@ -240,6 +293,12 @@ struct WhoamiRelay {}
 #[derive(serde::Serialize, Deserialize, JsonSchema)]
 #[veoveo_hub_sdk::tool(provider=RelayContract,output=crate::calls::Inspection,name="relay_later",task=true)]
 struct LaterRelay {}
+#[derive(serde::Serialize, Deserialize, JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=RelayContract,output=HubCalls,name="relay_hub")]
+struct HubRelay {}
+#[derive(serde::Serialize, Deserialize, JsonSchema)]
+#[veoveo_hub_sdk::tool(provider=RelayContract,output=HubCaller,name="relay_hub_caller")]
+struct HubCallerRelay {}
 impl veoveo_hub_sdk::calls::ProviderContract for RelayContract {
     fn slug() -> ServerSlug {
         ServerSlug::parse("relay").unwrap()
@@ -266,9 +325,12 @@ static ROUTES: LazyLock<veoveo_hub_sdk::hosting::Routes<RelayDomain>> = LazyLock
         .task::<LaterRelay,_,_>("Relay from a Task",policy(),|domain,_,context|async move{domain.relay_later(context).await})
         .tool::<TallyRequest,_,_>("Relay tally",policy(),|domain,request,context|async move{domain.relay_tally(request,context).await})
         .tool::<FollowRequest,_,_>("Follow entry",policy(),|domain,request,context|async move{domain.relay_follow_entry(request,context).await})
+        .tool::<HubRelay,_,_>("Relay to the Hub",policy(),|domain,_,context|async move{domain.relay_hub(context).await})
+        .tool::<HubCallerRelay,_,_>("Relay once to the Hub",policy(),|domain,_,context|async move{domain.relay_hub_caller(context).await})
         .uses(veoveo_types::PermissionName::parse("ledger.entries.read").unwrap())
         .uses(veoveo_types::PermissionName::parse("ledger.entries.write").unwrap())
         .uses(veoveo_types::PermissionName::parse("ledger.seals.read").unwrap())
+        .calls_hub()
         .build()
 });
 impl DomainServer for RelayDomain {

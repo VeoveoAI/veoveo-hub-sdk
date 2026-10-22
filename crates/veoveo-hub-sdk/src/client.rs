@@ -125,6 +125,13 @@ pub trait BearerSource: Send + Sync + 'static {
 
     /// Drops a caller bearer the Hub no longer admits.
     fn forget_caller(&self) {}
+
+    /// The bearer of requests to the Hub's own routes for the profile, such as
+    /// `PUT /selection/{profile}/{server}`: the caller's own bearer, or, for a server's
+    /// calls for its caller, a token exchanged for the profile without permissions.
+    fn hub_bearer(&self) -> BoxFuture<'_, Result<Bearer, CallError>> {
+        self.caller_bearer()
+    }
 }
 
 /// One bearer for every provider: a program's own access token for the profile.
@@ -316,6 +323,15 @@ impl HubClient {
     /// The profile's MCP endpoint.
     pub fn endpoint(&self) -> &url::Url {
         &self.inner.endpoint
+    }
+
+    /// The bearer of this client's requests to the Hub's own routes for its profile,
+    /// such as `PUT /selection/{profile}/{server}`. For a server's calls for its caller
+    /// it is a token exchanged without permissions, which needs the server's routes to
+    /// declare `calls_hub`; the Hub decides each route for the caller. It is cached
+    /// like a provider's token.
+    pub async fn hub_bearer(&self) -> Result<Bearer, CallError> {
+        self.inner.bearers.hub_bearer().await
     }
 
     /// Calls a tool and resolves with its result, waiting for its Task when the tool

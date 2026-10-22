@@ -136,9 +136,9 @@ impl ClientMetadata {
     }
 
     /// The RFC 7591 `grant_types` of a server: token exchange when it uses other
-    /// servers, and none otherwise.
+    /// servers or calls the Hub's own routes, and none otherwise.
     fn grants_for(authorization: &AuthorizationDeclaration) -> Vec<GrantType> {
-        if authorization.uses.is_empty() {
+        if authorization.uses.is_empty() && !authorization.calls_hub {
             Vec::new()
         } else {
             vec![GrantType::TokenExchange]
@@ -152,7 +152,7 @@ impl ClientMetadata {
         {
             return Err(DeclarationError::invalid(
                 "grant_types",
-                "servers register token exchange exactly when they use other servers, and no response type",
+                "servers register token exchange exactly when they use other servers or call the Hub, and no response type",
             ));
         }
         let slug = &self.registration.slug;

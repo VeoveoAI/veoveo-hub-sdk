@@ -48,7 +48,7 @@ required kernel login optional.
 
 | Standard | Profile |
 |---|---|
-| OAuth 2.0 Dynamic Client Registration, RFC 7591 | Registration request and response. The installation's registration secret is the initial access token. A server registers `jwks`, `token_endpoint_auth_method` `private_key_jwt`, `grant_types` holding only `urn:ietf:params:oauth:grant-type:token-exchange` when it declares uses and empty otherwise, empty `response_types`, its slug as `software_id`, its build as `software_version`, a `software_statement` it signs itself, and Veoveo members for its declarations. Errors use the §3.2.2 codes. |
+| OAuth 2.0 Dynamic Client Registration, RFC 7591 | Registration request and response. The installation's registration secret is the initial access token. A server registers `jwks`, `token_endpoint_auth_method` `private_key_jwt`, `grant_types` holding only `urn:ietf:params:oauth:grant-type:token-exchange` when it declares uses or calls to the Hub and empty otherwise, empty `response_types`, its slug as `software_id`, its build as `software_version`, a `software_statement` it signs itself, and Veoveo members for its declarations. Errors use the §3.2.2 codes. |
 | OAuth 2.0 Dynamic Client Registration Management, RFC 7592 | Read (`GET`), update (`PUT`) and delete (`DELETE`) at `registration_client_uri` with the registration access token. An update replaces the registered metadata. |
 | OAuth 2.0, RFC 6749 §8.2 | Registration members without a standard equivalent take the `veoveo_` vendor prefix in snake_case. |
 | Bearer tokens, RFC 6750 | Initial access token, registration access token and forwarded access token travel in `Authorization: Bearer`. Every 401 carries `WWW-Authenticate: Bearer`, with `error="invalid_token"` once a token was sent. |
@@ -145,6 +145,11 @@ native `PermissionName` from the provider's exported permission enum, for exampl
 `.uses(ArtifactPermission::ArtifactsRead.name())`. The member is omitted when
 the server calls no other server. A provider need not be registered when the consumer
 registers.
+
+`calls_hub` (`callsHub` in Discover) is `true` when the server calls the Hub's own
+routes for its caller, which `RoutesBuilder::calls_hub` declares. The member is
+omitted otherwise. A server that declares uses or calls to the Hub registers the
+token exchange grant.
 
 The Hub rejects a declaration when any of these hold:
 
@@ -547,6 +552,12 @@ resource read or a subscription, are the caller's role-granted permissions in th
 target's namespace narrowed to the token's, and the target receives the [delegated
 forwarded token](#forwarded-identity), which names the calling server's Task when the
 token's subject was one.
+
+A server that declares calls to the Hub exchanges the same subject for the same
+`resource` with one `https://veoveo.ai/oauth/permissions` entry whose `actions` is
+empty. The issued token carries no permissions; the Hub admits it at its own routes
+for the profile as the caller, as it admits any exchanged token, and those routes
+decide for the caller.
 
 `ServerCalls` holds what a server calls with: its client identifier, key, `uses` and
 the token endpoint, which `ServerCalls::discover` reads from the issuer's metadata.

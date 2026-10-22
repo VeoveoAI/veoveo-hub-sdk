@@ -5,7 +5,9 @@
 //! it serves the two Hub endpoints those calls use: the token endpoint, which
 //! performs the RFC 8693 exchange with the Hub's narrowing, and the profile's MCP
 //! endpoint, which routes each call to its provider with a delegated forwarded token.
-//! The test user reaches a server with [`RunningMesh::call`].
+//! Routes a test adds with [`TestMesh::hub_route`] stand for the Hub's own routes: the
+//! mesh admits an exchanged token there as the Hub does and hands the handler its
+//! [`ExchangedIdentity`]. The test user reaches a server with [`RunningMesh::call`].
 //!
 //! ```ignore
 //! let mut mesh = TestMesh::bind().await;
@@ -29,6 +31,7 @@ use axum::{
     body::{Body, Bytes},
     extract::{Path, State},
     http::{HeaderMap, Request, StatusCode, header},
+    middleware::Next,
     response::{IntoResponse, Response},
     routing::post,
 };
@@ -41,9 +44,9 @@ use super::{
     TEST_HOST, TEST_PROTOCOL_VERSION, access_token_trust, authority, principal, signing_key,
 };
 use crate::{
-    ActingServer, DelegatedCaller, ExchangeGrant, ExchangedTokenVerifier, ForwardedRequest,
-    HubInternalTokenIssuer, HubInternalTokenVerifier, HubProfileId, HubRequestContext,
-    OAuthClientId as ClientId, OpaqueTaskId, TokenIssuer,
+    ActingServer, DelegatedCaller, ExchangeGrant, ExchangedIdentity, ExchangedTokenVerifier,
+    ForwardedRequest, HubInternalTokenIssuer, HubInternalTokenVerifier, HubProfileId,
+    HubRequestContext, OAuthClientId as ClientId, OpaqueTaskId, TokenIssuer,
     calls::{
         ACCESS_TOKEN_TOKEN_TYPE, TASK_TOKEN_TYPE, TOKEN_EXCHANGE_GRANT_TYPE, TokenErrorCode,
         TokenErrorResponse, TokenExchangeResponse,
@@ -52,8 +55,8 @@ use crate::{
     hub::HubToolName,
     identity::AccessTokenSubject,
     registration::{
-        AuthorizationDeclaration, ClientMetadata, PermissionsDetail, RegistrationDeclaration,
-        ResourceIndicator, ServerEndpoint, ServerPublicKey, ServerVersion,
+        AuthorizationDeclaration, ClientMetadata, GrantType, PermissionsDetail,
+        RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerPublicKey, ServerVersion,
         assertion::{CLIENT_ASSERTION_TYPE, verify_client_assertion},
         statement::ServerKeyPair,
     },
@@ -66,6 +69,8 @@ const TASK_DELEGATION: TimeDelta = TimeDelta::minutes(5);
 
 struct Registered {
     declaration: AuthorizationDeclaration,
+    /// Whether the registration holds the token exchange grant.
+    exchanges: bool,
     client: OAuthClientId,
     key: ServerPublicKey,
     router: Option<(Router, String)>,
@@ -95,6 +100,7 @@ pub struct TestMesh {
     base: url::Url,
     servers: BTreeMap<ServerSlug, Registered>,
     grants: BTreeSet<PermissionName>,
+    hub: Router,
 }
 
 impl TestMesh {
@@ -113,6 +119,7 @@ impl TestMesh {
             base,
             servers: BTreeMap::new(),
             grants: BTreeSet::new(),
+            hub: Router::new(),
         }
     }
 
@@ -161,6 +168,7 @@ impl TestMesh {
         self.servers.insert(
             slug,
             Registered {
+                exchanges: metadata.grant_types.contains(&GrantType::TokenExchange),
                 declaration,
                 client,
                 key: *key.public_key(),
@@ -177,6 +185,13 @@ impl TestMesh {
             .get_mut(&server.slug)
             .expect("the server was registered first");
         registered.router = Some((server.router, server.mount.prefix().to_owned()));
+    }
+
+    /// Serves `router` as Hub routes, such as `/selection/{profile}/{server}`. A request
+    /// reaches it only with a token the mesh exchanged for its profile, and the handler
+    /// finds the token's [`ExchangedIdentity`] in the request extensions.
+    pub fn hub_route(&mut self, router: Router) {
+        self.hub = std::mem::take(&mut self.hub).merge(router);
     }
 
     /// The permissions the test user holds, in every namespace, as role evaluation
@@ -204,11 +219,16 @@ impl TestMesh {
             routes: parking_lot::Mutex::default(),
             assertions: parking_lot::Mutex::default(),
         });
+        let hub = self.hub.layer(axum::middleware::from_fn_with_state(
+            shared.clone(),
+            hub_admission,
+        ));
         let router = Router::new()
             .route("/oauth/token", post(token))
             .route("/mcp/{profile}", post(mcp))
             .fallback(ingress)
-            .with_state(shared.clone());
+            .with_state(shared.clone())
+            .merge(hub);
         let listener = self.listener;
         let task = tokio::spawn(async move {
             let _ = axum::serve(listener, router).await;
@@ -612,6 +632,12 @@ async fn token(State(shared): State<Arc<Shared>>, Form(form): Form<ExchangeForm>
             "the client assertion was replayed",
         );
     }
+    if !registered.exchanges {
+        return refused(
+            TokenErrorCode::UnauthorizedClient,
+            "the registration declares no uses and no calls to the Hub",
+        );
+    }
     let acting = ActingServer {
         deployment: super::deployment_id(),
         server: server.clone(),
@@ -780,41 +806,8 @@ async fn mcp(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let mut resource = shared.base.clone();
-    resource.set_path(&format!("/mcp/{profile}"));
-    let bearer = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "));
-    let identity = bearer.and_then(|bearer| {
-        shared
-            .exchanged
-            .verify(
-                bearer,
-                &ResourceIndicator::parse(resource.as_str()).expect("the profile resource"),
-            )
-            .ok()
-    });
-    // A Task's delegation lasts while the Task runs.
-    let identity = match identity {
-        Some(identity) => match identity.delegating_task() {
-            Some(task)
-                if live_route(&shared, &task.server, task.task.as_str())
-                    .await
-                    .is_none() =>
-            {
-                None
-            }
-            _ => Some(identity),
-        },
-        None => None,
-    };
-    let Some(identity) = identity else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            [(header::WWW_AUTHENTICATE, r#"Bearer error="invalid_token""#)],
-        )
-            .into_response();
+    let Some(identity) = admit(&shared, &headers, &profile).await else {
+        return invalid_token();
     };
     let Ok(mut message) = serde_json::from_slice::<serde_json::Value>(&body) else {
         return (StatusCode::BAD_REQUEST, "not one JSON-RPC message").into_response();
@@ -924,6 +917,56 @@ async fn mcp(
         );
     }
     Response::from_parts(parts, Body::from(bytes))
+}
+
+/// The exchanged token a request carries for `profile`, as the Hub admits it: issued by
+/// the mesh for that profile and, for a Task's delegation, while the Task runs.
+async fn admit(shared: &Shared, headers: &HeaderMap, profile: &str) -> Option<ExchangedIdentity> {
+    let mut resource = shared.base.clone();
+    resource.set_path(&format!("/mcp/{profile}"));
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))?;
+    let identity = shared
+        .exchanged
+        .verify(
+            bearer,
+            &ResourceIndicator::parse(resource.as_str()).expect("the profile resource"),
+        )
+        .ok()?;
+    match identity.delegating_task() {
+        Some(task)
+            if live_route(shared, &task.server, task.task.as_str())
+                .await
+                .is_none() =>
+        {
+            None
+        }
+        _ => Some(identity),
+    }
+}
+
+fn invalid_token() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        [(header::WWW_AUTHENTICATE, r#"Bearer error="invalid_token""#)],
+    )
+        .into_response()
+}
+
+/// The admission of the Hub routes a test added: an exchanged token for the mesh's
+/// profile, whose identity the route's handler receives.
+async fn hub_admission(
+    State(shared): State<Arc<Shared>>,
+    mut request: Request<Body>,
+    next: Next,
+) -> Response {
+    let Some(identity) = admit(&shared, request.headers(), MESH_PROFILE).await else {
+        return invalid_token();
+    };
+    request.extensions_mut().insert(identity);
+    next.run(request).await
 }
 
 /// A request outside the token and MCP endpoints, delivered as an ingress would: under a

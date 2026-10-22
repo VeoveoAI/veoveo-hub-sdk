@@ -342,6 +342,7 @@ pub struct RoutesBuilder<D: DomainServer> {
     resources: Vec<ResourceRoute<D>>,
     documents: RoutePolicy,
     uses: Vec<PermissionName>,
+    calls_hub: bool,
 }
 impl<D: DomainServer> RoutesBuilder<D> {
     fn new(documents: RoutePolicy) -> Self {
@@ -351,6 +352,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             resources: vec![],
             documents,
             uses: vec![],
+            calls_hub: false,
         }
     }
     pub fn build(self) -> Routes<D> {
@@ -417,6 +419,13 @@ impl<D: DomainServer> RoutesBuilder<D> {
     }
     pub fn uses(mut self, permission: PermissionName) -> Self {
         self.uses.push(permission);
+        self
+    }
+    /// Declare that the handlers call the Hub's own routes for their caller, with the
+    /// bearer [`HubClient::hub_bearer`](crate::client::HubClient::hub_bearer) returns.
+    /// The server then registers the token exchange grant.
+    pub fn calls_hub(mut self) -> Self {
+        self.calls_hub = true;
         self
     }
     /// Register one native prompt descriptor and its rendering operation with the
@@ -496,6 +505,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             permissions: permissions.into_values().collect(),
             requirements,
             uses: self.uses.clone(),
+            calls_hub: self.calls_hub,
         }
     }
     pub fn tool<R, H, F>(self, description: &'static str, policy: RoutePolicy, handler: H) -> Self

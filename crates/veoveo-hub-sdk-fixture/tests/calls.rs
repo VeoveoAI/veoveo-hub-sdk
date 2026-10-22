@@ -1,16 +1,20 @@
 //! Calls between servers through the SDK's in-process mesh: Relay calls Ledger for its
-//! own caller inline, through a Ledger Task, and from a Ledger Task back to Relay, and
-//! reads and follows a Ledger entry through typed resource reads.
+//! own caller inline, through a Ledger Task, and from a Ledger Task back to Relay,
+//! reads and follows a Ledger entry through typed resource reads, and calls a Hub route
+//! for its caller.
 use std::time::Duration;
 
+use axum::{Extension, Json, extract::Path};
 use serde_json::{Value, json};
 use veoveo_hub_sdk::{
+    ExchangedIdentity,
     calls::TokenErrorCode,
     client::CallError,
     hosting::testing::{self, MESH_PROFILE, TEST_CLIENT, TestMesh},
+    registration::AuthorizationDeclaration,
 };
 use veoveo_hub_sdk_fixture::{
-    calls::{EntryState, FollowedEntry, Inspection},
+    calls::{EntryState, FollowedEntry, HubCaller, HubCalls, Inspection},
     gateway::{self, Gateway},
     ledger::{self, LedgerDomain, LedgerTasks},
     relay::{self, RelayDomain},
@@ -184,6 +188,101 @@ async fn nested_calls_require_each_servers_uses_and_the_callers_permission() {
     .unwrap_err();
     // Native discovery hides a provider whose permissions this caller does not hold.
     assert!(refused.contains("404 Not Found"), "{refused}");
+}
+
+/// A Hub route that reports the exchanged token the mesh admitted for it.
+async fn hub_caller(
+    Path(profile): Path<String>,
+    Extension(identity): Extension<ExchangedIdentity>,
+) -> Json<HubCaller> {
+    assert_eq!(profile, MESH_PROFILE);
+    Json(HubCaller {
+        caller: identity.caller.actor.id.to_string(),
+        acting_server: identity.acting_server.server.to_string(),
+        permissions: identity
+            .permissions
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        token: identity.jwt_id.to_string(),
+    })
+}
+
+/// Relay as `relay` declares, Ledger, and the Hub route `/hub/{profile}/caller`.
+async fn hub_mesh(relay: AuthorizationDeclaration, granted: &[&str]) -> testing::RunningMesh {
+    let mut mesh = bind().await;
+    let calls = mesh.register(relay);
+    mesh.serve(
+        testing::for_domain::<RelayDomain>()
+            .calls(calls)
+            .handler(relay::hosted)
+            .build(),
+    );
+    mesh.register(ledger::authorization().unwrap());
+    mesh.serve(
+        testing::for_domain::<LedgerDomain>()
+            .handler(|| ledger::hosted(LedgerTasks::default()))
+            .build(),
+    );
+    mesh.hub_route(
+        axum::Router::new().route("/hub/{profile}/caller", axum::routing::get(hub_caller)),
+    );
+    mesh.granting(granted.iter().map(|name| permission(name)))
+        .start()
+}
+
+#[tokio::test]
+async fn relay_calls_a_hub_route_for_its_caller_with_a_token_naming_no_permissions() {
+    let mesh = hub_mesh(
+        relay::authorization().unwrap(),
+        &["relay.calls.make", "ledger.entries.read"],
+    )
+    .await;
+    let calls: HubCalls =
+        serde_json::from_value(relayed(&mesh.call("relay", "relay_hub", json!({})).await).unwrap())
+            .unwrap();
+    assert_eq!(calls.first.caller, testing::principal().id.to_string());
+    assert_eq!(calls.first.acting_server, "relay");
+    assert!(calls.first.permissions.is_empty(), "{calls:?}");
+    // The Hub token is cached for the request apart from Ledger's, which carries
+    // Relay's use of Ledger.
+    assert_eq!(calls.again, calls.first);
+    assert_eq!(calls.inspection.permissions, ["ledger.entries.read"]);
+
+    // A Hub route admits only a token the mesh exchanged.
+    let mut route = mesh.base();
+    route.set_path(&format!("/hub/{MESH_PROFILE}/caller"));
+    let anonymous = reqwest::get(route.clone()).await.unwrap();
+    assert_eq!(anonymous.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let forged = reqwest::Client::new()
+        .get(route)
+        .bearer_auth("not-a-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forged.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_server_that_neither_uses_others_nor_calls_the_hub_exchanges_no_token() {
+    let mut declaration = relay::authorization().unwrap();
+    declaration.uses.clear();
+    declaration.calls_hub = false;
+    let mesh = hub_mesh(declaration, &["relay.calls.make"]).await;
+    let refused = relayed(&mesh.call("relay", "relay_hub_caller", json!({})).await).unwrap_err();
+    assert!(refused.contains("UnauthorizedClient"), "{refused}");
+
+    // Calling the Hub alone holds the grant.
+    let mut declaration = relay::authorization().unwrap();
+    declaration.uses.clear();
+    let mesh = hub_mesh(declaration, &["relay.calls.make"]).await;
+    let seen: HubCaller = serde_json::from_value(
+        relayed(&mesh.call("relay", "relay_hub_caller", json!({})).await).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(seen.caller, testing::principal().id.to_string());
+    assert_eq!(seen.acting_server, "relay");
+    assert!(seen.permissions.is_empty(), "{seen:?}");
 }
 
 #[tokio::test]

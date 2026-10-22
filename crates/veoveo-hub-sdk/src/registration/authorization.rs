@@ -71,6 +71,11 @@ pub struct AuthorizationDeclaration {
     /// caller holds.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uses: Vec<PermissionName>,
+    /// Whether this server calls the Hub's own routes for its caller, such as
+    /// `PUT /selection/{profile}/{server}`, with a token the Hub issues it in a token
+    /// exchange naming no permissions.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub calls_hub: bool,
 }
 
 /// [`AuthorizationDeclaration`] as the `veoveo_authorization` registration member
@@ -83,6 +88,8 @@ pub(crate) struct AuthorizationDocument {
     requirements: RequirementsDocument,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     uses: Vec<PermissionName>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    calls_hub: bool,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -110,6 +117,7 @@ impl From<AuthorizationDocument> for AuthorizationDeclaration {
                 prompts: requirements.prompts,
             },
             uses: document.uses,
+            calls_hub: document.calls_hub,
         }
     }
 }
@@ -125,6 +133,7 @@ impl From<AuthorizationDeclaration> for AuthorizationDocument {
                 prompts: requirements.prompts,
             },
             uses: declaration.uses,
+            calls_hub: declaration.calls_hub,
         }
     }
 }

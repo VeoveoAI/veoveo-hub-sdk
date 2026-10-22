@@ -189,6 +189,7 @@ macro_rules! fixture {
                                 permissions: vec![],
                                 requirements: Requirements::default(),
                                 uses: vec![],
+                                calls_hub: false,
                             },
                         );
                     }

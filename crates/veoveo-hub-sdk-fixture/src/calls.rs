@@ -144,6 +144,30 @@ impl ToolCall for Tally {
 
 impl TaskToolCall for Tally {}
 
+/// What a Hub route saw of a request Relay made to it for its caller.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HubCaller {
+    /// The caller's principal.
+    pub caller: String,
+    /// The server that called for the caller.
+    pub acting_server: String,
+    /// The permissions the token carried.
+    pub permissions: Vec<String>,
+    /// The token's identifier, so a test sees whether a token was reused.
+    pub token: String,
+}
+
+/// `relay_hub`: Relay calls a Hub route, then Ledger, then the Hub route again, all in
+/// one request for its caller.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HubCalls {
+    pub first: HubCaller,
+    pub inspection: Inspection,
+    pub again: HubCaller,
+}
+
 /// The name of a Ledger entry: 1 to 64 lowercase ASCII letters, digits or hyphens.
 #[derive(
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
@@ -278,3 +302,5 @@ impl veoveo_hub_sdk::definition::SingleOutput for Seal {}
 impl veoveo_hub_sdk::definition::SingleOutput for Tallied {}
 impl veoveo_hub_sdk::definition::SingleOutput for Entry {}
 impl veoveo_hub_sdk::definition::SingleOutput for FollowedEntry {}
+impl veoveo_hub_sdk::definition::SingleOutput for HubCaller {}
+impl veoveo_hub_sdk::definition::SingleOutput for HubCalls {}

@@ -669,6 +669,21 @@ subscription the Hub does not acknowledge for the resource fails
 with `Unsubscribed`. The provider must advertise resource subscriptions and announce
 each change to the resource.
 
+A server also calls the Hub's own routes for its caller, such as
+`PUT /selection/{profile}/{server}`. It declares this with the route builder's
+`.calls_hub()`, which registers the token exchange grant, and sends the bearer that
+`HubClient::hub_bearer` returns:
+
+```rust
+let client = ctx.client()?;
+let bearer = client.hub_bearer().await?;
+http.put(hub_route).bearer_auth(bearer.expose()).json(&body).send().await?;
+```
+
+That bearer is a token exchanged for the request's profile naming no permissions,
+cached per binding apart from the providers' tokens. The Hub admits it as the caller
+and decides each route for the caller.
+
 `CallError` separates the outcomes. `Refused` carries the token endpoint's OAuth error
 and description, such as `invalid_target` naming a permission no registered server
 provides. `Undeclared` names a provider the server declared no use of, refused before
@@ -694,7 +709,9 @@ and reports the discovery failures the Hub attached to any page. These profile-w
 requests carry the caller's own bearer, which a server's calls for its caller do not
 have. `hosting::testing::TestMesh` runs several hosted servers in process
 behind a loopback token endpoint and profile, with the Hub's exchange and
-narrowing, so a server tests its calls to another without a Hub.
+narrowing, so a server tests its calls to another without a Hub. Routes added with
+`TestMesh::hub_route` stand for the Hub's own: they admit only a token the mesh
+exchanged and hand the handler its `ExchangedIdentity`.
 
 ## Task Work
 

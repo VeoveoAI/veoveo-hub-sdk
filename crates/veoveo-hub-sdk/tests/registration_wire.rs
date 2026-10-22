@@ -93,6 +93,7 @@ fn authorization() -> AuthorizationDeclaration {
             .into(),
         },
         uses: Vec::new(),
+        calls_hub: false,
     }
 }
 fn policy(permission: ClockPermission) -> RouteAccess {
@@ -390,6 +391,40 @@ fn uses_name_other_servers_permissions() {
     );
     assert!(metadata().grant_types.is_empty());
     let mut ungranted = consumer.clone();
+    ungranted.grant_types.clear();
+    assert!(ungranted.check().is_err());
+}
+
+#[test]
+fn a_server_that_calls_the_hub_registers_the_token_exchange_grant() {
+    let mut declaration = authorization();
+    declaration.calls_hub = true;
+    declaration.check(&slug(), &scheme()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&declaration).unwrap()["callsHub"],
+        json!(true)
+    );
+    // A declaration that does not call the Hub omits the member.
+    assert!(
+        serde_json::to_value(authorization())
+            .unwrap()
+            .get("callsHub")
+            .is_none()
+    );
+
+    // Without uses, calling the Hub alone registers the grant, in both spellings.
+    let caller = ClientMetadata::new(rfc8037_key(), registration(), declaration).unwrap();
+    assert_eq!(caller.grant_types, [GrantType::TokenExchange]);
+    let wire = serde_json::to_value(&caller).unwrap();
+    assert_eq!(wire["veoveo_authorization"]["calls_hub"], json!(true));
+    assert_eq!(
+        wire["grant_types"],
+        json!(["urn:ietf:params:oauth:grant-type:token-exchange"])
+    );
+    let decoded: ClientMetadata = serde_json::from_value(wire).unwrap();
+    assert_eq!(decoded, caller);
+    decoded.check().unwrap();
+    let mut ungranted = caller;
     ungranted.grant_types.clear();
     assert!(ungranted.check().is_err());
 }

@@ -22,7 +22,8 @@ including a collection exposed as both a resource and a tool.
 4. Use the registration client and the Hub's issued `AccessTokenTrust`. Construct
    the Task runtime with that trust's deployment ID. Use the SDK's request/Task
    call clients for downstream calls so they retain the authenticated caller and
-   captured execution context.
+   captured execution context. A server that calls the Hub's own routes for its
+   caller declares `.calls_hub()` and sends `HubClient::hub_bearer`.
 
 ## Traits enforce associations; attributes generate implementations
 

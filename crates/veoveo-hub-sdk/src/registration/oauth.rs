@@ -375,7 +375,8 @@ pub enum StorageBinding {
 #[serde(deny_unknown_fields)]
 pub struct DatabaseGrant {
     pub binding: StorageBinding,
-    /// The installation database, without credentials.
+    /// The database the server stores its state in, without credentials: the
+    /// installation's, or its data environment's.
     pub url: DatabaseUrl,
     pub username: DatabaseIdentifier,
     #[serde(serialize_with = "expose")]

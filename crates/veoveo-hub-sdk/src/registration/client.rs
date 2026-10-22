@@ -48,10 +48,6 @@ pub enum ClientError {
     },
     #[error("stored registration state is invalid: {0}")]
     InvalidStoredRegistration(serde_json::Error),
-    #[error(
-        "the saved registration is no longer authorized; obtain a fresh deployment-scoped initial admission and explicitly register_and_store"
-    )]
-    FreshAdmissionRequired,
     #[error(transparent)]
     Key(#[from] StatementError),
     #[error(transparent)]
@@ -328,40 +324,42 @@ impl RegistrationClient {
         &self.metadata
     }
 
-    /// Resume the saved RFC 7592 registration, or register only when no state exists.
-    /// An expired/missing remote registration never falls back to initial admission.
+    /// Resume the saved RFC 7592 registration while it still describes this server and
+    /// the Hub still knows it. Otherwise register again with the initial access token
+    /// and replace the saved state, so a changed declaration, a lost registration or
+    /// unreadable state never stops the server.
     pub async fn resume_or_register(
         &self,
         directory: &KeyDirectory,
     ) -> Result<Registration, ClientError> {
         self.check_directory_key(directory)?;
-        let Some(information) = directory.load_registration()? else {
+        let saved = match directory.load_registration() {
+            Ok(information) => {
+                information.and_then(|information| self.admit(information, None).ok())
+            }
+            Err(ClientError::InvalidStoredRegistration(_)) => None,
+            Err(error) => return Err(error),
+        };
+        let Some(stored) = saved else {
             return self.register_and_store(directory).await;
         };
-        let stored = self.admit(information, None)?;
-        self.check_registration_authority(&stored)?;
         let registration = match self.read(&stored).await {
             Err(ClientError::Rejected {
                 status: StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND,
                 ..
-            }) => return Err(ClientError::FreshAdmissionRequired),
+            }) => return self.register_and_store(directory).await,
             result => result?,
         };
         directory.store_registration(&registration)?;
         Ok(registration)
     }
 
-    /// Explicit new admission after trusted issuance/reissuance. Existing state may be
-    /// replaced only for the same immutable declaration/key, never a foreign deployment.
+    /// Register with the initial access token and replace any saved state.
     pub async fn register_and_store(
         &self,
         directory: &KeyDirectory,
     ) -> Result<Registration, ClientError> {
         self.check_directory_key(directory)?;
-        if let Some(information) = directory.load_registration()? {
-            let stored = self.admit(information, None)?;
-            self.check_registration_authority(&stored)?;
-        }
         let registration = self.register().await?;
         directory.store_registration(&registration)?;
         Ok(registration)

@@ -597,14 +597,13 @@ RFC 7592 GET must return the same client ID and configuration URI; only for that
 verified registration is its original private database grant retained when GET omits
 the password. The restored grant remains in the native `ClientInformation` object.
 
-An absent local record can consume a new initial admission. A missing/unauthorized
-remote registration instead returns `FreshAdmissionRequired`; it never silently
-retries a consumed admission or falls back to namespace bootstrap. Trusted runtime
-reconciliation obtains a fresh deployment-scoped admission, and explicit
-`register_and_store` may replace stale credentials only for the same declaration/key.
-Malformed or foreign state is rejected without overwriting it. This does not promise
-an atomic transaction between the remote registration and local disk: a lost response
-or failed local write requires trusted recovery, not reusable bootstrap authority.
+An absent, unreadable or non-matching local record, or a registration the Hub
+answers with 401 or 404, registers again with the initial access token and replaces
+the saved state. A changed declaration, a lost registration or a new Hub authority
+therefore never stops the server: the token is the only check, and the Hub decides
+what a registration with it replaces. Remote registration and the local write are
+not one transaction: after a lost response or a failed write, the next start
+registers again.
 
 `maintain` waits for process shutdown without deleting registration state. Explicit
 `deregister` retires the registration; the operator also removes its private state

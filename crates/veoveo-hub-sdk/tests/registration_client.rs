@@ -528,42 +528,44 @@ async fn restart_resumes_and_persists_rotated_private_native_information_without
 }
 
 #[tokio::test]
-async fn lost_registration_requires_explicit_fresh_admission_and_foreign_state_is_not_replaced() {
+async fn lost_changed_or_unreadable_registration_registers_again_and_replaces_saved_state() {
     let (shared, endpoint) = hub().await;
     let directory = scratch();
     let keys = KeyDirectory::new(&directory);
     let client = client(&endpoint, keys.load_or_generate().unwrap(), SECRET);
-    client.resume_or_register(&keys).await.unwrap();
+    let first = client.resume_or_register(&keys).await.unwrap();
+
+    // The Hub no longer knows the registration.
     shared.lock().unwrap().clients.clear();
-    let before = std::fs::read(keys.registration_path()).unwrap();
-    assert!(matches!(
-        client.resume_or_register(&keys).await,
-        Err(ClientError::FreshAdmissionRequired)
-    ));
-    assert!(
-        shared.lock().unwrap().clients.is_empty(),
-        "no implicit initial-admission retry"
-    );
-    assert_eq!(std::fs::read(keys.registration_path()).unwrap(), before);
-    client.register_and_store(&keys).await.unwrap();
+    let again = client.resume_or_register(&keys).await.unwrap();
+    assert_ne!(again.client_id(), first.client_id());
     assert_eq!(shared.lock().unwrap().clients.len(), 1);
-    let before = std::fs::read(keys.registration_path()).unwrap();
-    let mut foreign = client.metadata().clone();
-    foreign.registration.deployment = veoveo_hub_sdk::DeploymentId::new();
-    let foreign = RegistrationClient::new(
+    let saved: ClientInformation =
+        serde_json::from_slice(&std::fs::read(keys.registration_path()).unwrap()).unwrap();
+    assert_eq!(&saved.client_id, again.client_id());
+
+    // The server's declaration changed, as after a push that changes its tools.
+    let mut changed = client.metadata().clone();
+    changed.registration.deployment = veoveo_hub_sdk::DeploymentId::new();
+    let changed = RegistrationClient::new(
         http(),
-        endpoint,
+        endpoint.clone(),
         SecretString::from(SECRET),
         keys.load_or_generate().unwrap(),
-        foreign,
+        changed,
     )
     .unwrap();
-    assert!(matches!(
-        foreign.register_and_store(&keys).await,
-        Err(ClientError::ResponseMismatch(_))
-    ));
-    assert_eq!(std::fs::read(keys.registration_path()).unwrap(), before);
-    assert_eq!(shared.lock().unwrap().clients.len(), 1);
+    let replaced = changed.resume_or_register(&keys).await.unwrap();
+    assert_ne!(replaced.client_id(), again.client_id());
+    assert_eq!(replaced.information().metadata, *changed.metadata());
+
+    // The saved state is unreadable.
+    std::fs::write(keys.registration_path(), b"not json").unwrap();
+    let recovered = changed.resume_or_register(&keys).await.unwrap();
+    assert_ne!(recovered.client_id(), replaced.client_id());
+    let saved: ClientInformation =
+        serde_json::from_slice(&std::fs::read(keys.registration_path()).unwrap()).unwrap();
+    assert_eq!(&saved.client_id, recovered.client_id());
     std::fs::remove_dir_all(directory).unwrap();
 }
 

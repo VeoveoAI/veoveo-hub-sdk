@@ -363,15 +363,15 @@ mod tests {
     #[test]
     fn redirects_return_to_a_loopback_ip_and_port() {
         let address =
-            loopback_address(&Url::parse("http://127.0.0.1:3210/callback").unwrap()).unwrap();
-        assert_eq!(address, "127.0.0.1:3210".parse().unwrap());
-        assert!(loopback_address(&Url::parse("http://[::1]:3210/callback").unwrap()).is_ok());
+            loopback_address(&Url::parse("http://127.0.0.1:3211/callback").unwrap()).unwrap();
+        assert_eq!(address, "127.0.0.1:3211".parse().unwrap());
+        assert!(loopback_address(&Url::parse("http://[::1]:3211/callback").unwrap()).is_ok());
         for refused in [
-            "https://127.0.0.1:3210/callback",
-            "http://localhost:3210/callback",
-            "http://10.0.0.1:3210/callback",
+            "https://127.0.0.1:3211/callback",
+            "http://localhost:3211/callback",
+            "http://10.0.0.1:3211/callback",
             "http://127.0.0.1/callback",
-            "http://127.0.0.1:3210/callback?x=1",
+            "http://127.0.0.1:3211/callback?x=1",
         ] {
             assert!(
                 loopback_address(&Url::parse(refused).unwrap()).is_err(),

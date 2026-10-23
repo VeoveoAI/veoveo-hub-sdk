@@ -595,7 +595,7 @@ mod tests {
         Grant {
             hub: hub.clone(),
             profile: HubProfileId::parse("local").unwrap(),
-            client_id: OAuthClientId::parse("opencode").unwrap(),
+            client_id: OAuthClientId::parse("veoveo-hub-sdk-cli").unwrap(),
             resource: hub.join("mcp/local").unwrap(),
             token_endpoint: hub.join("oauth/token").unwrap(),
             revocation_endpoint: None,

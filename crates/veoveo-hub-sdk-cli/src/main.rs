@@ -113,13 +113,13 @@ enum HubCommand {
 #[derive(Args)]
 struct LoginArgs {
     /// The public OAuth client the installation registers for the redirect URI.
-    #[arg(long, env = "VEOVEO_CLI_CLIENT", default_value = "opencode")]
+    #[arg(long, env = "VEOVEO_CLI_CLIENT", default_value = "veoveo-hub-sdk-cli")]
     client: String,
     /// The client's registered loopback redirect; the CLI listens on its address.
     #[arg(
         long,
         env = "VEOVEO_CLI_REDIRECT_URI",
-        default_value = "http://127.0.0.1:3210/callback"
+        default_value = "http://127.0.0.1:3211/callback"
     )]
     redirect_uri: Url,
     /// Print the sign-in address instead of opening a browser.
@@ -534,7 +534,7 @@ mod tests {
         let Command::Login(args) = cli.command else {
             panic!("login parses as login");
         };
-        assert_eq!(args.client, "opencode");
-        assert_eq!(args.redirect_uri.as_str(), "http://127.0.0.1:3210/callback");
+        assert_eq!(args.client, "veoveo-hub-sdk-cli");
+        assert_eq!(args.redirect_uri.as_str(), "http://127.0.0.1:3211/callback");
     }
 }

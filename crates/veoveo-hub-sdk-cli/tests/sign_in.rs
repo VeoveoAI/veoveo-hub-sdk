@@ -188,7 +188,7 @@ async fn authorize(State(shared): State<Arc<Shared>>, Query(query): Query<Pairs>
     let mut ledger = shared.ledger.lock().unwrap();
     ledger.authorizations.push(query.clone());
     let config = &shared.config;
-    if query.get("client_id").map(String::as_str) != Some("opencode")
+    if query.get("client_id").map(String::as_str) != Some("veoveo-hub-sdk-cli")
         || query.get("redirect_uri") != Some(&config.redirect_uri)
         || query.get("response_type").map(String::as_str) != Some("code")
         || query.get("code_challenge_method").map(String::as_str) != Some("S256")
@@ -264,7 +264,7 @@ fn exchange_code(shared: &Shared, form: HashMap<String, String>) -> Response {
     let verifier = form.get("code_verifier").cloned().unwrap_or_default();
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     if form.get("redirect_uri") != Some(&pending.redirect_uri)
-        || form.get("client_id").map(String::as_str) != Some("opencode")
+        || form.get("client_id").map(String::as_str) != Some("veoveo-hub-sdk-cli")
         || challenge != pending.challenge
     {
         return refusal("invalid_grant");
@@ -287,7 +287,7 @@ async fn refresh(shared: &Shared, form: HashMap<String, String>) -> Response {
         if ledger.family_revoked
             || ledger.current_refresh.as_ref() != Some(&presented)
             || form.contains_key("scope")
-            || form.get("client_id").map(String::as_str) != Some("opencode")
+            || form.get("client_id").map(String::as_str) != Some("veoveo-hub-sdk-cli")
             || form.get("resource").map(String::as_str)
                 != Some(shared.base.join("mcp/local").unwrap().as_str())
         {
@@ -371,7 +371,7 @@ fn access(fake: &Fake, grants: &GrantStore) -> HubAccess {
 
 fn request(fake: &Fake) -> SignIn {
     SignIn {
-        client: OAuthClientId::parse("opencode").unwrap(),
+        client: OAuthClientId::parse("veoveo-hub-sdk-cli").unwrap(),
         redirect_uri: Url::parse(&fake.shared.config.redirect_uri).unwrap(),
         scope: ScopeName::parse("mcp").unwrap(),
         timeout: Duration::from_secs(20),
@@ -500,7 +500,7 @@ async fn a_browser_sign_in_stores_a_private_grant() {
     let grant = grants.load(&fake.base, &profile()).unwrap().unwrap();
     assert_eq!(grant.access_token.expose(), "at-1");
     assert_eq!(grant.refresh_token.as_ref().unwrap().expose(), "rt-1");
-    assert_eq!(grant.client_id.as_str(), "opencode");
+    assert_eq!(grant.client_id.as_str(), "veoveo-hub-sdk-cli");
     let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
     assert_eq!(
         files(grants.directory()),
@@ -569,7 +569,7 @@ async fn a_stale_access_token_rotates_once_into_a_replaced_grant() {
     assert_eq!(ledger.refreshes.len(), 1);
     let refresh = &ledger.refreshes[0];
     assert_eq!(refresh["refresh_token"], "rt-1");
-    assert_eq!(refresh["client_id"], "opencode");
+    assert_eq!(refresh["client_id"], "veoveo-hub-sdk-cli");
     assert_eq!(
         refresh["resource"],
         fake.base.join("mcp/local").unwrap().as_str()
@@ -731,7 +731,7 @@ async fn logout_revokes_the_refresh_token_and_deletes_the_grant() {
         let revocation = &ledger.revocations[0];
         assert_eq!(revocation["token"], "rt-1");
         assert_eq!(revocation["token_type_hint"], "refresh_token");
-        assert_eq!(revocation["client_id"], "opencode");
+        assert_eq!(revocation["client_id"], "veoveo-hub-sdk-cli");
         assert!(ledger.family_revoked);
     }
     assert!(grants.load(&fake.base, &profile()).unwrap().is_none());

@@ -90,11 +90,12 @@ values never reach output or `Debug` formatting.
 
 `login` signs in as a public client that the installation registers with the
 `authorization_code_pkce` and `refresh_token` grants, auth method `none` and a loopback
-redirect. `--client` (default `opencode`) and `--redirect-uri` (default
-`http://127.0.0.1:3210/callback`) name that registration. The defaults are the public
-client and loopback redirect that the qualified installation registers for native MCP
-clients; an installation that registers another client names it with these flags. The
-CLI listens on the redirect's
+redirect. `--client` (default `veoveo-hub-sdk-cli`) and `--redirect-uri` (default
+`http://127.0.0.1:3211/callback`) name that registration. The defaults are the CLI's
+own registration in the installation template, for the person's `local` profile; an
+installation that registers another client names it with these flags. Hub matches a
+redirect URI exactly, port included, so the port is fixed, and 3211 stays clear of
+OpenCode's 3210. The CLI listens on the redirect's
 address before it opens the authorization endpoint with the platform's opener (`open`
 on macOS, `xdg-open` elsewhere). `--no-browser` prints the address instead, which a
 person opens in a browser that reaches the Hub and the listener. The listener answers
@@ -124,13 +125,17 @@ sent; the answer's grant then replaces that record. So a refresh token reaches t
 token endpoint at most once. A request that never connected restores the unsent token.
 A refusal, a lost answer or a process that ends mid-renewal leave a grant with no
 refresh token, which serves until its access token expires and then asks the person to
-sign in again.
+sign in again. Hub would answer a repeat of a refresh token within its successor's
+delivery window with that same successor, but the CLI does not resend: the window is
+Hub's setting, not part of its metadata, and a repeat after it revokes the family. A
+lost answer therefore costs one new `login`.
 
 Every error that a new sign-in resolves ends with ``run `veoveo-hub-sdk-cli login` ``:
 no grant, an expired or refused renewal, or a renewal whose answer did not arrive.
 `logout` revokes the refresh token at the Hub when the grant names a revocation
 endpoint and deletes the grant whether or not the Hub confirms; it says when the Hub did
-not. A later `login` replaces the grant without revoking its predecessor.
+not. A later `login` replaces the grant without revoking its predecessor, whose
+refresh token stays valid at the Hub until it expires; `logout` first revokes it.
 
 Tokens, codes and verifiers travel only in request bodies, never on the command line,
 in the authorization address or in the CLI's output, and their `Debug` forms are

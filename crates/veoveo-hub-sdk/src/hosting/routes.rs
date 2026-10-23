@@ -241,6 +241,10 @@ impl<D: DomainServer> Routes<D> {
     pub(crate) fn has_tools(&self) -> bool {
         !self.inner.tools.is_empty()
     }
+    /// The descriptions the server changes while it runs, when it has them.
+    pub(crate) fn descriptions(&self) -> Option<&super::ToolDescriptions> {
+        self.inner.descriptions.as_ref()
+    }
     pub fn builder(documents: RoutePolicy) -> RoutesBuilder<D> {
         RoutesBuilder::new(documents)
     }
@@ -343,6 +347,7 @@ pub struct RoutesBuilder<D: DomainServer> {
     documents: RoutePolicy,
     uses: Vec<PermissionName>,
     calls_hub: bool,
+    descriptions: Option<super::ToolDescriptions>,
 }
 impl<D: DomainServer> RoutesBuilder<D> {
     fn new(documents: RoutePolicy) -> Self {
@@ -353,6 +358,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             documents,
             uses: vec![],
             calls_hub: false,
+            descriptions: None,
         }
     }
     pub fn build(self) -> Routes<D> {
@@ -427,6 +433,25 @@ impl<D: DomainServer> RoutesBuilder<D> {
     pub fn calls_hub(mut self) -> Self {
         self.calls_hub = true;
         self
+    }
+    /// Serve each tool's description from `descriptions` once the server sets one,
+    /// and the one its route registered until then. The server then advertises
+    /// `tools.listChanged` and tells its listeners after every change.
+    pub fn descriptions(mut self, descriptions: super::ToolDescriptions) -> Self {
+        self.descriptions = Some(descriptions);
+        self
+    }
+    /// A tool's descriptor with its current description.
+    fn current(&self, descriptor: &Tool) -> Tool {
+        let mut descriptor = descriptor.clone();
+        if let Some(description) = self
+            .descriptions
+            .as_ref()
+            .and_then(|descriptions| descriptions.get(&descriptor.name))
+        {
+            descriptor.description = Some(description.to_string().into());
+        }
+        descriptor
     }
     /// Register one native prompt descriptor and its rendering operation with the
     /// same explicit policy used by discovery and registration requirements.
@@ -823,11 +848,13 @@ impl<D: DomainServer> RoutesBuilder<D> {
         self.tools
             .values()
             .filter(|route| route.policy.check(context).is_ok())
-            .map(|route| route.descriptor.clone())
+            .map(|route| self.current(&route.descriptor))
             .collect()
     }
     pub(crate) fn get_tool(&self, name: &str) -> Option<Tool> {
-        self.tools.get(name).map(|route| route.descriptor.clone())
+        self.tools
+            .get(name)
+            .map(|route| self.current(&route.descriptor))
     }
     pub(crate) async fn call(
         &self,

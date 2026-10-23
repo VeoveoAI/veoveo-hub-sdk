@@ -262,13 +262,38 @@ impl TestHub {
         self.rpc_with(method, params, Some(&token)).await.1
     }
 
+    /// Calls `method` as the test user and returns the response as it streams, such as
+    /// a `subscriptions/listen` whose events arrive while it stays open.
+    pub async fn open(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> axum::http::Response<Body> {
+        let request = self.rpc_request(method, params, Some(&self.token()));
+        self.router.clone().oneshot(request).await.unwrap()
+    }
+
     /// Calls `method` with `bearer`, or with no Authorization header.
     pub async fn rpc_with(
         &self,
         method: &str,
-        mut params: serde_json::Value,
+        params: serde_json::Value,
         bearer: Option<&str>,
     ) -> (StatusCode, serde_json::Value) {
+        let (status, text) = self.send(self.rpc_request(method, params, bearer)).await;
+        (
+            status,
+            serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),
+        )
+    }
+
+    /// The JSON-RPC request of `method` with `bearer`, or with no Authorization header.
+    fn rpc_request(
+        &self,
+        method: &str,
+        mut params: serde_json::Value,
+        bearer: Option<&str>,
+    ) -> Request<Body> {
         params["_meta"] = serde_json::json!({
             "io.modelcontextprotocol/protocolVersion": TEST_PROTOCOL_VERSION,
             "io.modelcontextprotocol/clientInfo": {"name": "test-hub", "version": "1"},
@@ -289,12 +314,6 @@ impl TestHub {
         }
         let body =
             serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params});
-        let (status, text) = self
-            .send(request.body(Body::from(body.to_string())).unwrap())
-            .await;
-        (
-            status,
-            serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),
-        )
+        request.body(Body::from(body.to_string())).unwrap()
     }
 }

@@ -160,6 +160,11 @@ impl crate::definition::TemplateRead for ReadItem {
     parse = |address| matches!(address, FixtureResource::NestedItem).then_some(Self))]
 struct ReadNestedItem;
 
+/// The fixture's changing descriptions. Only
+/// `a_changed_description_is_listed_and_told_to_listeners` changes one, of `admin_echo`.
+static DESCRIPTIONS: LazyLock<super::ToolDescriptions> =
+    LazyLock::new(super::ToolDescriptions::new);
+
 static ROUTES: LazyLock<Routes<FixtureDomain>> = LazyLock::new(|| {
     Routes::builder(RoutePolicy::permission(FixturePermission::Docs).unwrap())
         .tool::<EchoRequest, _, _>(
@@ -224,6 +229,7 @@ static ROUTES: LazyLock<Routes<FixtureDomain>> = LazyLock::new(|| {
             RoutePolicy::permission(FixturePermission::Admin).unwrap(),
             |_, _, _| async { Ok(rmcp::model::GetPromptResult::new(vec![])) },
         )
+        .descriptions(DESCRIPTIONS.clone())
         .build()
 });
 impl DomainServer for FixtureDomain {
@@ -840,4 +846,98 @@ fn route_construction_refuses_conflicting_permission_metadata() {
             |_, request, _| async move { Ok(Echo { text: request.text }) },
         )
         .build();
+}
+
+/// The `data` of the next server-sent event on a stream.
+async fn next_event(
+    stream: &mut (impl futures::Stream<Item = Result<axum::body::Bytes, axum::Error>> + Unpin),
+    buffer: &mut String,
+) -> serde_json::Value {
+    use futures::StreamExt;
+    loop {
+        if let Some(end) = buffer.find("\n\n") {
+            let event = buffer[..end].to_owned();
+            buffer.drain(..end + 2);
+            if let Some(data) = event.lines().find_map(|line| line.strip_prefix("data:")) {
+                let data = data.trim();
+                if !data.is_empty() {
+                    return serde_json::from_str(data).unwrap();
+                }
+            }
+            continue;
+        }
+        let chunk = stream.next().await.expect("the stream stays open").unwrap();
+        buffer.push_str(std::str::from_utf8(&chunk).unwrap());
+    }
+}
+
+#[tokio::test]
+async fn a_changed_description_is_listed_and_told_to_listeners() {
+    tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        let tools = &SETUP.server_config().capabilities.tools;
+        assert_eq!(
+            tools.as_ref().and_then(|tools| tools.list_changed),
+            Some(true),
+            "a server with changing descriptions advertises tools.listChanged"
+        );
+        let hub = hub().granting([
+            veoveo_types::PermissionName::parse("fixture.docs.read").unwrap(),
+            veoveo_types::PermissionName::parse("fixture.admin.read").unwrap(),
+        ]);
+        let description = |body: serde_json::Value| {
+            body["result"]["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|tool| tool["name"] == "admin_echo")
+                .map(|tool| tool["description"].clone())
+        };
+        assert_eq!(
+            description(hub.rpc("tools/list", serde_json::json!({})).await),
+            Some("Echo for administrators".into())
+        );
+
+        let response = hub
+            .open(
+                "subscriptions/listen",
+                serde_json::json!({"notifications": {"toolsListChanged": true}}),
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let mut events = response.into_body().into_data_stream();
+        let mut buffer = String::new();
+        let acknowledged = next_event(&mut events, &mut buffer).await;
+        assert_eq!(
+            acknowledged["method"],
+            "notifications/subscriptions/acknowledged"
+        );
+        assert_eq!(
+            acknowledged["params"]["notifications"]["toolsListChanged"],
+            true
+        );
+
+        assert!(DESCRIPTIONS.set::<AdminRequest>("Echo for administrators, version 2"));
+        let changed = next_event(&mut events, &mut buffer).await;
+        assert_eq!(changed["method"], "notifications/tools/list_changed");
+        assert_eq!(
+            description(hub.rpc("tools/list", serde_json::json!({})).await),
+            Some("Echo for administrators, version 2".into())
+        );
+        assert!(
+            !DESCRIPTIONS.set::<AdminRequest>("Echo for administrators, version 2"),
+            "the same description is no change"
+        );
+        // The unchanged tool keeps the description its route registered.
+        let body = hub.rpc("tools/list", serde_json::json!({})).await;
+        let echo = body["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "echo")
+            .unwrap()
+            .clone();
+        assert_eq!(echo["description"], "Echo text back to the verified caller");
+    })
+    .await
+    .expect("the description fixture exceeded its bound");
 }

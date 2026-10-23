@@ -485,6 +485,15 @@ supplies three things:
    live or remote source implements `SubscriptionListener` and uses `ListenOnly`,
    and one with neither uses the default `NoTasks`.
 
+A tool whose description follows live state, such as the version it reports on,
+keeps the description its route registers until the server calls
+`ToolDescriptions::set` on the `ToolDescriptions` it gave
+`RoutesBuilder::descriptions`. Discovery then serves the current description, the
+server advertises `tools.listChanged`, and `Hosted` sends
+`notifications/tools/list_changed` on every `subscriptions/listen` that accepted it,
+beside the task support's own delivery. A tool list is shared by every caller of the
+server, so a description names no caller's state.
+
 ```rust
 let server = HostedServer::for_domain::<MyDomain>()
     .deployment(&public_deployment, args.allow_loopback_hosts)?

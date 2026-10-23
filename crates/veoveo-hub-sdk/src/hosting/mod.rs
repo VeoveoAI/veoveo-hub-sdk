@@ -7,7 +7,8 @@
 //! - a [`DomainServer`] implementation exposing ready [`Routes`], with typed
 //!   tool outputs and [`ResourceBuilder`] readers, explicit policies/cache and
 //!   native prompt renderers, plus optional completion;
-//! - optional [`TaskSupport`] for durable tasks and subscriptions.
+//! - optional [`TaskSupport`] for durable tasks and subscriptions;
+//! - optional [`ToolDescriptions`] for tool descriptions it changes while it runs.
 //!
 //! This module supplies the rest of the server contract, identically for every
 //! server. [`Hosted`] is the one `ServerHandler`, and [`HostedServer`] builds the
@@ -33,6 +34,7 @@ mod arguments;
 mod auth;
 mod calls;
 mod catalog;
+mod descriptions;
 mod domain;
 mod host;
 mod listing;
@@ -51,6 +53,7 @@ mod tests;
 
 pub use auth::{ForwardedBearer, forwarded_bearer, hub_identity};
 pub use calls::{ClientContext, ServerCalls};
+pub use descriptions::ToolDescriptions;
 pub use domain::{
     DomainServer, Hosted, NoTasks, ReadCache, TaskSupport, served_by_host, unknown_prompt,
 };

@@ -162,6 +162,12 @@ impl<C: McpServerContract> McpServerSetup<C> {
             if info.capabilities.tools.is_none() {
                 info.capabilities.tools = native.tools;
             }
+            // Descriptions that change while the server runs change its tool list.
+            if C::Server::routes().descriptions().is_some()
+                && let Some(tools) = info.capabilities.tools.as_mut()
+            {
+                tools.list_changed = Some(true);
+            }
         } else {
             info.capabilities.tools = None;
         }

@@ -15,7 +15,8 @@
 //! - the explicit cache policy of each typed resource route;
 //! - tool dispatch, with durable tasks started first when the server has them, and the
 //!   published input schema's violations appended to a call its arguments failed;
-//! - `tasks/*` and `subscriptions/listen` through its [`TaskSupport`].
+//! - `tasks/*` and `subscriptions/listen` through its [`TaskSupport`], and tool-list
+//!   changes after the server changes a [`ToolDescriptions`](super::ToolDescriptions).
 
 use std::future::Future;
 
@@ -396,10 +397,50 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
         &self,
         requested: &SubscriptionFilter,
     ) -> Option<SubscriptionFilter> {
-        self.tasks.accepted_subscription_filter(requested)
+        let mut accepted = self.tasks.accepted_subscription_filter(requested);
+        if requested.tools_list_changed == Some(true) && D::routes().descriptions().is_some() {
+            accepted
+                .get_or_insert_with(SubscriptionFilter::new)
+                .tools_list_changed = Some(true);
+        }
+        accepted
     }
 
+    /// The task support's own delivery, and a tool-list change after every change of
+    /// the server's [`ToolDescriptions`](super::ToolDescriptions) when the listen
+    /// accepted them.
     async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
-        self.tasks.listen(context).await
+        let descriptions = D::routes()
+            .descriptions()
+            .filter(|_| context.accepted().tools_list_changed == Some(true));
+        let Some(descriptions) = descriptions else {
+            return self.tasks.listen(context).await;
+        };
+        let mut changes = descriptions.changes();
+        let sink = context.sink().clone();
+        let tools = async move {
+            while changes.changed().await.is_ok() {
+                sink.notify_tool_list_changed().await.map_err(|error| {
+                    ErrorData::internal_error(
+                        format!("failed to send the tool list change: {error}"),
+                        None,
+                    )
+                })?;
+            }
+            std::future::pending::<Result<(), ErrorData>>().await
+        };
+        let mut rest = context.accepted().clone();
+        rest.tools_list_changed = None;
+        if rest == SubscriptionFilter::new() {
+            // The listen asked for nothing the task support delivers.
+            return tokio::select! {
+                () = context.cancelled() => Ok(()),
+                result = tools => result,
+            };
+        }
+        tokio::select! {
+            result = self.tasks.listen(context) => result,
+            result = tools => result,
+        }
     }
 }

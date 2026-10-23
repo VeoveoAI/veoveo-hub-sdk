@@ -1,16 +1,24 @@
 //! How the CLI reaches an installation's Hub as one of its OAuth clients: the SDK's
 //! `HubClient` for the profile's MCP endpoint, with the caller's own
-//! client-credentials bearer or a bearer supplied by the environment.
+//! client-credentials bearer, a bearer supplied by the environment or the grant a
+//! person's `login` stored.
 
 use std::{net::SocketAddr, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
+use reqwest::redirect;
 use url::Url;
 use veoveo_hub_sdk::{
     HubProfileId,
     client::{ClientCredentialsBearer, HubClient, StaticBearer, caller_signer},
 };
 use veoveo_types::{OAuthClientId, ScopeName};
+
+use crate::grant::{GrantBearer, GrantStore};
+
+/// The User-Agent of every request the CLI sends, so an edge that screens clients sees
+/// which program asks.
+pub const USER_AGENT: &str = concat!("veoveo-hub-sdk-cli/", env!("CARGO_PKG_VERSION"));
 
 /// One installation caller and where its Hub answers.
 #[derive(Debug, Clone)]
@@ -36,6 +44,8 @@ pub enum HubAuthentication {
     },
     /// Names a variable, never a token value. Supports native opaque references.
     BearerFromEnvironment { variable: String },
+    /// The person's own grant, which `login` stored and the bearer renews.
+    StoredGrant { grants: GrantStore },
 }
 
 impl HubAccess {
@@ -52,8 +62,8 @@ impl HubAccess {
 
     /// An HTTP client that sends requests for the origin's host to `connect` when it is
     /// set, keeping the origin's name in each request.
-    fn http(&self) -> Result<reqwest::Client> {
-        let mut builder = reqwest::Client::builder();
+    fn builder(&self) -> Result<reqwest::ClientBuilder> {
+        let mut builder = reqwest::Client::builder().user_agent(USER_AGENT);
         if let Some(address) = self.connect {
             let host = self
                 .hub
@@ -61,7 +71,18 @@ impl HubAccess {
                 .context("the Hub origin names no host")?;
             builder = builder.resolve(host, address);
         }
-        Ok(builder.build()?)
+        Ok(builder)
+    }
+
+    fn http(&self) -> Result<reqwest::Client> {
+        Ok(self.builder()?.build()?)
+    }
+
+    /// The client of OAuth discovery, token and revocation requests. It follows no
+    /// redirect, so a code, verifier or refresh token reaches only the endpoint the
+    /// metadata names.
+    pub fn oauth_http(&self) -> Result<reqwest::Client> {
+        Ok(self.builder()?.redirect(redirect::Policy::none()).build()?)
     }
 
     /// A client of the profile that acts as the caller.
@@ -90,6 +111,15 @@ impl HubAccess {
                     http.clone(),
                 )
                 .await?;
+                HubClient::new(endpoint, http, bearer)
+            }
+            HubAuthentication::StoredGrant { grants } => {
+                let bearer = GrantBearer::load(
+                    grants.clone(),
+                    &self.hub,
+                    &self.profile,
+                    self.oauth_http()?,
+                )?;
                 HubClient::new(endpoint, http, bearer)
             }
         };

@@ -12,8 +12,10 @@ use veoveo_hub_sdk::{
 };
 use veoveo_hub_sdk_cli::{
     agent::{self, Limits, Step, Stop},
-    hub::{HubAccess, HubAuthentication},
+    grant::GrantStore,
+    hub::{HubAccess, HubAuthentication, USER_AGENT},
     model::ChatModel,
+    sign_in::{self, Revocation, SignIn, SignedOut},
 };
 use veoveo_types::{OAuthClientId, ResourceUri, ScopeName};
 
@@ -44,6 +46,10 @@ struct HubArgs {
     /// The directory holding `<caller>.pem` and `<caller>.jwks.json`.
     #[arg(long, env = "VEOVEO_CLI_KEY_DIRECTORY", global = true)]
     keys: Option<PathBuf>,
+    /// The directory holding the grants `login` stores (default
+    /// `$XDG_CONFIG_HOME/veoveo-hub-sdk-cli/grants`, or `~/.config/...`).
+    #[arg(long, env = "VEOVEO_CLI_GRANT_DIRECTORY", global = true)]
+    grants: Option<PathBuf>,
     /// Environment variable holding an existing bearer or opaque credential reference.
     #[arg(
         long,
@@ -71,6 +77,18 @@ struct HubArgs {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Sign in through the browser and store the grant the other commands use when
+    /// neither --keys nor --bearer-env is given.
+    Login(LoginArgs),
+    /// Revoke the stored grant at the Hub and delete it.
+    Logout,
+    #[command(flatten)]
+    Hub(HubCommand),
+}
+
+/// The commands that act as the caller through the Hub.
+#[derive(Subcommand)]
+enum HubCommand {
     /// List the tools the caller sees, with their input schemas.
     Tools,
     /// List the resources and resource templates the caller sees.
@@ -90,6 +108,26 @@ enum Command {
     },
     /// Let a chat model work on a request with the caller's tools.
     Ask(AskArgs),
+}
+
+#[derive(Args)]
+struct LoginArgs {
+    /// The public OAuth client the installation registers for the redirect URI.
+    #[arg(long, env = "VEOVEO_CLI_CLIENT", default_value = "opencode")]
+    client: String,
+    /// The client's registered loopback redirect; the CLI listens on its address.
+    #[arg(
+        long,
+        env = "VEOVEO_CLI_REDIRECT_URI",
+        default_value = "http://127.0.0.1:3210/callback"
+    )]
+    redirect_uri: Url,
+    /// Print the sign-in address instead of opening a browser.
+    #[arg(long)]
+    no_browser: bool,
+    /// How long to wait for the browser to return.
+    #[arg(long, default_value_t = 300)]
+    timeout_seconds: u64,
 }
 
 #[derive(Args)]
@@ -127,31 +165,153 @@ async fn main() -> Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cli = Cli::parse();
     let json = cli.hub.json;
-    let client = cli.hub.access()?.client().await?;
-    run(&client, cli.command, json).await
+    match cli.command {
+        Command::Login(args) => login(&cli.hub, args).await,
+        Command::Logout => logout(&cli.hub).await,
+        Command::Hub(command) => {
+            let client = cli.hub.access()?.client().await?;
+            run(&client, command, json).await
+        }
+    }
 }
 
 impl HubArgs {
     fn access(&self) -> Result<HubAccess> {
+        let authentication = match (&self.bearer_env, &self.keys) {
+            (Some(variable), _) => HubAuthentication::BearerFromEnvironment {
+                variable: variable.clone(),
+            },
+            (None, Some(keys)) => HubAuthentication::ClientCredentials {
+                keys: keys.clone(),
+                caller: OAuthClientId::parse(&self.caller)?,
+                scope: ScopeName::parse(&self.scope)?,
+            },
+            (None, None) => HubAuthentication::StoredGrant {
+                grants: self.grants()?,
+            },
+        };
+        self.with(authentication)
+    }
+
+    /// Access through the stored grant, which `login` and `logout` act on whatever
+    /// --keys or --bearer-env say.
+    fn grant_access(&self) -> Result<(HubAccess, GrantStore)> {
+        let grants = self.grants()?;
+        let access = self.with(HubAuthentication::StoredGrant {
+            grants: grants.clone(),
+        })?;
+        Ok((access, grants))
+    }
+
+    fn with(&self, authentication: HubAuthentication) -> Result<HubAccess> {
         Ok(HubAccess {
             hub: self.hub.clone(),
             connect: self.connect,
-            authentication: match &self.bearer_env {
-                Some(variable) => HubAuthentication::BearerFromEnvironment { variable: variable.clone() },
-                None => HubAuthentication::ClientCredentials {
-                    keys: self.keys.clone().context("name the callers' key directory with --keys or VEOVEO_CLI_KEY_DIRECTORY, or use --bearer-env")?,
-                    caller: OAuthClientId::parse(&self.caller)?,
-                    scope: ScopeName::parse(&self.scope)?,
-                },
-            },
+            authentication,
             profile: HubProfileId::parse(&self.profile)?,
         })
     }
+
+    fn grants(&self) -> Result<GrantStore> {
+        let directory = match &self.grants {
+            Some(directory) => directory.clone(),
+            None => GrantStore::default_directory(
+                std::env::var_os("XDG_CONFIG_HOME"),
+                std::env::var_os("HOME"),
+            )?,
+        };
+        Ok(GrantStore::new(directory))
+    }
 }
 
-async fn run(client: &HubClient, command: Command, json: bool) -> Result<()> {
+async fn login(hub: &HubArgs, args: LoginArgs) -> Result<()> {
+    let (access, grants) = hub.grant_access()?;
+    let request = SignIn {
+        client: OAuthClientId::parse(&args.client)?,
+        redirect_uri: args.redirect_uri,
+        scope: ScopeName::parse(&hub.scope)?,
+        timeout: Duration::from_secs(args.timeout_seconds),
+    };
+    let signed_in = sign_in::sign_in(&access, &grants, &request, |address| {
+        if args.no_browser || !open_browser(address) {
+            eprintln!("Open this address in a browser to sign in:\n\n  {address}\n");
+        } else {
+            eprintln!(
+                "Signing in through the browser. If no window opened, open:\n\n  {address}\n"
+            );
+        }
+    })
+    .await?;
+    let origin = access.hub.origin().ascii_serialization();
+    println!(
+        "Signed in to {origin} profile {} as client {}. The grant is in {}.",
+        access.profile,
+        request.client,
+        signed_in.path.display()
+    );
+    match signed_in.refresh_token_expires_at {
+        Some(expiry) => println!(
+            "Its access token renews until {}.",
+            expiry.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+        ),
+        None => println!(
+            "The Hub issued no refresh token; the sign-in ends at {}.",
+            signed_in
+                .access_token_expires_at
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+        ),
+    }
+    Ok(())
+}
+
+/// Opens `address` in the person's browser through the platform's opener. The address
+/// carries the PKCE challenge and state, never a token.
+fn open_browser(address: &Url) -> bool {
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener)
+        .arg(address.as_str())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .is_ok()
+}
+
+async fn logout(hub: &HubArgs) -> Result<()> {
+    let (access, grants) = hub.grant_access()?;
+    let origin = access.hub.origin().ascii_serialization();
+    match sign_in::sign_out(&access, &grants).await? {
+        SignedOut::NotSignedIn => {
+            println!(
+                "There is no sign-in to {origin} for profile {}.",
+                access.profile
+            );
+        }
+        SignedOut::Deleted { path, revocation } => {
+            println!(
+                "Signed out of {origin} profile {}: deleted {}.",
+                access.profile,
+                path.display()
+            );
+            match revocation {
+                Revocation::Revoked => println!("The Hub revoked the grant."),
+                Revocation::Unavailable => {}
+                Revocation::Failed(reason) => eprintln!(
+                    "The Hub did not confirm the revocation ({reason}); the deleted refresh token stays valid until it expires."
+                ),
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn run(client: &HubClient, command: HubCommand, json: bool) -> Result<()> {
     match command {
-        Command::Tools => {
+        HubCommand::Tools => {
             let tools = listed(client.tools().await?);
             if json {
                 return print_json(&tools);
@@ -169,7 +329,7 @@ async fn run(client: &HubClient, command: Command, json: bool) -> Result<()> {
             }
             Ok(())
         }
-        Command::Resources => {
+        HubCommand::Resources => {
             let resources = listed(client.resources().await?);
             let templates = listed(client.resource_templates().await?);
             if json {
@@ -193,7 +353,7 @@ async fn run(client: &HubClient, command: Command, json: bool) -> Result<()> {
             }
             Ok(())
         }
-        Command::Prompts => {
+        HubCommand::Prompts => {
             let prompts = listed(client.prompts().await?);
             if json {
                 return print_json(&prompts);
@@ -207,8 +367,10 @@ async fn run(client: &HubClient, command: Command, json: bool) -> Result<()> {
             }
             Ok(())
         }
-        Command::Read { uri } => print_json(&client.read_resource(&ResourceUri::new(uri)?).await?),
-        Command::Call {
+        HubCommand::Read { uri } => {
+            print_json(&client.read_resource(&ResourceUri::new(uri)?).await?)
+        }
+        HubCommand::Call {
             tool,
             arguments,
             timeout_seconds,
@@ -226,7 +388,7 @@ async fn run(client: &HubClient, command: Command, json: bool) -> Result<()> {
             }
             Ok(())
         }
-        Command::Ask(args) => ask(client, args, json).await,
+        HubCommand::Ask(args) => ask(client, args, json).await,
     }
 }
 
@@ -252,7 +414,7 @@ async fn ask(client: &HubClient, args: AskArgs, json: bool) -> Result<()> {
         model: args.model.clone(),
         token,
         max_tokens: args.max_tokens,
-        http: reqwest::Client::new(),
+        http: reqwest::Client::builder().user_agent(USER_AGENT).build()?,
     };
     let limits = Limits {
         max_turns: args.max_turns,
@@ -343,7 +505,36 @@ mod tests {
             ])
             .is_err()
         );
-        let cli = Cli::try_parse_from(["veoveo-hub-sdk-cli", "tools"]).unwrap();
-        assert!(cli.hub.access().unwrap_err().to_string().contains("--keys"));
+    }
+
+    #[test]
+    fn without_keys_or_an_environment_bearer_commands_use_the_stored_grant() {
+        let cli =
+            Cli::try_parse_from(["veoveo-hub-sdk-cli", "--grants", "/grants", "tools"]).unwrap();
+        assert!(matches!(cli.hub.access().unwrap().authentication,
+            HubAuthentication::StoredGrant { grants } if grants.directory() == std::path::Path::new("/grants")));
+        let cli = Cli::try_parse_from([
+            "veoveo-hub-sdk-cli",
+            "--grants",
+            "/grants",
+            "--keys",
+            "/keys",
+            "tools",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.hub.access().unwrap().authentication,
+            HubAuthentication::ClientCredentials { .. }
+        ));
+    }
+
+    #[test]
+    fn login_defaults_to_the_registered_loopback_client() {
+        let cli = Cli::try_parse_from(["veoveo-hub-sdk-cli", "login"]).unwrap();
+        let Command::Login(args) = cli.command else {
+            panic!("login parses as login");
+        };
+        assert_eq!(args.client, "opencode");
+        assert_eq!(args.redirect_uri.as_str(), "http://127.0.0.1:3210/callback");
     }
 }

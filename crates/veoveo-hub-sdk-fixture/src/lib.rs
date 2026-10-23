@@ -5,7 +5,10 @@
 //! Ledger, a provider whose `calls` contract a consumer depends on, and Relay, which
 //! calls Ledger for its own caller. Foundry, the operations fixture, hands its casts to
 //! Kiln, a fake provider, and parks its Tasks until Kiln's signed callbacks settle them.
-//! The tool-input fixtures drive the argument-schema tests of hosted servers.
+//! The tool-input fixtures drive the argument-schema tests of hosted servers. Bulletin's
+//! one tool has a description that changes while it runs.
+#[cfg(feature = "server")]
+pub mod bulletin;
 #[cfg(feature = "contract")]
 pub mod calls;
 #[cfg(feature = "server")]

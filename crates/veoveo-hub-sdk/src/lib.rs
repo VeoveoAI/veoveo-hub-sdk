@@ -67,15 +67,15 @@ pub mod transport;
 pub mod uri;
 
 pub use execution::{
-    CompositionError, CompositionRevision, ENVIRONMENT_HEADER, EnvironmentSelector,
-    ExecutionContext, RESOLVED_COMPOSITION_FORMAT, ResolvedComponent, ResolvedComposition,
+    CompositionError, CompositionRevision, ExecutionContext, RESOLVED_COMPOSITION_FORMAT,
+    ResolvedComponent, ResolvedComposition,
 };
 pub use identity::{
     AccessTokenSubject, CanonicalTaskId, GroupMembership, GroupRole, HubProfileId,
     HubRefreshFamilyId, JwtId, LocalToolName, McpMethodName, OpaqueTaskId, Principal,
     PrincipalAssurance, PrincipalKind, PromptName, ProtectedResourceId, role_in_group,
 };
-pub use veoveo_types::{BuildId, DeploymentId, EnvironmentId};
+pub use veoveo_types::{BuildId, DeploymentId};
 pub use veoveo_types::{OAuthClientId, ServerSlug, TokenIssuer, TokenSubject};
 
 #[cfg(feature = "server")]

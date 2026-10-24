@@ -1,16 +1,12 @@
-use std::collections::BTreeMap;
-
 use veoveo_hub_sdk::{
-    CompositionRevision, DeploymentId, EnvironmentId, EnvironmentSelector, ExecutionContext,
-    ResolvedComponent, ResolvedComposition, ServerSlug,
+    CompositionRevision, DeploymentId, ExecutionContext, ResolvedComponent, ResolvedComposition,
+    ServerSlug,
 };
 
-const ENVIRONMENT: &str = "019a05cb-6c00-7000-8712-3456789abcdf";
 const DEPLOYMENT: &str = "019a05cb-6c00-7000-8712-3456789abcde";
 
 fn selected(entries: &[(&str, ResolvedComponent)]) -> ResolvedComposition {
     ResolvedComposition::new(
-        EnvironmentId::parse(ENVIRONMENT).unwrap(),
         entries
             .iter()
             .map(|(slug, target)| (ServerSlug::parse(slug).unwrap(), target.clone()))
@@ -38,12 +34,12 @@ fn composition_has_fixed_canonical_bytes_and_order_independent_revision() {
     // Fixed vector independently calculated over the exact format URI + NUL + JSON bytes.
     assert_eq!(
         first.revision().digest().as_str(),
-        "sha256:61278aa4735ba59c820889390e55edba4d9bbb922548b25cc59059efbfedc1a5"
+        "sha256:e1cfdb6b62341411df4e646973a6159286ce60dde568b355a409659afabd5a53"
     );
     assert_eq!(
         String::from_utf8(first.canonical_bytes()).unwrap(),
         format!(
-            "{{\"format\":\"https://veoveo.ai/formats/resolved-composition\",\"formatVersion\":1,\"environment\":\"{ENVIRONMENT}\",\"components\":{{\"alpha\":{{\"kind\":\"deployment\",\"deployment\":\"{DEPLOYMENT}\"}},\"zeta\":{{\"kind\":\"unavailable\"}}}}}}"
+            "{{\"format\":\"https://veoveo.ai/formats/resolved-composition\",\"formatVersion\":2,\"components\":{{\"alpha\":{{\"kind\":\"deployment\",\"deployment\":\"{DEPLOYMENT}\"}},\"zeta\":{{\"kind\":\"unavailable\"}}}}}}"
         )
     );
     assert_eq!(
@@ -51,10 +47,6 @@ fn composition_has_fixed_canonical_bytes_and_order_independent_revision() {
         first
     );
     let context = first.context();
-    assert_eq!(
-        context.environment,
-        EnvironmentId::parse(ENVIRONMENT).unwrap()
-    );
     assert_eq!(&context.composition, first.revision());
     assert_eq!(
         serde_json::from_value::<ExecutionContext>(serde_json::to_value(&context).unwrap())
@@ -77,9 +69,6 @@ fn explicit_unavailability_and_target_changes_cannot_reuse_a_composition() {
     assert_ne!(absent.revision(), unavailable.revision());
     assert_ne!(unavailable.revision(), serving.revision());
     assert_ne!(serving.revision(), replaced.revision());
-    let other_environment =
-        ResolvedComposition::new(EnvironmentId::new(), serving.components().clone());
-    assert_ne!(serving.revision(), other_environment.revision());
     // No health or display-name input exists: a stopped selected target stays selected.
     assert_eq!(
         serving.components()[&ServerSlug::parse("alpha").unwrap()],
@@ -93,7 +82,12 @@ fn composition_import_rejects_ambiguous_and_unsupported_records() {
     let canonical = String::from_utf8(composition.canonical_bytes()).unwrap();
     for invalid in [
         format!(" {canonical}"),
-        canonical.replace("\"formatVersion\":1", "\"formatVersion\":2"),
+        // Version 1 named an environment; it is no longer read.
+        canonical.replace("\"formatVersion\":2", "\"formatVersion\":1"),
+        canonical.replace(
+            "\"components\":",
+            "\"environment\":\"019a05cb-6c00-7000-8712-3456789abcdf\",\"components\":",
+        ),
         canonical.replace(
             "\"components\":{",
             "\"components\":{\"alpha\":{\"kind\":\"unavailable\"},",
@@ -122,27 +116,18 @@ fn composition_import_rejects_ambiguous_and_unsupported_records() {
 }
 
 #[test]
-fn http_selector_is_canonical_identity_only_and_not_an_execution_context() {
-    let selection = EnvironmentSelector::parse(ENVIRONMENT).unwrap();
+fn an_execution_context_carries_only_its_composition() {
+    let context = selected(&[("alpha", deployment())]).context();
     assert_eq!(
-        selection.environment(),
-        EnvironmentId::parse(ENVIRONMENT).unwrap()
-    );
-    for invalid in [
-        format!(" {ENVIRONMENT}"),
-        ENVIRONMENT.to_uppercase(),
-        format!("{ENVIRONMENT},{ENVIRONMENT}"),
-        "base".to_owned(),
-    ] {
-        assert!(EnvironmentSelector::parse(&invalid).is_err());
-    }
-    assert!(
-        serde_json::from_value::<ExecutionContext>(serde_json::json!({"environment": ENVIRONMENT}))
-            .is_err()
+        serde_json::to_value(&context).unwrap(),
+        serde_json::json!({"composition": context.composition})
     );
     assert!(
-        ResolvedComposition::new(selection.environment(), BTreeMap::new())
-            .components()
-            .is_empty()
+        serde_json::from_value::<ExecutionContext>(serde_json::json!({
+            "environment": "019a05cb-6c00-7000-8712-3456789abcdf",
+            "composition": context.composition,
+        }))
+        .is_err(),
+        "a context that names an environment is refused"
     );
 }

@@ -22,16 +22,16 @@ identity as required `veoveo_deployment_id`. A namespace's private key and the g
 initial registration secret are not credentials to distribute to user overrides.
 The SDK wire identity does not authorize a new key: namespace-owner admission remains
 in place until the Hub explicitly admits a separately keyed deployment. The Hub
-must retain registrations by deployment rather than let the newest logical slug
-silently replace another environment's selection.
+retains registrations by deployment; when several deployments of one slug have live
+registrations, it routes to the newest and says which one it set aside.
 
 The registration response's `veoveo_access_tokens.deployment` must equal the declared
 deployment. Verifiers derive the expected target from that admitted trust and reject
 another deployment's token even for the same slug and resource URL. Signed invocation
 claims carry that target separately from `HubRequestContext.execution`; downstream
-calls retain the environment/composition capture rather than select the latest map.
-The runtime-free resolved-composition and HTTP selector contract is documented in
-[`docs/CONVENTIONS.md`](../../../../docs/CONVENTIONS.md#execution-selection-and-deployment-identity).
+calls retain the composition capture rather than select the latest map.
+The runtime-free resolved-composition contract is documented in
+[`docs/CONVENTIONS.md`](../../../../docs/CONVENTIONS.md#execution-routing-and-deployment-identity).
 Hub admission, per-request routing and retained Task resolution remain Hub-owned work;
 these SDK types do not implement that routing by themselves.
 
@@ -39,7 +39,7 @@ these SDK types do not implement that routing by themselves.
 currently supported `shared_logical_schema` binding names the registered logical
 server and grants shared data under the existing native runtime/ACL contract. The
 client rejects another logical server's binding. The Hub must authorize use of this
-binding before issuing a login; permission to edit an environment is insufficient.
+binding before issuing a login.
 This does not provide owner-isolated schemas or cloned data. Unsupported isolation
 must be rejected, and a missing domain-storage grant does not make a runtime's
 required kernel login optional.

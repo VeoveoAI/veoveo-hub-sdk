@@ -1,33 +1,16 @@
-//! Execution selection and immutable resolved routing, independent of business data authority.
+//! Immutable resolved routing, independent of business data authority.
 
 use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use veoveo_types::{DeploymentId, EnvironmentId, IdentifierError, ServerSlug, Sha256Digest};
-
-/// HTTP selector on an authenticated MCP connection. Its value is an environment UUIDv7.
-/// Parsing confers no authority: the Hub admits selection and captures the composition.
-/// Repeated header fields must be rejected by the HTTP boundary, not concatenated.
-pub const ENVIRONMENT_HEADER: &str = "veoveo-environment";
-
-/// An untrusted connection selector; never substitute it for an admitted execution context.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EnvironmentSelector(EnvironmentId);
-
-impl EnvironmentSelector {
-    pub fn parse(value: &str) -> Result<Self, IdentifierError> {
-        EnvironmentId::parse(value).map(Self)
-    }
-
-    pub fn environment(&self) -> EnvironmentId {
-        self.0
-    }
-}
+use veoveo_types::{DeploymentId, ServerSlug, Sha256Digest};
 
 /// Format and SHA-256 domain of the SDK's immutable resolved composition record.
 pub const RESOLVED_COMPOSITION_FORMAT: &str = "https://veoveo.ai/formats/resolved-composition";
+/// Version 2 drops the named environment version 1 carried.
+const RESOLVED_COMPOSITION_FORMAT_VERSION: u8 = 2;
 
 /// The digest of one canonical resolved composition record, not a native source revision.
 #[derive(
@@ -42,12 +25,12 @@ impl CompositionRevision {
     }
 }
 
-/// Captured selection retained through downstream calls and long-running Tasks.
-/// The target deployment is separate: a downstream hop changes target, not composition.
+/// The routing a request captured, retained through downstream calls and long-running
+/// Tasks. The target deployment is separate: a downstream hop changes target, not
+/// composition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecutionContext {
-    pub environment: EnvironmentId,
     pub composition: CompositionRevision,
 }
 
@@ -60,28 +43,24 @@ pub enum ResolvedComponent {
     Unavailable {},
 }
 
-/// Complete resolved routing for an environment. No labels, source selectors, mutable
-/// health, secrets or business WorkContext belong in the hashed record. Owners retain
-/// the record and its deployment bindings for the lifetime of captured operations.
+/// Complete resolved routing of one request, from logical slug to deployment. No labels,
+/// source selectors, mutable health, secrets or business WorkContext belong in the
+/// hashed record. Owners retain the record and its deployment bindings for the lifetime
+/// of captured operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedComposition {
-    environment: EnvironmentId,
     components: BTreeMap<ServerSlug, ResolvedComponent>,
     revision: CompositionRevision,
 }
 
 impl ResolvedComposition {
-    pub fn new(
-        environment: EnvironmentId,
-        components: BTreeMap<ServerSlug, ResolvedComponent>,
-    ) -> Self {
-        let bytes = canonical_bytes(environment, &components);
+    pub fn new(components: BTreeMap<ServerSlug, ResolvedComponent>) -> Self {
+        let bytes = canonical_bytes(&components);
         let mut hash = Sha256::new();
         hash.update(RESOLVED_COMPOSITION_FORMAT.as_bytes());
         hash.update([0]);
         hash.update(bytes);
         Self {
-            environment,
             components,
             revision: CompositionRevision(Sha256Digest::from_bytes(hash.finalize().into())),
         }
@@ -89,7 +68,6 @@ impl ResolvedComposition {
 
     pub fn context(&self) -> ExecutionContext {
         ExecutionContext {
-            environment: self.environment,
             composition: self.revision.clone(),
         }
     }
@@ -102,10 +80,10 @@ impl ResolvedComposition {
         &self.components
     }
 
-    /// Compact UTF-8 JSON, fixed member order, version 1 and lexical component-key order.
+    /// Compact UTF-8 JSON, fixed member order, version 2 and lexical component-key order.
     /// Recompute the revision on import; a supplied digest alone is not an admitted record.
     pub fn canonical_bytes(&self) -> Vec<u8> {
-        canonical_bytes(self.environment, &self.components)
+        canonical_bytes(&self.components)
     }
 
     /// Read the exact canonical record, rejecting unsupported formats, duplicate keys,
@@ -116,14 +94,15 @@ impl ResolvedComposition {
         struct Record {
             format: String,
             format_version: u8,
-            environment: EnvironmentId,
             components: BTreeMap<ServerSlug, ResolvedComponent>,
         }
         let record: Record = serde_json::from_slice(bytes).map_err(CompositionError::Json)?;
-        if record.format != RESOLVED_COMPOSITION_FORMAT || record.format_version != 1 {
+        if record.format != RESOLVED_COMPOSITION_FORMAT
+            || record.format_version != RESOLVED_COMPOSITION_FORMAT_VERSION
+        {
             return Err(CompositionError::UnsupportedFormat);
         }
-        let composition = Self::new(record.environment, record.components);
+        let composition = Self::new(record.components);
         if composition.canonical_bytes() != bytes {
             return Err(CompositionError::NonCanonical);
         }
@@ -141,22 +120,17 @@ pub enum CompositionError {
     NonCanonical,
 }
 
-fn canonical_bytes(
-    environment: EnvironmentId,
-    components: &BTreeMap<ServerSlug, ResolvedComponent>,
-) -> Vec<u8> {
+fn canonical_bytes(components: &BTreeMap<ServerSlug, ResolvedComponent>) -> Vec<u8> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Record<'a> {
         format: &'static str,
         format_version: u8,
-        environment: EnvironmentId,
         components: &'a BTreeMap<ServerSlug, ResolvedComponent>,
     }
     serde_json::to_vec(&Record {
         format: RESOLVED_COMPOSITION_FORMAT,
-        format_version: 1,
-        environment,
+        format_version: RESOLVED_COMPOSITION_FORMAT_VERSION,
         components,
     })
     .expect("resolved composition contains only admitted string identifiers and fixed fields")

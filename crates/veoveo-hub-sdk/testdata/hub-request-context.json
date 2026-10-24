@@ -86,7 +86,6 @@
         "source_ip": "192.0.2.1"
       },
       "execution": {
-        "environment": "019a05cb-6c00-7000-8712-3456789abcdf",
         "composition": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     }
@@ -173,7 +172,6 @@
         "source_ip": "2001:db8::1"
       },
       "execution": {
-        "environment": "019a05cb-6c00-7000-8712-3456789abcdf",
         "composition": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     }
@@ -256,7 +254,6 @@
         "source_ip": null
       },
       "execution": {
-        "environment": "019a05cb-6c00-7000-8712-3456789abcdf",
         "composition": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     }

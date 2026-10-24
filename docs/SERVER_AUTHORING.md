@@ -112,11 +112,10 @@ policy. For example, the Observatory resource is registered as:
 the server's declared permission vocabulary. Policies also supply tool annotation
 hints; the hints themselves do not grant access.
 
-## Deployment identity and environment routing
+## Deployment identity and routing
 
 The logical slug names the API. `DeploymentId` names one admitted deployment of
-that API. Several deployments can share a slug while serving different execution
-environments. Keep the deployment ID and key directory across ordinary worker
+that API. Keep the deployment ID and key directory across ordinary worker
 restarts. Admit a new deployment for a changed worker contract, endpoint or key;
 do not generate a new ID every time a process starts.
 
@@ -132,16 +131,16 @@ the SDK does not silently retry with broader namespace credentials.
 The uniform executable interface being adopted by components is
 `--deployment-id` / `VEOVEO_DEPLOYMENT_ID` and `--describe-registration`. Describe
 prints that public metadata and exits before telemetry, database and provider
-startup. Component/template adoption and deployed environment qualification are
+startup. Component/template adoption and deployed qualification are
 tracked in the [execution plan](https://github.com/VeoveoAI/veoveo-docs/blob/main/OPENSHELL_HARDCUT_PLAN.md);
 the SDK API alone does not establish that every deployed server has adopted it.
 
-A client selects an environment using the Veoveo HTTP header
-`veoveo-environment`. Hub authenticates the caller, admits the selection and
-captures `ExecutionContext { environment, composition }`. The signed per-hop
-context separately identifies the recipient deployment. Servers use the SDK's
-verified context and downstream clients; they do not add environment arguments
-to every tool or resolve the component map themselves. Task execution and reads
+Hub routes each request and captures `ExecutionContext { composition }`: a slug with
+factory instances, or one the caller's selection names, routes by branch; any other
+slug routes to its deployment with live registrations, the newest when several have
+them. The signed per-hop context separately identifies the recipient deployment.
+Servers use the SDK's verified context and downstream clients; they do not add
+routing arguments to every tool or resolve the component map themselves. Task execution and reads
 retain their original deployment/composition. Current permissions still apply.
 
 ## Which wire fields are standard
@@ -158,8 +157,8 @@ and the SDK's [registration wire mapping](../crates/veoveo-hub-sdk/src/registrat
 - OAuth registration and registration management follow RFC 7591/7592. Our
   `veoveo_*` client metadata members use OAuth's extension mechanism. Forwarded
   JWT invocation claims and RFC 8693 delegation have their own typed SDK models.
-- `veoveo-environment` and the composition model are Veoveo routing contracts,
-  not standard MCP tool arguments.
+- The composition model is a Veoveo routing contract, not a standard MCP tool
+  argument.
 - `Page<C>` is our domain collection wire contract. MCP's catalog pagination
   does not itself require arbitrary list-returning tools to use this page shape.
 

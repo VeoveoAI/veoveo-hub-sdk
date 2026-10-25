@@ -55,13 +55,15 @@ opentelemetry_sdk = "0.32.1"
 parking_lot = "0.12.5"
 rcgen = "0.14.9"
 reqwest = { version = "=0.13.5", default-features = false }
-# rmcp 3.5.0 from the VeoveoAI fork (D26). The fork is upstream 3.5.0 plus three
+# rmcp 3.5.0 from the VeoveoAI fork (D26). The fork is upstream 3.5.0 plus four
 # changes: Task status subscriptions through `taskIds` in `subscriptions/listen`, a
-# typed `StreamableHttpError::HttpResponse` that keeps the HTTP status, and a debug-level
-# log for a send that fails during shutdown drain. Upstream 3.5.1 has none of the three.
+# typed `StreamableHttpError::HttpResponse` that keeps the HTTP status, a debug-level
+# log for a send that fails during shutdown drain, and a debug-level log, instead of a
+# fatal error, for a client worker's startup failure its caller received
+# (`startup-failure-level`). Upstream 3.5.1 has none of the four.
 # Remove the fork when upstream ships Task status subscriptions. Default features are off:
 # each crate enables what it uses, so the client feature compiles no server or macros.
-rmcp = { version = "=3.5.0", git = "https://github.com/VeoveoAI/rust-sdk", rev = "917e7914c93975fc1eddbff8792f1e2de933bc17", default-features = false }
+rmcp = { version = "=3.5.0", git = "https://github.com/VeoveoAI/rust-sdk", rev = "faa4e9d57dcb834740b6053c483ed2de7b8b8076", default-features = false }
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
 schemars = "1.2.2"
 secrecy = "0.10.3"

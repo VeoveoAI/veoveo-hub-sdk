@@ -66,7 +66,13 @@ struct HubArgs {
         global = true
     )]
     caller: String,
-    #[arg(long, default_value = "local", global = true)]
+    /// The Hub profile whose MCP endpoint, `{hub}/mcp/{profile}`, the caller uses.
+    #[arg(
+        long,
+        env = "VEOVEO_CLI_PROFILE",
+        default_value = "local",
+        global = true
+    )]
     profile: String,
     #[arg(long, default_value = "mcp", global = true)]
     scope: String,
@@ -164,6 +170,7 @@ struct AskArgs {
 async fn main() -> Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cli = Cli::parse();
+    cli.hub.admits(&cli.command)?;
     let json = cli.hub.json;
     match cli.command {
         Command::Login(args) => login(&cli.hub, args).await,
@@ -176,6 +183,33 @@ async fn main() -> Result<()> {
 }
 
 impl HubArgs {
+    /// Refuses, before anything is contacted, the commands that rest on credentials of
+    /// the CLI's own when a trusted runtime, such as a Computer, supplies the caller's
+    /// bearer: that runtime signs the caller in, renews and revokes the credential and
+    /// runs its own agent, so the CLI has no grant to store or revoke and no chat model.
+    fn admits(&self, command: &Command) -> Result<()> {
+        let Some(variable) = &self.bearer_env else {
+            return Ok(());
+        };
+        let (name, reason) = match command {
+            Command::Login(_) => (
+                "login",
+                "that runtime signs the caller in and renews the credential",
+            ),
+            Command::Logout => ("logout", "that runtime holds and revokes the credential"),
+            Command::Hub(HubCommand::Ask(_)) => (
+                "ask",
+                "that runtime runs its own agent and gives the CLI no chat model; use `tools` and `call`",
+            ),
+            Command::Hub(_) => return Ok(()),
+        };
+        Err(anyhow!(
+            "`{name}` does not apply here: the Hub credential comes from {variable} \
+             (--bearer-env or VEOVEO_CLI_BEARER_ENV), which a trusted runtime such as a \
+             Computer supplies, and {reason}"
+        ))
+    }
+
     fn access(&self) -> Result<HubAccess> {
         let authentication = match (&self.bearer_env, &self.keys) {
             (Some(variable), _) => HubAuthentication::BearerFromEnvironment {
@@ -194,7 +228,7 @@ impl HubArgs {
     }
 
     /// Access through the stored grant, which `login` and `logout` act on whatever
-    /// --keys or --bearer-env say.
+    /// --keys says; with --bearer-env they do not run.
     fn grant_access(&self) -> Result<(HubAccess, GrantStore)> {
         let grants = self.grants()?;
         let access = self.with(HubAuthentication::StoredGrant {
@@ -526,6 +560,67 @@ mod tests {
             cli.hub.access().unwrap().authentication,
             HubAuthentication::ClientCredentials { .. }
         ));
+    }
+
+    #[test]
+    fn a_runtime_bearer_refuses_the_commands_that_need_the_clis_own_credentials() {
+        for command in [&["login"][..], &["logout"], &["ask", "What time is it?"]] {
+            let cli = Cli::try_parse_from(
+                [
+                    "veoveo-hub-sdk-cli",
+                    "--bearer-env",
+                    "COMPUTER_HUB_REFERENCE",
+                ]
+                .iter()
+                .chain(command),
+            )
+            .unwrap();
+            let error = cli.hub.admits(&cli.command).unwrap_err().to_string();
+            assert!(
+                error.starts_with(&format!("`{}` does not apply here", command[0]))
+                    && error.contains("COMPUTER_HUB_REFERENCE"),
+                "{error}"
+            );
+        }
+        for command in [
+            &["tools"][..],
+            &["call", "console__computer"],
+            &["read", "x://y"],
+        ] {
+            let cli = Cli::try_parse_from(
+                [
+                    "veoveo-hub-sdk-cli",
+                    "--bearer-env",
+                    "COMPUTER_HUB_REFERENCE",
+                ]
+                .iter()
+                .chain(command),
+            )
+            .unwrap();
+            cli.hub.admits(&cli.command).unwrap();
+        }
+        let cli =
+            Cli::try_parse_from(["veoveo-hub-sdk-cli", "--grants", "/grants", "login"]).unwrap();
+        cli.hub.admits(&cli.command).unwrap();
+    }
+
+    #[test]
+    fn the_profile_names_the_mcp_endpoint() {
+        let cli = Cli::try_parse_from([
+            "veoveo-hub-sdk-cli",
+            "--hub",
+            "https://veoveo.example.com",
+            "--bearer-env",
+            "COMPUTER_HUB_REFERENCE",
+            "--profile",
+            "computer",
+            "tools",
+        ])
+        .unwrap();
+        assert_eq!(
+            cli.hub.access().unwrap().endpoint().unwrap().as_str(),
+            "https://veoveo.example.com/mcp/computer"
+        );
     }
 
     #[test]

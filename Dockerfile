@@ -33,9 +33,16 @@ WORKDIR /home/sandbox/src
 COPY --chown=sandbox:sandbox . .
 
 FROM source AS check
+# The check and cli-build steps keep Cargo's registry, its Git checkouts and the workspace
+# target in BuildKit cache mounts of the build host, so consecutive checks reuse compiled
+# crates. They run as the sandbox user, so these caches are its own, apart from the
+# root-owned registry cache of the dev stage's cargo install. Factory builds never use them.
 # cargo-hack builds every feature of every crate alone, which proves that the contract
 # feature compiles without the server runtime; a test checks its dependency graph.
-RUN cargo fetch --locked \
+RUN --mount=type=cache,id=veoveo-hub-sdk-cargo-registry,target=/usr/local/cargo/registry,uid=1000,sharing=locked \
+    --mount=type=cache,id=veoveo-hub-sdk-cargo-git,target=/usr/local/cargo/git,uid=1000,sharing=locked \
+    --mount=type=cache,id=veoveo-hub-sdk-target,target=/home/sandbox/src/target,uid=1000,sharing=locked \
+    cargo fetch --locked \
     && cargo fmt --check \
     && cargo clippy --locked --all-targets --all-features -- -D warnings \
     && cargo deny --locked check \
@@ -43,7 +50,11 @@ RUN cargo fetch --locked \
     && cargo nextest run --locked --profile ci
 
 FROM source AS cli-build
-RUN cargo build --locked --release --bin veoveo-hub-sdk-cli \
+# target/ is a cache mount, so the binary leaves it in the same step.
+RUN --mount=type=cache,id=veoveo-hub-sdk-cargo-registry,target=/usr/local/cargo/registry,uid=1000,sharing=locked \
+    --mount=type=cache,id=veoveo-hub-sdk-cargo-git,target=/usr/local/cargo/git,uid=1000,sharing=locked \
+    --mount=type=cache,id=veoveo-hub-sdk-target,target=/home/sandbox/src/target,uid=1000,sharing=locked \
+    cargo build --locked --release --bin veoveo-hub-sdk-cli \
     && cp target/release/veoveo-hub-sdk-cli /home/sandbox/veoveo-hub-sdk-cli
 
 # The CLI alone. An installation mounts this image read-only into the workloads that use

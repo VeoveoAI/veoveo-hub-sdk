@@ -2,6 +2,10 @@
 
 These rules apply to veoveo-hub-sdk.
 
+- The design is in [crates/veoveo-hub-sdk/DESIGN.md](crates/veoveo-hub-sdk/DESIGN.md), the
+  [registration protocol](crates/veoveo-hub-sdk/src/registration/DESIGN.md), the other
+  crates' and modules' `DESIGN.md` and [docs/CONVENTIONS.md](docs/CONVENTIONS.md). Change
+  the design in the same change as the code.
 - Use upstream runtimes and libraries unmodified and adapt through supported
   configuration. The rmcp fork pin in `Cargo.toml` records why it exists and when it
   goes.

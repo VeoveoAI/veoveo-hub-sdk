@@ -32,5 +32,9 @@ These rules apply to veoveo-hub-sdk.
   a task runner or shell scripts that hold test logic.
 - Pin exact versions. When changing a pin, verify the latest stable release at its
   source. veoveo-core is pinned to one revision for every core crate.
-- Run `docker build --target check .` on macOS and on Linux before pushing.
+- Run `docker build --target check .` on macOS and on Linux before pushing. The `check`
+  and `cli-build` stages keep Cargo's registry, its Git checkouts and the workspace
+  `target/` in BuildKit cache mounts, so consecutive checks reuse compiled crates. These
+  caches live only in the build host's BuildKit, are built by the operator from our own
+  repositories, and are never used by factory builds, which share no writable cache.
 - Commit small, coherent changes. Commits carry no AI or tool attribution.

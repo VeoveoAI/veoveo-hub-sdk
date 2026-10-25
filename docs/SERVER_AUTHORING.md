@@ -132,7 +132,7 @@ The uniform executable interface being adopted by components is
 `--deployment-id` / `VEOVEO_DEPLOYMENT_ID` and `--describe-registration`. Describe
 prints that public metadata and exits before telemetry, database and provider
 startup. Component/template adoption and deployed qualification are
-tracked in the [execution plan](https://github.com/VeoveoAI/veoveo-docs/blob/main/OPENSHELL_HARDCUT_PLAN.md);
+tracked in the [qualification checklist](https://github.com/VeoveoAI/veoveo-docs/blob/main/QUALIFICATION_CHECKLIST.md);
 the SDK API alone does not establish that every deployed server has adopted it.
 
 Hub routes each request and captures `ExecutionContext { composition }`: a slug with

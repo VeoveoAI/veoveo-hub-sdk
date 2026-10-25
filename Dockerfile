@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-# Stages: dev is the development environment and check is the single gate. The SDK is a
-# library: it ships no runtime image. The Hub client CLI installs with Cargo.
+# Stages: dev is the development environment, check is the single gate, cli-build compiles
+# the Hub client CLI and cli is its image. The SDK itself is a library and ships no image.
 
 FROM rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS dev
 # clang and cmake build aws-lc-sys, which jsonwebtoken's AWS-LC backend links. PostgreSQL
@@ -41,3 +41,12 @@ RUN cargo fetch --locked \
     && cargo deny --locked check \
     && cargo hack check --each-feature --no-dev-deps \
     && cargo nextest run --locked --profile ci
+
+FROM source AS cli-build
+RUN cargo build --locked --release --bin veoveo-hub-sdk-cli \
+    && cp target/release/veoveo-hub-sdk-cli /home/sandbox/veoveo-hub-sdk-cli
+
+# The CLI alone. An installation mounts this image read-only into the workloads that use
+# it, where the binary runs on the C library of the image it is mounted into.
+FROM scratch AS cli
+COPY --from=cli-build --chmod=0755 /home/sandbox/veoveo-hub-sdk-cli /usr/local/bin/veoveo-hub-sdk-cli

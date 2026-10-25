@@ -169,6 +169,16 @@ model token comes from the variable `--model-token-env` names (default `HF_TOKEN
 from `--env-file`, and the CLI sends it only to the model endpoint. The default model is
 `XiaomiMiMo/MiMo-V2.6-Pro-RL:novita` through `https://router.huggingface.co/v1`.
 
+## Distribution
+
+The `cli` target of the repository's `Dockerfile` builds an image that holds only
+`/usr/local/bin/veoveo-hub-sdk-cli`, compiled in the `dev` stage's Debian trixie. An
+installation does not copy the binary into another image: it mounts this image
+read-only into the workloads that use it, as a Kubernetes image volume, where the
+binary runs on the C library of the image it is mounted into, a glibc at least as new
+as Debian trixie's. A developer installs it with Cargo from a revision of
+this repository.
+
 ## Use-Case Tests
 
 `tests/use_cases.rs` gives a chat model a request a person would make and checks what

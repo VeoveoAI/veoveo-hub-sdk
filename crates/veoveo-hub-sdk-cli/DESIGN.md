@@ -53,17 +53,24 @@ veoveo-hub-sdk-cli --connect 127.0.0.1:8080 --keys state/callers --caller accept
   ask --env-file .env "Generate an image of a red circle with the fake text-to-image model."
 ```
 
+`--profile` (default `local`) names the Hub profile whose MCP endpoint,
+`{hub}/mcp/{profile}`, the caller uses.
+
 `--bearer-env HUB_TOKEN` (or `VEOVEO_CLI_BEARER_ENV=HUB_TOKEN`) uses the
 existing bearer in that variable through `StaticBearer`. It accepts native opaque
 credential references and requires no caller key, caller ID or scope. It conflicts
-with `--keys`; issuance and renewal belong to the caller's trusted runtime.
+with `--keys`; issuance and renewal belong to the caller's trusted runtime. So with a
+bearer from the environment, `login`, `logout` and `ask` refuse before they contact
+anything, each saying that it does not apply and naming the variable: the runtime
+signs the caller in, renews and revokes the credential and runs its own agent, so the
+CLI has no grant to store or revoke and no chat model. See [In A Computer](#in-a-computer).
 
 With neither `--keys` nor `--bearer-env`, a command acts as the person whose grant
 `login` stored for the `--hub` origin and `--profile`. `--grants` (or
 `VEOVEO_CLI_GRANT_DIRECTORY`) names the directory of grants, by default
 `$XDG_CONFIG_HOME/veoveo-hub-sdk-cli/grants`, or `~/.config/veoveo-hub-sdk-cli/grants`
 when `XDG_CONFIG_HOME` names no absolute directory. `login` and `logout` act on that
-directory whatever `--keys` or `--bearer-env` say:
+directory whatever `--keys` says:
 
 ```sh
 veoveo-hub-sdk-cli --hub https://veoveo.example.com login
@@ -71,8 +78,26 @@ veoveo-hub-sdk-cli --hub https://veoveo.example.com tools
 veoveo-hub-sdk-cli --hub https://veoveo.example.com logout
 ```
 
-`--json` prints JSON: the listing, the call result or the whole `ask` transcript. Each
-flag also reads a `VEOVEO_CLI_*` environment variable.
+`--json` prints JSON: the listing, the call result or the whole `ask` transcript. Every
+global flag but `--scope` and `--json` also reads a `VEOVEO_CLI_*` environment
+variable (`VEOVEO_CLI_HUB`, `VEOVEO_CLI_CONNECT`, `VEOVEO_CLI_KEY_DIRECTORY`,
+`VEOVEO_CLI_GRANT_DIRECTORY`, `VEOVEO_CLI_BEARER_ENV`, `VEOVEO_CLI_CALLER` and
+`VEOVEO_CLI_PROFILE`), as do `login`'s `--client` and `--redirect-uri` and `ask`'s
+`--model-url` and `--model`.
+
+## In A Computer
+
+Every Computer mounts the CLI and runs it as its owner, exactly as OpenCode reaches the
+Hub. The installation's Computer template sets `VEOVEO_CLI_HUB` to the Hub's public
+origin, `VEOVEO_CLI_PROFILE=computer` and
+`VEOVEO_CLI_BEARER_ENV=COMPUTER_HUB_REFERENCE`, so `tools`, `resources`, `prompts`,
+`read` and `call` need no flag: each request goes to `{hub}/mcp/computer` with the
+`COMPUTER_HUB_REFERENCE` placeholder as its bearer, which the sandbox's proxy replaces
+with the owner's Hub token. The Computer's policy admits that endpoint, with that
+credential, for the CLI's mounted binary as it does for OpenCode, and never the model
+endpoint. `login`, `logout` and `ask` say that they do not apply there: the Computer
+signs its owner in and renews the token, and its agent is OpenCode. Which tools the
+CLI sees and may call is decided by the Hub for the owner, as for OpenCode.
 
 ## Client And Token
 

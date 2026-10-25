@@ -791,6 +791,7 @@ async fn the_cli_signs_in_and_out() {
             .args(arguments)
             .env_remove("VEOVEO_CLI_KEY_DIRECTORY")
             .env_remove("VEOVEO_CLI_BEARER_ENV")
+            .env_remove("VEOVEO_CLI_PROFILE")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         command

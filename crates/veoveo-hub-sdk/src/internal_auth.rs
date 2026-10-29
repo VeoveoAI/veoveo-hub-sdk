@@ -1,5 +1,6 @@
 mod exchange;
 mod forwarded;
+mod recipient;
 mod request;
 pub use exchange::{
     DelegatedCaller, DelegatingTask, DelegationContext, ExchangeGrant, ExchangedIdentity,
@@ -541,17 +542,27 @@ impl HubInternalTokenVerifier {
         &self,
         claims: AccessTokenClaims,
     ) -> Result<HubInternalIdentity, InternalTokenError> {
-        let server = claims.invocation.server.clone();
-        if self.audience.server != server || self.audience.resource.as_str() != claims.standard.aud
-        {
-            return Err(InternalTokenError::AudienceMismatch {
+        let bound = recipient::bind(
+            recipient::Recipient {
+                server: &self.audience.server,
+                deployment: self.audience.deployment,
+                resource: self.audience.resource.as_str(),
+            },
+            recipient::Recipient {
+                server: &claims.invocation.server,
+                deployment: claims.invocation.deployment,
+                resource: claims.standard.aud.as_str(),
+            },
+        )
+        .map_err(|mismatch| match mismatch {
+            recipient::Mismatch::Audience => InternalTokenError::AudienceMismatch {
                 expected: self.audience.server.clone(),
-                actual: server,
-            });
-        }
-        if self.audience.deployment != claims.invocation.deployment {
-            return Err(InternalTokenError::DeploymentMismatch);
-        }
+                actual: claims.invocation.server.clone(),
+            },
+            recipient::Mismatch::Deployment => InternalTokenError::DeploymentMismatch,
+        })?;
+        let server = bound.server.clone();
+        let deployment = bound.deployment;
         let audience = self.audience.resource.clone();
         let invocation = claims.invocation;
         claims.standard.check_actor(&invocation.actor)?;
@@ -611,7 +622,7 @@ impl HubInternalTokenVerifier {
             issuer: claims.standard.iss,
             profile: invocation.profile,
             server,
-            deployment: invocation.deployment,
+            deployment,
             audience,
             client: claims.standard.client_id,
             actor: invocation.actor,

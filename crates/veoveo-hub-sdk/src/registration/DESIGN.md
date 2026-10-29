@@ -342,6 +342,16 @@ reason and names declared identifiers only, never request contents or secrets.
 
 ## Forwarded Identity
 
+The verifier's private recipient-binding decision compares the admitted server and
+resource first, then the immutable deployment, and returns the matched recipient.
+`internal_auth/recipient.rs` is the production-called, dependency-light boundary
+shared with the manual Task-continuity proof package. It changes neither the token
+contract nor the order and public errors of verification. A proof of this decision
+assumes authenticated decoded claims and the registration's trusted recipient;
+signature, issuer, time, actor-chain and permission checks remain the verifier's
+separate responsibilities. The joint proof uses exact Hub and SDK source snapshots,
+not an assertion that a Hub dependency pin already contains a private SDK refactor.
+
 The Hub authorizes each request with installation roles over the target server's
 declared permissions, as the policy evaluator in `veoveo-hub`
 describes. It then forwards the request with a fresh RFC 9068 access token signed by

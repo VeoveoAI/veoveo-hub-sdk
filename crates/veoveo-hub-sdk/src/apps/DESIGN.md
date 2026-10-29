@@ -14,7 +14,7 @@ owns the pinned protocol constants and helpers; this document owns the rules.
 | Veoveo reactive App resource adapter | Repository-owned extension over MCP Apps `2026-01-26`. A sandboxed App requests an authorized resource filter through one final-profile `subscriptions/listen` stream; the Console projects contentless `ui/notifications/resource-updated` wakes from its auth-scoped MCP client. This adapter is not claimed as part of SEP-1865. |
 | Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. Exact `ui://` targets navigate only when present in the caller-visible App catalog. Other custom, missing, or unexposed targets fail closed. |
 | MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`; app-started durable work retains the same task lifecycle and ownership rules as a normal MCP client. |
-| Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. Hub dependency metadata uses camelCase fields and unchanged snake_case operation values. |
+| Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. |
 | [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/) | Linked tool arguments and structured results use the same canonical schemas exposed outside the app. |
 | HTML iframe sandbox and Content Security Policy | HTML runs in an opaque-origin `sandbox="allow-scripts"` frame. The default CSP denies remote network access while permitting local `data:` fetches; a live-data App may declare exact origins through `_meta.ui.csp`, which the host validates before adding them. Cookies, storage, and same-origin privilege remain absent. |
 
@@ -114,10 +114,7 @@ The hosting core (hub + console BFF + console web) stays fully generic:
 - **Bridge** — the host declares `serverTools` and `serverResources`
   capabilities. `tools/call` from a view is proxied only to app-visible
   tools linked to that exact view on that view's server. Own-server resource
-  reads remain implicit. A foreign `resources/read` must match one exact
-  hub-projected App dependency that names the owning App URI, target
-  server, URI scheme and prefix, required scope, operation, and optional data
-  labels. Hub policy remains the authoritative second wall.
+  reads remain implicit; a view reads no other server's resources.
   Console catalog updates with unchanged descriptor values preserve the iframe and
   bridge. Theme changes travel through `ui/notifications/host-context-changed`;
   link callbacks use the current shell navigation without replacing the bridge.
@@ -171,56 +168,6 @@ The hosting core (hub + console BFF + console web) stays fully generic:
   App targets against its current caller-visible catalog and never accepts a
   browser-supplied server alias or arbitrary Console route.
 
-## Governed Cross-Server Resources
-
-Cross-server requirements are typed control-plane declarations, not
-App-authored metadata. A server declares them in
-`ServerManifest.app_resource_dependencies`; the installation's hub control
-plane decides whether the owner and target are exposed and which policy applies.
-Each declaration binds one projected `ui://{owner}/...` App resource to one
-registered target server and one non-root URI prefix under that server's
-canonical scheme. The initial operation profile is `read`.
-
-Control-plane validation rejects an unknown target server, a scheme not owned
-by that server, an invalid App owner, a root or mismatched prefix, an unknown
-data label, an empty operation set, and duplicate declarations. The hub
-filters valid declarations against the active profile, actor scopes, and actor
-data labels before adding
-`_meta["ai.veoveo/app-resource-dependencies"]` to the listed App resource.
-Dependencies are sorted for deterministic projection.
-
-### Reusable domain Apps
-
-An App may build on another domain without copying that domain's data or
-embedding a private service client. The App owner declares the exact dependency
-in its server manifest, and the installation's hub control plane decides whether the owner
-and target are exposed to the same caller. For Map integrations, the target is
-the registered Map server, the scheme is `map`, and the prefix names the
-smallest required `map://` resource family. A consumer should prefer immutable
-Map compositions, publications, and bounded feature-layer reads over broad
-collection access.
-
-The existing Map workspace, `ui://map/workspace.html`, is the canonical reusable
-Map experience. A host may open it through normal App discovery and navigation.
-An integrating server may instead ship its own App and read authorized Map
-resources through the projected dependency, then add its own domain overlays.
-It must preserve Map attribution, provenance, resource identity, and update
-semantics. App dependencies do not grant tool access; Map mutations remain
-ordinary linked tools with their own scopes.
-
-Apps must fail closed when a Map dependency is absent or unauthorized. They must
-not accept browser-supplied server aliases, arbitrary `map://` prefixes, direct
-Map service URLs, or credentials. A reusable visual component is a protocol
-surface over governed resources, not a second Map authority.
-
-The Console trusts only that hub projection. It re-lists the exact App
-resource before each cross-server read and accepts the URI only when it matches
-the projected scheme, prefix, and `read` operation. A browser-supplied server,
-App URI, or resource URI cannot enlarge the declaration. The eventual
-`resources/read` runs through the hub under the same session and Work
-Context, where profile exposure and resource policy authorize the exact
-target.
-
 ## View obligations
 
 The view side of the postMessage protocol (see
@@ -253,9 +200,8 @@ grow new REST surfaces behind it.
 
 `admission.rs` resolves an App-local tool alias from the current caller-visible
 resource and tool catalogs. Linked tools must declare App visibility for that
-exact view. Imported aliases must name the exact resource and a currently visible
-target in hub-projected dependency metadata. Untrusted frame metadata never
-enters this resolver. Console and Workspace use the same helper; their operation
+exact view, on the view's own server. Untrusted frame metadata never enters this
+resolver. Console and Workspace use the same helper; their operation
 retention differs. Workspace persists origin-bound Task references in its private
 operation journal and rechecks admission during dispatch and App recovery.
 
@@ -263,7 +209,3 @@ operation journal and rechecks admission during dispatch and App recovery.
 subscription bridge. Each host supplies fixed browser routes and authenticated
 transport functions. Workspace's client design declares its supported subset of
 Console extensions rather than implying full Console host parity.
-
-## Generic Declaration Dependencies
-
-App extension declarations reuse foundational `LocalToolName` and Hub contract values. They do not import the MCP hosted runtime merely to obtain an identity scalar. Domain App schemas stay with each server owner.

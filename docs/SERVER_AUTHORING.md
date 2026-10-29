@@ -154,6 +154,9 @@ and the SDK's [registration wire mapping](../crates/veoveo-hub-sdk/src/registrat
 - `ai.veoveo/registration` and `ai.veoveo/authorization` are Veoveo declarations
   under MCP capabilities extensions, assembled from typed registration and routes.
 - `ai.veoveo/usage` is Veoveo Task usage metadata, emitted by the Task adapter.
+- `ai.veoveo/task` is a call's Task metadata, `TaskMeta`, such as its retention pin.
+- `ai.veoveo/hub` is the Hub's result metadata, `HubMeta`, such as the servers a
+  federated list lacks.
 - OAuth registration and registration management follow RFC 7591/7592. Our
   `veoveo_*` client metadata members use OAuth's extension mechanism. Forwarded
   JWT invocation claims and RFC 8693 delegation have their own typed SDK models.

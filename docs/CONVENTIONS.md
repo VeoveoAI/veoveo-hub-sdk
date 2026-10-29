@@ -18,9 +18,10 @@ Veoveo formats do.
 ## Extension Names
 
 MCP extension identifiers and `_meta` keys take the form `ai.veoveo/<kebab-name>`, such
-as `ai.veoveo/registration`. A contract a server declares compliance with is identified
-by `https://veoveo.ai/contracts/<kebab-name>`, such as
-`https://veoveo.ai/contracts/hosted-mcp`.
+as `ai.veoveo/registration`. A name is one concept, such as `task` or `hub`; its
+features are typed members of its payload, never names of their own. A contract a
+server declares compliance with is identified by `https://veoveo.ai/contracts/<kebab-name>`,
+such as `https://veoveo.ai/contracts/hosted-mcp`.
 
 ## Domain Names
 

@@ -104,9 +104,9 @@ declaration consistency; ordinary implementation tests establish dynamic behavio
 | `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry, the MCP Tasks adapter over core's durable Task runtime, [Task work](#task-work) with its provider event routes, and the usage ledger | |
 | `testing` | `server` plus the in-process Hub in `hosting::testing` for server tests and `TestMesh` for calls between servers, whose origin also delivers requests under a served server's mount to its public routes, as an ingress would, and `testing::assert_sql_confined`, the check that a server's SQL names only its own schema | |
 
-The Hub attaches discovery degradation and App dependency metadata to federated
-lists. Their DTOs live in the `hub` module, and `HubDiscoveryMetadata`
-converts degradation to and from MCP `MetaObject`.
+The Hub attaches `_meta["ai.veoveo/hub"]` to federated lists. Its DTO, `HubMeta`,
+lives in the `hub` module, and `HubDiscoveryMetadata` converts a `HubDiscovery` to and
+from MCP `MetaObject`.
 
 ## Protocol Surface
 
@@ -244,6 +244,12 @@ before accepting work. The published
 replaces the older per-tool `execution.taskSupport` and request `task` handshake;
 those fields are not part of this profile.
 
+A call that creates a Task may carry `_meta["ai.veoveo/task"]`, a `TaskMeta`. Its
+`retentionPin` keeps the terminal Task past its protocol TTL until the consumer
+acknowledges its result. The adapter refuses unknown members, and Task metadata in
+the request context that differs from the params'. A `tasks/get` answer carries the
+Task's cost under `ai.veoveo/usage`.
+
 Durable Task ownership binds the actual actor, tenant, Work Context, profile and
 invocation provenance. Current access checks apply on every read, update, cancel
 and subscription. Signing in again or changing unrelated scopes does not create a
@@ -327,9 +333,8 @@ immediately. This bounded window prevents routine cache expiry from producing an
 empty first snapshot while keeping slow optional servers isolated. The hub
 captures entries valid when the list request begins and includes them even if
 another server consumes the settlement window before response assembly. The
-response attaches a typed
-`ai.veoveo/hub-discovery-degradation` result metadata document naming only
-the missing server, surface, and bounded failure code. Each missing server starts
+response attaches `_meta["ai.veoveo/hub"]`, whose `discovery.failures` name only the
+missing server, surface, and bounded failure code. Each missing server starts
 one background discovery for the exact catalog generation and invocation
 authority. Repeated list calls share that single in-flight operation. An unfinished fetch reports `discovery_pending`; a failed fetch reports
 `upstream_unavailable`. A healthy server commits independently and publishes its
@@ -343,7 +348,7 @@ A failed fetch becomes eligible on the next explicit
 list call.
 
 Prompt discovery contacts only registered servers that declare prompts. A server that fails prompt discovery is left out and named in
-the same degradation metadata under the `prompts` surface.
+the same discovery failures under the `prompts` surface.
 
 A profile whose work requires a complete tool catalog sets
 `discovery_failure_mode` to `fail_closed`; its tool and prompt lists fail until
@@ -352,7 +357,7 @@ retaining a silently incomplete toolset. Upstream `listChanged` notifications in
 successful per-server entries and wake callers without polling. Direct resource
 reads and tool calls remain fail closed.
 
-A client that needs a complete surface checks the degradation metadata for the
+A client that needs a complete surface checks the discovery failures for the
 servers it uses. Policy-filtered absence in a complete surface remains authoritative.
 
 Request-scoped subscription delivery invalidates the matching discovery cache before

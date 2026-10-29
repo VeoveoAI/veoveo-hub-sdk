@@ -428,7 +428,7 @@ async fn run(client: &HubClient, command: HubCommand, json: bool) -> Result<()> 
 
 /// A listing's items, after telling the reader which servers it misses.
 fn listed<T>(listing: CatalogListing<T>) -> Vec<T> {
-    for failure in &listing.degradation.failures {
+    for failure in &listing.discovery.failures {
         eprintln!(
             "the Hub could not list the {:?} of `{}`: {:?}",
             failure.surface, failure.server, failure.code

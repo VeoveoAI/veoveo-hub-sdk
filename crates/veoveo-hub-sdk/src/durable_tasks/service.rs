@@ -17,8 +17,18 @@ use veoveo_task::{OwnerTaskQuery, TaskError, TaskRetentionPin, TaskRuntime, Task
 
 use super::mcp::project_snapshot;
 
-/// Repository-owned metadata used only to retain internal evidence longer than wire TTL.
-pub const TASK_RETENTION_PIN_META_KEY: &str = "ai.veoveo/task-retention-pin";
+/// MCP request metadata about the Task a call creates: a [`TaskMeta`].
+pub const TASK_META_KEY: &str = "ai.veoveo/task";
+
+/// `_meta["ai.veoveo/task"]` of a call that creates a Task.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskMeta {
+    /// Keeps the terminal Task, and its internal evidence, past its protocol TTL until
+    /// the consumer acknowledges its result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention_pin: Option<TaskRetentionPin>,
+}
 
 pub type DurableTaskUpdateStream =
     Pin<Box<dyn Stream<Item = Result<DetailedTask, McpError>> + Send + 'static>>;
@@ -71,44 +81,44 @@ pub trait DurableTaskService: Send + Sync + 'static {
     ) -> impl Future<Output = Result<DurableTaskSubscription, McpError>> + Send;
 }
 
-/// Extracts the optional internal retention pin from ordinary request metadata.
+/// Extracts the optional retention pin from the request's Task metadata.
 pub fn retention_pins(
     meta: Option<&RequestMetaObject>,
 ) -> Result<BTreeSet<TaskRetentionPin>, McpError> {
-    meta.and_then(|meta| meta.get(TASK_RETENTION_PIN_META_KEY))
+    meta.and_then(|meta| meta.get(TASK_META_KEY))
         .cloned()
-        .map(serde_json::from_value::<TaskRetentionPin>)
+        .map(serde_json::from_value::<TaskMeta>)
         .transpose()
         .map_err(|error| McpError::invalid_params(error.to_string(), None))
-        .map(Option::into_iter)
-        .map(Iterator::collect)
+        .map(|meta| {
+            meta.and_then(|meta| meta.retention_pin)
+                .into_iter()
+                .collect()
+        })
 }
 
-/// Restores the repository-owned retention pin that RMCP exposes through the
-/// request context before a hosted Tasks adapter receives the request params.
+/// Restores the Task metadata that RMCP exposes through the request context before a
+/// hosted Tasks adapter receives the request params.
 #[doc(hidden)]
-pub fn restore_task_retention_meta(
+pub fn restore_task_meta(
     request: &mut CallToolRequestParams,
     context_meta: &RequestMetaObject,
 ) -> Result<(), McpError> {
-    let context_pin = context_meta.get(TASK_RETENTION_PIN_META_KEY);
-    let request_pin = request
+    let context_task = context_meta.get(TASK_META_KEY);
+    let request_task = request
         .meta
         .as_ref()
-        .and_then(|meta| meta.get(TASK_RETENTION_PIN_META_KEY));
-    if let (Some(context_pin), Some(request_pin)) = (context_pin, request_pin)
-        && context_pin != request_pin
+        .and_then(|meta| meta.get(TASK_META_KEY));
+    if let (Some(context_task), Some(request_task)) = (context_task, request_task)
+        && context_task != request_task
     {
-        return Err(McpError::invalid_params(
-            "conflicting task retention metadata",
-            None,
-        ));
+        return Err(McpError::invalid_params("conflicting task metadata", None));
     }
-    if let Some(context_pin) = context_pin {
+    if let Some(context_task) = context_task {
         request
             .meta
             .get_or_insert_with(RequestMetaObject::new)
-            .insert(TASK_RETENTION_PIN_META_KEY.to_owned(), context_pin.clone());
+            .insert(TASK_META_KEY.to_owned(), context_task.clone());
     }
     Ok(())
 }
@@ -123,7 +133,7 @@ pub async fn start_durable_tool_task<S: DurableTaskService>(
     request: &mut CallToolRequestParams,
     context: &RequestContext<RoleServer>,
 ) -> Result<Option<CreateTaskResult>, McpError> {
-    restore_task_retention_meta(request, &context.meta)?;
+    restore_task_meta(request, &context.meta)?;
     if !context
         .meta
         .client_capabilities()
@@ -328,16 +338,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn task_retention_metadata_is_restored_from_the_request_context() {
+    fn task_metadata_is_restored_from_the_request_context() {
         let pin = TaskRetentionPin::new("agent:test:episode:test").expect("retention pin");
         let mut context_meta = RequestMetaObject::new();
         context_meta.insert(
-            TASK_RETENTION_PIN_META_KEY.to_owned(),
-            serde_json::json!(pin),
+            TASK_META_KEY.to_owned(),
+            serde_json::json!({"retentionPin": pin}),
         );
         let mut request = CallToolRequestParams::new("durable_tool");
 
-        restore_task_retention_meta(&mut request, &context_meta).expect("restore retention pin");
+        restore_task_meta(&mut request, &context_meta).expect("restore retention pin");
 
         assert_eq!(
             retention_pins(request.meta.as_ref()).expect("parse retention pin"),
@@ -346,27 +356,47 @@ mod tests {
     }
 
     #[test]
-    fn conflicting_task_retention_metadata_is_rejected() {
+    fn conflicting_task_metadata_is_rejected() {
         let mut context_meta = RequestMetaObject::new();
         context_meta.insert(
-            TASK_RETENTION_PIN_META_KEY.to_owned(),
-            serde_json::json!("agent:test:episode:context"),
+            TASK_META_KEY.to_owned(),
+            serde_json::json!({"retentionPin": "agent:test:episode:context"}),
         );
         let mut request = CallToolRequestParams::new("durable_tool");
         request
             .meta
             .get_or_insert_with(RequestMetaObject::new)
             .insert(
-                TASK_RETENTION_PIN_META_KEY.to_owned(),
-                serde_json::json!("agent:test:episode:params"),
+                TASK_META_KEY.to_owned(),
+                serde_json::json!({"retentionPin": "agent:test:episode:params"}),
             );
 
-        let error = restore_task_retention_meta(&mut request, &context_meta)
+        let error = restore_task_meta(&mut request, &context_meta)
             .expect_err("conflicting pins must fail closed");
+        assert!(error.message.contains("conflicting task metadata"));
+    }
+
+    #[test]
+    fn task_metadata_is_an_object_with_its_retention_pin() {
+        let mut meta = RequestMetaObject::new();
+        assert_eq!(retention_pins(Some(&meta)).unwrap(), BTreeSet::new());
+        meta.insert(TASK_META_KEY.to_owned(), serde_json::json!({}));
+        assert_eq!(retention_pins(Some(&meta)).unwrap(), BTreeSet::new());
+        meta.insert(
+            TASK_META_KEY.to_owned(),
+            serde_json::json!("agent:test:episode:bare"),
+        );
         assert!(
-            error
-                .message
-                .contains("conflicting task retention metadata")
+            retention_pins(Some(&meta)).is_err(),
+            "a bare pin is refused"
+        );
+        meta.insert(
+            TASK_META_KEY.to_owned(),
+            serde_json::json!({"retentionPin": "agent:test:episode:test", "other": 1}),
+        );
+        assert!(
+            retention_pins(Some(&meta)).is_err(),
+            "unknown members are refused"
         );
     }
 }

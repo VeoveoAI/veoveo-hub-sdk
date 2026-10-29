@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use veoveo_types::ServerSlug;
 
-/// MCP result metadata carrying failures isolated from a federated catalog.
-pub const HUB_DISCOVERY_DEGRADATION_META_KEY: &str = "ai.veoveo/hub-discovery-degradation";
+/// MCP result metadata the Hub attaches to what it federates: a [`HubMeta`].
+pub const HUB_META_KEY: &str = "ai.veoveo/hub";
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
@@ -33,13 +33,21 @@ pub struct HubDiscoveryFailure {
     pub code: HubDiscoveryFailureCode,
 }
 
+/// `_meta["ai.veoveo/hub"]`: what the Hub reports about a federated result.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct HubDiscoveryDegradation {
+pub struct HubMeta {
+    pub discovery: HubDiscovery,
+}
+
+/// The servers a federated catalog lacks, and why.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HubDiscovery {
     pub failures: Vec<HubDiscoveryFailure>,
 }
 
-impl HubDiscoveryDegradation {
+impl HubDiscovery {
     pub fn new(failures: impl IntoIterator<Item = HubDiscoveryFailure>) -> Self {
         let mut failures: Vec<_> = failures.into_iter().collect();
         failures.sort();

@@ -11,7 +11,7 @@ use rmcp::{
     service::{Peer, ServiceError},
 };
 
-use crate::hub::{HUB_DISCOVERY_DEGRADATION_META_KEY, HubDiscoveryDegradation};
+use crate::hub::{HUB_META_KEY, HubDiscovery, HubMeta};
 
 /// The most pages one listing follows.
 pub const MAX_PAGES: usize = 1_024;
@@ -25,13 +25,13 @@ pub const DEADLINE: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone)]
 pub struct CatalogListing<T> {
     pub items: Vec<T>,
-    pub degradation: HubDiscoveryDegradation,
+    pub discovery: HubDiscovery,
 }
 
 impl<T> CatalogListing<T> {
     /// Whether every registered server answered.
     pub fn is_complete(&self) -> bool {
-        self.degradation.is_empty()
+        self.discovery.is_empty()
     }
 }
 
@@ -91,13 +91,10 @@ where
             let (page, following, meta) = next(cursor)
                 .await
                 .map_err(|error| CatalogError::Request { operation, error })?;
-            if let Some(value) = meta
-                .as_ref()
-                .and_then(|meta| meta.0.get(HUB_DISCOVERY_DEGRADATION_META_KEY))
-            {
-                let degradation: HubDiscoveryDegradation = serde_json::from_value(value.clone())
+            if let Some(value) = meta.as_ref().and_then(|meta| meta.0.get(HUB_META_KEY)) {
+                let hub: HubMeta = serde_json::from_value(value.clone())
                     .map_err(|error| CatalogError::Metadata { operation, error })?;
-                failures.extend(degradation.failures);
+                failures.extend(hub.discovery.failures);
             }
             if items.len() + page.len() > MAX_ITEMS {
                 return Err(CatalogError::TooManyItems { operation });
@@ -106,7 +103,7 @@ where
             let Some(following) = following else {
                 return Ok(CatalogListing {
                     items,
-                    degradation: HubDiscoveryDegradation::new(failures),
+                    discovery: HubDiscovery::new(failures),
                 });
             };
             if !seen.insert(following.clone()) {
@@ -219,8 +216,11 @@ mod tests {
         let meta = |failure: HubDiscoveryFailure| {
             let mut meta = MetaObject::new();
             meta.0.insert(
-                HUB_DISCOVERY_DEGRADATION_META_KEY.to_owned(),
-                serde_json::to_value(HubDiscoveryDegradation::new([failure])).unwrap(),
+                HUB_META_KEY.to_owned(),
+                serde_json::to_value(HubMeta {
+                    discovery: HubDiscovery::new([failure]),
+                })
+                .unwrap(),
             );
             Some(meta)
         };
@@ -236,15 +236,11 @@ mod tests {
         .unwrap();
         assert_eq!(listing.items, vec![1, 2]);
         assert!(!listing.is_complete());
-        assert_eq!(
-            listing.degradation,
-            HubDiscoveryDegradation::new([time, media])
-        );
+        assert_eq!(listing.discovery, HubDiscovery::new([time, media]));
         let mut malformed = MetaObject::new();
-        malformed.0.insert(
-            HUB_DISCOVERY_DEGRADATION_META_KEY.to_owned(),
-            serde_json::json!("degraded"),
-        );
+        malformed
+            .0
+            .insert(HUB_META_KEY.to_owned(), serde_json::json!("degraded"));
         let error = collect::<(), _, _>("fixture", |_| {
             ready((vec![], None, Some(malformed.clone())))
         })

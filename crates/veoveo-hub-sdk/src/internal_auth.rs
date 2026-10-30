@@ -679,7 +679,10 @@ fn decode_access_token<T: serde::de::DeserializeOwned>(
 
 /// A fresh `jti`: a UUIDv7.
 fn fresh_jwt_id() -> Result<JwtId, InternalTokenError> {
-    JwtId::parse(uuid::Uuid::now_v7().to_string()).map_err(InternalTokenError::Identifier)
+    match JwtId::parse(uuid::Uuid::now_v7().to_string()) {
+        Ok(id) => Ok(id),
+        Err(error) => Err(InternalTokenError::Identifier(error)),
+    }
 }
 
 fn ensure_jwt_crypto_provider() {

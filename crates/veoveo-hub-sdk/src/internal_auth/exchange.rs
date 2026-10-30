@@ -71,15 +71,15 @@ pub(super) fn validate_delegation(
 }
 
 fn prior_actors(context: Option<&DelegationContext>, acting: &ActingServer) -> PriorActor {
-    let prior = context
-        .into_iter()
-        .flat_map(|context| &context.actors)
-        .fold(None, |act, server| {
-            Some(Box::new(PriorActor {
+    let mut prior = None;
+    if let Some(context) = context {
+        for server in &context.actors {
+            prior = Some(Box::new(PriorActor {
                 sub: server.client.clone(),
-                act,
-            }))
-        });
+                act: prior,
+            }));
+        }
+    }
     PriorActor {
         sub: acting.client.clone(),
         act: prior,

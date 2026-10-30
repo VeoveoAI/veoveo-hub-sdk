@@ -78,6 +78,19 @@ and declaration tests supplement, rather than constitute, formal proof.
 
 ## Repeat manually
 
+The proof crate uses edition 2024, matching the production SDK. An isolated
+extraction of SDK `239622d12c08b771cc5e813fe3e846385d8d04ad` with only this
+edition change produced the identical generated `SdkAuthorizationProof.lean`
+(SHA-256 `f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f`).
+The four helper signatures and bodies also matched the qualified edition-2021
+LLBC after source locations and serializer/statement identities were removed.
+This is extraction correspondence, not a new native or full-package
+qualification. Charon reads local promoted MIR here; a downstream dependency
+extraction instead receives optimized MIR. Reusing this model downstream retains
+an explicit source-compilation and linking boundary. The measured extraction
+trace and remaining boundaries are recorded in the
+[SDK/Hub extraction record](https://github.com/VeoveoAI/veoveo-docs/blob/main/records/2026-10-30-sdk-hub-extraction-boundaries.md).
+
 Use Aeneas `fdebf20d78e8007bb92fc17068f17fc2e6cfbbbf`, Charon
 `de8736f7c995ac54dc490345cef9ea5143c06c62`, Rust `nightly-2026-09-17` and
 Lean `4.35.0`; `lake-manifest.json` pins dependency sources. On Linux,

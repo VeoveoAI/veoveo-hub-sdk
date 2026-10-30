@@ -981,3 +981,108 @@ fn plain_http_is_allowed_only_for_local_hosts() {
     let remote_issuer = veoveo_types::TokenIssuer::parse("http://hub.example").unwrap();
     assert!(issuer_url(&remote_issuer).is_err());
 }
+
+#[test]
+fn exact_resource_access_overrides_full_template_conflicts_and_keeps_its_borrow() {
+    let mut declaration = authorization();
+    declaration.requirements.resources.clear();
+    declaration.requirements.resource_templates = [
+        (
+            template("clock://events/{event}"),
+            RouteAccess::Authenticated,
+        ),
+        (
+            template("clock://events/{+tail}"),
+            policy(ClockPermission::Read),
+        ),
+    ]
+    .into();
+    declaration.check(&slug(), &scheme()).unwrap();
+    let uri = ResourceUri::new("clock://events/one").unwrap();
+    assert!(
+        declaration
+            .access(RequirementTarget::Resource(&uri))
+            .is_none()
+    );
+    declaration
+        .requirements
+        .resources
+        .insert(uri.clone(), RouteAccess::Authenticated);
+    let exact = declaration.requirements.resources.get(&uri).unwrap();
+    let output = declaration
+        .access(RequirementTarget::Resource(&uri))
+        .unwrap();
+    assert_eq!(output, &RouteAccess::Authenticated);
+    assert!(std::ptr::eq(output, exact));
+}
+
+#[test]
+fn agreeing_templates_return_the_original_first_complete_access_value() {
+    let mut declaration = authorization();
+    declaration.requirements.resources.clear();
+    declaration.requirements.resource_templates = [
+        (
+            template("clock://events/{event}"),
+            RouteAccess::Authenticated,
+        ),
+        (
+            template("clock://events/{+tail}"),
+            RouteAccess::Authenticated,
+        ),
+    ]
+    .into();
+    declaration.check(&slug(), &scheme()).unwrap();
+    let uri = ResourceUri::new("clock://events/one").unwrap();
+    let first = declaration
+        .requirements
+        .resource_templates
+        .first_key_value()
+        .unwrap()
+        .1;
+    let output = declaration
+        .access(RequirementTarget::Resource(&uri))
+        .unwrap();
+    assert_eq!(output, &RouteAccess::Authenticated);
+    assert!(std::ptr::eq(output, first));
+}
+
+#[test]
+fn native_template_matching_preserves_empty_scalar_zero_tail_and_trailing_slash() {
+    let mut declaration = authorization();
+    declaration.requirements.resources.clear();
+    declaration.requirements.resource_templates = [
+        (
+            template("clock://scalar/{value}"),
+            RouteAccess::Authenticated,
+        ),
+        (template("clock://tail/{+rest}"), RouteAccess::Authenticated),
+        (
+            template("clock://slash/{value}/"),
+            RouteAccess::Authenticated,
+        ),
+    ]
+    .into();
+    declaration.check(&slug(), &scheme()).unwrap();
+    for wire in [
+        "clock://scalar/",
+        "clock://tail",
+        "clock://tail/a/b",
+        "clock://slash/a/",
+    ] {
+        let uri = ResourceUri::new(wire).unwrap();
+        assert_eq!(
+            declaration.access(RequirementTarget::Resource(&uri)),
+            Some(&RouteAccess::Authenticated),
+            "{wire}"
+        );
+    }
+    for wire in ["clock://scalar", "clock://slash/a", "clock://elsewhere/a/"] {
+        let uri = ResourceUri::new(wire).unwrap();
+        assert!(
+            declaration
+                .access(RequirementTarget::Resource(&uri))
+                .is_none(),
+            "{wire}"
+        );
+    }
+}

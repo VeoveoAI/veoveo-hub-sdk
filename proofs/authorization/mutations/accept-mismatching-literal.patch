@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
++++ b/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
+@@ -96,7 +96,7 @@
+     let mut index = 0;
+     while index < path_len && index < active {
+         match &path[index] {
+-            Path::Literal(literal) if !segments[index].literal_eq(literal) => {
++            Path::Literal(literal) if segments[index].literal_eq(literal) => {
+                 return false;
+             }
+             _ => {}

@@ -3,16 +3,12 @@
 use std::collections::BTreeSet;
 use veoveo_types::{ResourceTemplateUri, ResourceUri, UriSegment};
 
-enum Path<'a> {
-    Literal(&'a str),
-    Scalar,
-    Tail,
-}
+use super::authorization_decision::{self, Path};
 
 pub(crate) struct AuthorizationTemplate<'a> {
     scheme: &'a str,
     authority: &'a str,
-    path: Vec<Path<'a>>,
+    path: Vec<Path<&'a str>>,
     query: BTreeSet<&'a str>,
     trailing_slash: bool,
 }
@@ -86,7 +82,7 @@ impl<'a> AuthorizationTemplate<'a> {
                     {
                         return None;
                     }
-                    path.push(Path::Literal(segment));
+                    path.push(Path::Literal(*segment));
                 }
             }
         }
@@ -112,43 +108,26 @@ impl<'a> AuthorizationTemplate<'a> {
         let Ok(parts) = uri.components() else {
             return false;
         };
-        if parts.scheme() != self.scheme || parts.authority() != self.authority {
+        if !authorization_decision::same_root(
+            &(parts.scheme(), parts.authority()),
+            &(self.scheme, self.authority),
+        ) {
             return false;
         }
-        let mut segments: Vec<_> = parts.path_segments().collect();
-        if self.trailing_slash {
-            if segments.last().is_none_or(|segment| !segment.is_empty()) {
-                return false;
-            }
-            segments.pop();
-        }
-        let tail = matches!(self.path.last(), Some(Path::Tail));
-        if (!tail && segments.len() != self.path.len())
-            || (tail && segments.len() + 1 < self.path.len())
-        {
-            return false;
-        }
-        if !self
-            .path
-            .iter()
-            .zip(&segments)
-            .all(|(part, value)| match part {
-                Path::Literal(literal) => value.as_ref() == *literal,
-                Path::Scalar | Path::Tail => true,
-            })
-        {
-            return false;
-        }
-        // Like native ResourceRoute::capture, empty and undeclared query strings
-        // are refused. Query order is immaterial; components rejects duplicates,
-        // including percent-encoded aliases, before names reach this matcher.
-        if parts.has_query() && (self.query.is_empty() || parts.query_parameters().is_empty()) {
-            return false;
-        }
-        parts
-            .query_parameters()
-            .keys()
-            .all(|name| self.query.contains(name.as_str()))
+        let segments: Vec<_> = parts.path_segments().collect();
+        authorization_decision::matches_view(
+            authorization_decision::TemplateView {
+                path: &self.path,
+                query: &self.query,
+                trailing_slash: self.trailing_slash,
+            },
+            authorization_decision::ResourceView {
+                segments: &segments,
+                has_query: parts.has_query(),
+                query_empty: parts.query_parameters().is_empty(),
+                query: parts.query_parameters().keys(),
+            },
+        )
     }
 }
 
@@ -157,4 +136,32 @@ fn variable(name: &str) -> bool {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.'))
+}
+
+impl authorization_decision::Segment<&str> for std::borrow::Cow<'_, str> {
+    fn is_empty(&self) -> bool {
+        self.as_ref().is_empty()
+    }
+
+    fn literal_eq(&self, literal: &&str) -> bool {
+        self.as_ref() == *literal
+    }
+}
+
+impl<'a> authorization_decision::Cursor<&'a str>
+    for std::collections::btree_map::Keys<'a, String, String>
+{
+    fn next(&mut self) -> Option<&'a str> {
+        Iterator::next(self).map(String::as_str)
+    }
+}
+
+impl<'a> authorization_decision::AllowedQuery<&'a str> for BTreeSet<&str> {
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn contains(&self, name: &&'a str) -> bool {
+        self.contains(*name)
+    }
 }

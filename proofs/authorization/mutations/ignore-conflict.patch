@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
++++ b/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
+@@ -24,7 +24,7 @@
+         if matcher.matches(template) {
+             match first {
+                 None => first = Some(access),
+-                Some(previous) if access != previous => return None,
++                Some(previous) if access != previous => {}
+                 Some(_) => {}
+             }
+         }

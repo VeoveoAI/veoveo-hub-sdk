@@ -1,0 +1,8 @@
+.lake/
+rust/target/
+rust/*.llbc
+evidence/*.log
+snapshots/
+charon-output*/
+*.llbc
+partial-*.lean

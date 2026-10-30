@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
++++ b/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
+@@ -117,7 +117,7 @@
+         return false;
+     }
+     while let Some(name) = resource.query.next() {
+-        if !template.query.contains(&name) {
++        if template.query.contains(&name) {
+             return false;
+         }
+     }

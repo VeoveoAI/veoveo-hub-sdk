@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
++++ b/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
+@@ -17,7 +17,7 @@
+     matcher: &M,
+ ) -> Option<A> {
+     if let Some(access) = exact {
+-        return Some(access);
++        return None;
+     }
+     let mut first = None;
+     while let Some((template, access)) = candidates.next() {

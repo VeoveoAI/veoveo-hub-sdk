@@ -1,6 +1,7 @@
-//! MCP discovery: a server advertises its declarations in `capabilities.extensions`,
-//! so what it registers and what it advertises have one source. The Hub reads them
-//! back for registration identity and authorization admission.
+//! MCP discovery: a server advertises the same declarations it registers in
+//! `capabilities.extensions`. This module supplies advertisement and typed readback
+//! helpers; the Hub uses the checked stored registration for policy, without an
+//! automatic comparison against the discovery advertisement.
 use rmcp::model::{JsonObject, ServerCapabilities};
 
 use crate::registration::{

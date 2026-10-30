@@ -259,18 +259,11 @@ impl AuthorizationDeclaration {
             RequirementTarget::ResourceTemplate(template) => {
                 requirements.resource_templates.get(template)
             }
-            RequirementTarget::Resource(uri) => requirements.resources.get(uri).or_else(|| {
-                let mut matched = requirements
-                    .resource_templates
-                    .iter()
-                    .filter(|(template, _)| {
-                        AuthorizationTemplate::parse(template)
-                            .is_some_and(|template| template.matches(uri))
-                    })
-                    .map(|(_, permission)| permission);
-                let first = matched.next()?;
-                matched.all(|other| other == first).then_some(first)
-            }),
+            RequirementTarget::Resource(uri) => super::authorization_decision::resolve(
+                requirements.resources.get(uri),
+                &mut requirements.resource_templates.iter(),
+                &NativeMatcher(uri),
+            ),
         }?;
         Some(name)
     }
@@ -295,5 +288,21 @@ pub trait PermissionDefinition: Vocabulary + Ord {
     fn access(self) -> Access;
     fn risks(self) -> &'static [Risk] {
         &[]
+    }
+}
+
+impl<'a> super::authorization_decision::Cursor<(&'a ResourceTemplateUri, &'a RouteAccess)>
+    for std::collections::btree_map::Iter<'a, ResourceTemplateUri, RouteAccess>
+{
+    fn next(&mut self) -> Option<(&'a ResourceTemplateUri, &'a RouteAccess)> {
+        Iterator::next(self)
+    }
+}
+
+struct NativeMatcher<'a>(&'a ResourceUri);
+
+impl super::authorization_decision::Matcher<&ResourceTemplateUri> for NativeMatcher<'_> {
+    fn matches(&self, template: &ResourceTemplateUri) -> bool {
+        AuthorizationTemplate::parse(template).is_some_and(|template| template.matches(self.0))
     }
 }

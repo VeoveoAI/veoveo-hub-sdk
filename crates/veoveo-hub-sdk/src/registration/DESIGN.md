@@ -165,8 +165,12 @@ The Hub rejects a declaration when any of these hold:
   twice.
 
 A target the declaration omits is denied. An exact resource entry takes precedence
-over templates, and a URI matched by templates that require different permissions
-requires none and is denied. Collection templates match their root with no query
+over every matching template, even when the templates disagree. Without an exact
+entry, all matching templates must declare the same complete `RouteAccess` value:
+`Authenticated` agrees only with `Authenticated`, and permission routes agree only
+when they name the same permission. Zero matches or conflicting access values
+resolve to undeclared, distinct from an explicit `Authenticated` route, and are denied.
+Collection templates match their root with no query
 and pages containing any subset of the declared query names, in any order. Unknown
 query names, empty query strings and duplicate decoded names (including encoded
 aliases) are refused. Scalar captures consume one path segment; a terminal reserved
@@ -174,8 +178,19 @@ tail consumes the remaining segments, including zero, as the native route machin
 does. Domain address types still validate captured values. This authorization route
 profile is distinct from Core's lexical resource policy selectors.
 
-Discover advertises the identity and authorization declarations in full, so the
-Hub compares what a server registered with what it serves.
+The private `authorization_decision` module owns template agreement and matching
+of parsed views. Its cursor visits native template entries in order; an exact hit
+visits none, and a first conflict ends the scan. Native template parsing and Core
+URI decomposition retain their existing order. The matcher borrows the original
+path vector, decoded segments and query collections, without an extra projection.
+It returns the original agreed access reference rather than rebuilding a policy.
+
+A server advertises the same identity and authorization declarations in Discover
+that it supplies for registration. The SDK's `mcp::advertised` helper reads them
+back from capabilities. Hub admission checks the submitted registration metadata,
+and request policy uses its stored declaration; the Hub does not invoke an
+automatic comparison with the Discover advertisement. Advertising the matching
+contract remains the producer's obligation.
 
 ## Namespace Claims
 

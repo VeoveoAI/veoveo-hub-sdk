@@ -1,0 +1,1201 @@
+{
+  "accepted_runs": {
+    "qualification-exec-3": {
+      "archive_sha256": "65314f86fa765a8f4cf5b1f8f052ea173ca662b58a0ff465e6ab8b415e71039d",
+      "completed_utc": "2026-10-30T00:01:01Z",
+      "execution_note": "Serial runner invocation; baseline and three controls plus restore accepted. Literal and query controls were semantically disproved in TemplateProof during this run, but first runner misclassified those as unexpected prebuild failures and did not run matching Rust witnesses; corrected controls are accepted from exec-6.",
+      "expected_model_sha256": "f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f",
+      "index_sha256": "b396272c10de6423c6f5ed0b868b94045cd7b523589d02b9f1c95ac17ea0a68a",
+      "manifest_sha256": "ad09ebe80e1504fa5beda7c00e3f659737231a301fc69c493f0f119812a70dfd",
+      "total_recorded_stage_ms": 134998,
+      "variants": {
+        "accept-mismatching-literal": {
+          "kernel_sha256": "d750cf6c3be7989e5cd0a109bd15ef01f3a423100fed110866b7cb86c23d4db8",
+          "kind": "mutant",
+          "llbc_sha256": "25943b93723cd97d0c65153aa2ebcb4372231f5bff944c86349f25b15f92dfcd",
+          "model_sha256": "8c1f6b50587d56e40b79807c9bf17a67474431c8f5a5f8efa6127bf17ff71d80",
+          "runner_error": "lake-prebuild-TemplateProof expected exit 0, got 1: /home/rozgo/.cache/lean-pilot/sdk-contract-proof/qualification-exec-3/variants/accept-mismatching-literal/logs/lake-prebuild-TemplateProof.log",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 69,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/accept-mismatching-literal/logs/cargo-check.log",
+              "log_sha256": "6e7ea870f0aea000fc7b5c897305db1814299c348f6eb14332f9a9f481dbe8a1",
+              "stage": "cargo-check"
+            },
+            {
+              "elapsed_ms": 154,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/accept-mismatching-literal/logs/charon.log",
+              "log_sha256": "62f639f1cbf1e2b86a3d584ba3e5ad38d3cbed692c30ddd2d2df5eea105f3805",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1054,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/accept-mismatching-literal/logs/aeneas.log",
+              "log_sha256": "11d3c8017237c18c69a99e0f9e70cdf1e8ac05b39632b8348b76a6a71de8bd9f",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 4212,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/accept-mismatching-literal/logs/lake-model-build.log",
+              "log_sha256": "ccadd00a02b46421f1c0ed2bad741fa417601500e5dada9426c0481b21fd89d5",
+              "stage": "lake-model-build"
+            },
+            {
+              "elapsed_ms": 3838,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/accept-mismatching-literal/logs/lake-prebuild-ResolutionProof.log",
+              "log_sha256": "4898b2d421d0f10575163140ab8a802b528ab7cc812f794ffc7bdd22df59f0a7",
+              "stage": "lake-prebuild-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3735,
+              "exit": 1,
+              "log": "qualification-exec-3/variants/accept-mismatching-literal/logs/lake-prebuild-TemplateProof.log",
+              "log_sha256": "879373eadeeb324e1cd490ec8867023dc42938d021c2fb7a33f93c01353f4f14",
+              "stage": "lake-prebuild-TemplateProof"
+            }
+          ],
+          "status": "invalid_negative_control"
+        },
+        "baseline": {
+          "kernel_sha256": "8ed2b007bb457eed5057054367e2c9e6aac38664bc9e89cddc580d61de3e6bf8",
+          "kind": "baseline",
+          "llbc_sha256": "18ca0e49b3a5ad17cecb5440166099de0b48b9ffa54eb155e51ca9742d2f9039",
+          "model_sha256": "f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 575,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/cargo-test.log",
+              "log_sha256": "a3c62eba68cde5251525fc6d8f324f619240b3fdac86c840cf7a41d234817e2c",
+              "stage": "cargo-test"
+            },
+            {
+              "elapsed_ms": 279,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/charon.log",
+              "log_sha256": "26c383db49b142963c36fa44d06671b6f5e0bcdcdff99c629fe5c476dfd0d307",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1019,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/aeneas.log",
+              "log_sha256": "42312e6846e7456f8b5562015b7142fd04499cf6b463e885644defe747938492",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 17511,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/lake-build.log",
+              "log_sha256": "f193ed0a616aaa0286a88fcb26332e08d57ebf21a5d8f1f11fe13a1304a69e64",
+              "stage": "lake-build"
+            },
+            {
+              "elapsed_ms": 3489,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/lean-ResolutionProof.log",
+              "log_sha256": "cd46e86493b4ddbea102e7857f66d88ce23197ec1c4a0b556a9ee1d920394384",
+              "stage": "lean-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3524,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/lean-TemplateProof.log",
+              "log_sha256": "e4677d04adc02c18128920b7cd2cbe595065e26022b69e129a59db38690f2975",
+              "stage": "lean-TemplateProof"
+            },
+            {
+              "elapsed_ms": 3180,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/lean-PathProof.log",
+              "log_sha256": "8ee2a1d57cc04f5e00e8e780640cd4e3b73a2fe76daf2e28e123907513741b3f",
+              "stage": "lean-PathProof"
+            },
+            {
+              "elapsed_ms": 2756,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/lean-MatcherProof.log",
+              "log_sha256": "057792b75ddfd6d57b543eeae92332f84eef7e4b19f80462bd5f4fb553fea94c",
+              "stage": "lean-MatcherProof"
+            },
+            {
+              "elapsed_ms": 2609,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/lean-AuthorizationProof.log",
+              "log_sha256": "856ee843f9ff5d7940c263d717df29b965c18e3fada14a433bf76698f4b521eb",
+              "stage": "lean-AuthorizationProof"
+            },
+            {
+              "elapsed_ms": 2665,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/baseline/logs/lean-ContractInterpretation.log",
+              "log_sha256": "02483e9a0546ebd091cdbc5fc38a980befd35dc6c6bbe9301dadae2615f24f9c",
+              "stage": "lean-ContractInterpretation"
+            }
+          ],
+          "status": "passed"
+        },
+        "exact-hit-none": {
+          "kernel_sha256": "2b5a9309523b7bb0d13f495ca6fcd72aa582bc427230d4254d448b5e6c5aaca7",
+          "kind": "mutant",
+          "llbc_sha256": "2a682e1bf8b1d5f97f0591cf30042d97090e9fe3f1b8a68c4adb930a9fd46f0d",
+          "model_sha256": "3fd09dc11ed44c3ee6f8948fd1c363a862624717e5cbccbdf6d3ce6042ac7e67",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 75,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/exact-hit-none/logs/cargo-check.log",
+              "log_sha256": "cf462e4d793ab157a00ed6f01bc043ef3373b21d9f176fdb4927a572cc9e7008",
+              "stage": "cargo-check"
+            },
+            {
+              "elapsed_ms": 158,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/exact-hit-none/logs/charon.log",
+              "log_sha256": "f64c452a8632292dccbd2ee447da7668324f8c862fbbe1924b289b7af92819ca",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1051,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/exact-hit-none/logs/aeneas.log",
+              "log_sha256": "b4dd895768eb95a51ce75d4f8f20f8e7e4ab63dd56cd2dd49fd2968915659c7c",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 4425,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/exact-hit-none/logs/lake-model-build.log",
+              "log_sha256": "95d866d78870958e642b14b3259112aeeca539ee0596f48af94f2b2d1889c201",
+              "stage": "lake-model-build"
+            },
+            {
+              "elapsed_ms": 3487,
+              "exit": 1,
+              "log": "qualification-exec-3/variants/exact-hit-none/logs/semantic-proof.log",
+              "log_sha256": "a62b24a3a3399c7c9d8a7253469a893e43ae5668e67144cae8f0b6ff439cbd61",
+              "stage": "semantic-proof"
+            },
+            {
+              "elapsed_ms": 170,
+              "exit": 101,
+              "log": "qualification-exec-3/variants/exact-hit-none/logs/semantic-witness.log",
+              "log_sha256": "680f2a664bf33f08803c09f720080f8eab42bb52c3c4fa7afd8a1664911585da",
+              "stage": "semantic-witness"
+            }
+          ],
+          "status": "passed"
+        },
+        "ignore-conflict": {
+          "kernel_sha256": "12db01bba30072d9be0b7e9e36f9f08372e3f5ad2ee93d88eafd6e886254f1a4",
+          "kind": "mutant",
+          "llbc_sha256": "3d7e5357139a7d9230e184d977b15f46402114070020e1e035b5f24b3ae37bbe",
+          "model_sha256": "02e9478848b21a8dd9780660afacc1ff5b6929f7927c6a09cf27940b9b9c5280",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 68,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/ignore-conflict/logs/cargo-check.log",
+              "log_sha256": "f4334b8cf994b02d4d9f3ea8f17c9c6b49affe6381751985546159cf6fb60c56",
+              "stage": "cargo-check"
+            },
+            {
+              "elapsed_ms": 153,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/ignore-conflict/logs/charon.log",
+              "log_sha256": "474f50826a60efd2d0615bb1c61f7d4844cc7faae8bbad9a909d1d9231438f1a",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1029,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/ignore-conflict/logs/aeneas.log",
+              "log_sha256": "6871d482fd2900d41c0a903081274c1f36059d9a1d9ccdc2499e56ce4d4e36ba",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 4202,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/ignore-conflict/logs/lake-model-build.log",
+              "log_sha256": "95d866d78870958e642b14b3259112aeeca539ee0596f48af94f2b2d1889c201",
+              "stage": "lake-model-build"
+            },
+            {
+              "elapsed_ms": 3350,
+              "exit": 1,
+              "log": "qualification-exec-3/variants/ignore-conflict/logs/semantic-proof.log",
+              "log_sha256": "da049e38e0d0ee0bcee7b0f4ccb0da36f0e92e00fe5985d50e6fc1a056c70c3d",
+              "stage": "semantic-proof"
+            },
+            {
+              "elapsed_ms": 166,
+              "exit": 101,
+              "log": "qualification-exec-3/variants/ignore-conflict/logs/semantic-witness.log",
+              "log_sha256": "d4b7439a0a45451d55663d70bc07ec02b77da1243141a3e2c463c91c478eb1f7",
+              "stage": "semantic-witness"
+            }
+          ],
+          "status": "passed"
+        },
+        "invert-query-membership": {
+          "kernel_sha256": "563f962a9abb96306fe898b75a2c73dbb8498bbe9b83078a82e1c1379631b1c3",
+          "kind": "mutant",
+          "llbc_sha256": "74c1e38ba9cda5cbf537b13be023ab84051fbd931db202dde80a6ee062553f42",
+          "model_sha256": "2333b0e27f3f3c1bed3c21452ea5e587cd6651f1beb19c88cb12955d67a549f2",
+          "runner_error": "lake-prebuild-TemplateProof expected exit 0, got 1: /home/rozgo/.cache/lean-pilot/sdk-contract-proof/qualification-exec-3/variants/invert-query-membership/logs/lake-prebuild-TemplateProof.log",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 69,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/invert-query-membership/logs/cargo-check.log",
+              "log_sha256": "1d5e77c60ec9891e57b4e44a7424bbcff8421285d40917d85b43f29b5966250c",
+              "stage": "cargo-check"
+            },
+            {
+              "elapsed_ms": 156,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/invert-query-membership/logs/charon.log",
+              "log_sha256": "668134a6771744a99c09ab87c3261c9fa8cddc5864b523591f44b642b9c8b19b",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1038,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/invert-query-membership/logs/aeneas.log",
+              "log_sha256": "0b51b9fed8710eb48de34858ba92a74cd2dd2ba73eb06d8d94b0ae39c91fc95b",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 4161,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/invert-query-membership/logs/lake-model-build.log",
+              "log_sha256": "95d866d78870958e642b14b3259112aeeca539ee0596f48af94f2b2d1889c201",
+              "stage": "lake-model-build"
+            },
+            {
+              "elapsed_ms": 3861,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/invert-query-membership/logs/lake-prebuild-ResolutionProof.log",
+              "log_sha256": "4898b2d421d0f10575163140ab8a802b528ab7cc812f794ffc7bdd22df59f0a7",
+              "stage": "lake-prebuild-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3721,
+              "exit": 1,
+              "log": "qualification-exec-3/variants/invert-query-membership/logs/lake-prebuild-TemplateProof.log",
+              "log_sha256": "f76df40d362ae7290e09b0a144d7550216719e7557b05330dd01c10a1b7c7809",
+              "stage": "lake-prebuild-TemplateProof"
+            }
+          ],
+          "status": "invalid_negative_control"
+        },
+        "reject-empty-tail": {
+          "kernel_sha256": "b3c034240b2945cd9710b318cdb12b7df01c10b857893a9ee71c1f4546f70c47",
+          "kind": "mutant",
+          "llbc_sha256": "55c2566aac69193398dd4b0ff0c0aa6cf96ba8a00099394c6c21d386c95fc31b",
+          "model_sha256": "54dca13f4b626a4f0c013fd9187ef145270793d79395ebb3894335dd2dd579a2",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 70,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/cargo-check.log",
+              "log_sha256": "6a359b332f868aed12ecea1c14276fb8e46ccb22b5d4437b9a79f6bb492e4366",
+              "stage": "cargo-check"
+            },
+            {
+              "elapsed_ms": 153,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/charon.log",
+              "log_sha256": "f1929e3766730de98f7344d95a35a10efead44f17c5bcf3275ae051b676130b7",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1040,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/aeneas.log",
+              "log_sha256": "084e33248b156951c4ad9754b8aa0d5c31d715f56a13de6486fa11b538dcd98a",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 4094,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/lake-model-build.log",
+              "log_sha256": "ccadd00a02b46421f1c0ed2bad741fa417601500e5dada9426c0481b21fd89d5",
+              "stage": "lake-model-build"
+            },
+            {
+              "elapsed_ms": 3826,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/lake-prebuild-ResolutionProof.log",
+              "log_sha256": "4898b2d421d0f10575163140ab8a802b528ab7cc812f794ffc7bdd22df59f0a7",
+              "stage": "lake-prebuild-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3956,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/lake-prebuild-TemplateProof.log",
+              "log_sha256": "53b1f89b265ff42204de1318793bb34bc89890e9747606d632766fa93b306f7b",
+              "stage": "lake-prebuild-TemplateProof"
+            },
+            {
+              "elapsed_ms": 3204,
+              "exit": 1,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/semantic-proof.log",
+              "log_sha256": "2f2c1a5cfdf6d1ebbb121e90a3fd8637982c0c38b87acbd8ae8c5603bfcdb4e6",
+              "stage": "semantic-proof"
+            },
+            {
+              "elapsed_ms": 166,
+              "exit": 101,
+              "log": "qualification-exec-3/variants/reject-empty-tail/logs/semantic-witness.log",
+              "log_sha256": "da5eebc0388ee98b85d2819f56b3da1502256365693dcea06c6d6d1725731b0d",
+              "stage": "semantic-witness"
+            }
+          ],
+          "status": "passed"
+        },
+        "restored": {
+          "kernel_sha256": "8ed2b007bb457eed5057054367e2c9e6aac38664bc9e89cddc580d61de3e6bf8",
+          "kind": "baseline",
+          "llbc_sha256": "f57176a820f6f3c4aadba84afbccc74a61c61348b4f554517be11b167e85091f",
+          "model_sha256": "f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 189,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/cargo-test.log",
+              "log_sha256": "baa8fd8ab08f56094252f5221ce14931d6e4f436262e152fe37baa16a8a322ea",
+              "stage": "cargo-test"
+            },
+            {
+              "elapsed_ms": 156,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/charon.log",
+              "log_sha256": "4d4789c345049e9b3f207a4f5fcde9c64d81a7fc459d133476797de248c79eca",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1041,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/aeneas.log",
+              "log_sha256": "caf1907224a9dd930de76776e44e9a2169f6d25cd271044b496c0f17cfcfa128",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 16982,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/lake-build.log",
+              "log_sha256": "53835676dd92ff859d54ec34a83e8a2a53ea5057601bb14c70312ebacadd9697",
+              "stage": "lake-build"
+            },
+            {
+              "elapsed_ms": 3494,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/lean-ResolutionProof.log",
+              "log_sha256": "cd46e86493b4ddbea102e7857f66d88ce23197ec1c4a0b556a9ee1d920394384",
+              "stage": "lean-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3479,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/lean-TemplateProof.log",
+              "log_sha256": "e4677d04adc02c18128920b7cd2cbe595065e26022b69e129a59db38690f2975",
+              "stage": "lean-TemplateProof"
+            },
+            {
+              "elapsed_ms": 3161,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/lean-PathProof.log",
+              "log_sha256": "8ee2a1d57cc04f5e00e8e780640cd4e3b73a2fe76daf2e28e123907513741b3f",
+              "stage": "lean-PathProof"
+            },
+            {
+              "elapsed_ms": 2709,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/lean-MatcherProof.log",
+              "log_sha256": "057792b75ddfd6d57b543eeae92332f84eef7e4b19f80462bd5f4fb553fea94c",
+              "stage": "lean-MatcherProof"
+            },
+            {
+              "elapsed_ms": 2600,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/lean-AuthorizationProof.log",
+              "log_sha256": "856ee843f9ff5d7940c263d717df29b965c18e3fada14a433bf76698f4b521eb",
+              "stage": "lean-AuthorizationProof"
+            },
+            {
+              "elapsed_ms": 2669,
+              "exit": 0,
+              "log": "qualification-exec-3/variants/restored/logs/lean-ContractInterpretation.log",
+              "log_sha256": "02483e9a0546ebd091cdbc5fc38a980befd35dc6c6bbe9301dadae2615f24f9c",
+              "stage": "lean-ContractInterpretation"
+            }
+          ],
+          "status": "passed"
+        }
+      }
+    },
+    "qualification-exec-6": {
+      "archive_sha256": "65314f86fa765a8f4cf5b1f8f052ea173ca662b58a0ff465e6ab8b415e71039d",
+      "completed_utc": "2026-10-30T00:04:09Z",
+      "execution_note": "Serial corrected runner invocation with --only-mutants accept-mismatching-literal,invert-query-membership --skip-baseline; intended TemplateProof semantic theorem and named Rust witness were both exercised for each.",
+      "expected_model_sha256": "f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f",
+      "index_sha256": "d09ac4addd967829899b0daedbefb6a5d59fc230c197dec24d319af57b1ed939",
+      "manifest_sha256": "ad09ebe80e1504fa5beda7c00e3f659737231a301fc69c493f0f119812a70dfd",
+      "total_recorded_stage_ms": 62327,
+      "variants": {
+        "accept-mismatching-literal": {
+          "kernel_sha256": "d750cf6c3be7989e5cd0a109bd15ef01f3a423100fed110866b7cb86c23d4db8",
+          "kind": "mutant",
+          "llbc_sha256": "ece7ebb16999d2671cfb1f97a4523c5766e003e05f2cf4ca213d267ddc0ffcba",
+          "model_sha256": "8c1f6b50587d56e40b79807c9bf17a67474431c8f5a5f8efa6127bf17ff71d80",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 65,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/accept-mismatching-literal/logs/cargo-check.log",
+              "log_sha256": "fea6debcfcd0bdbcd749b47b6a3ce5ca1232db7e93879dbc01a1d77d434b902f",
+              "stage": "cargo-check"
+            },
+            {
+              "elapsed_ms": 153,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/accept-mismatching-literal/logs/charon.log",
+              "log_sha256": "3baaeab38d1e6d803697427718b9fd134aa256b86bedafe05f5eaa4fd182a25b",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 994,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/accept-mismatching-literal/logs/aeneas.log",
+              "log_sha256": "f6f540d011dbf4f20e8bed00bc6e85cce62e5c41691b248f6ec5cfa8741c1ce4",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 4066,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/accept-mismatching-literal/logs/lake-model-build.log",
+              "log_sha256": "95d866d78870958e642b14b3259112aeeca539ee0596f48af94f2b2d1889c201",
+              "stage": "lake-model-build"
+            },
+            {
+              "elapsed_ms": 3938,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/accept-mismatching-literal/logs/lake-prebuild-ResolutionProof.log",
+              "log_sha256": "4898b2d421d0f10575163140ab8a802b528ab7cc812f794ffc7bdd22df59f0a7",
+              "stage": "lake-prebuild-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3418,
+              "exit": 1,
+              "log": "qualification-exec-6/variants/accept-mismatching-literal/logs/semantic-proof.log",
+              "log_sha256": "a0d559e8b3c52c35c8039f073167d872489bdf64af0e7e06a5dbd46094221c1e",
+              "stage": "semantic-proof"
+            },
+            {
+              "elapsed_ms": 163,
+              "exit": 101,
+              "log": "qualification-exec-6/variants/accept-mismatching-literal/logs/semantic-witness.log",
+              "log_sha256": "3ced32c23c69f581983a9b8bc69748f1e86028adc65cf0df8918e00d231d1f77",
+              "stage": "semantic-witness"
+            }
+          ],
+          "status": "passed"
+        },
+        "invert-query-membership": {
+          "kernel_sha256": "563f962a9abb96306fe898b75a2c73dbb8498bbe9b83078a82e1c1379631b1c3",
+          "kind": "mutant",
+          "llbc_sha256": "7dd7f089b17f680e7b53814c795855cf439f9de08f7c92f771f348d2a96bcee7",
+          "model_sha256": "2333b0e27f3f3c1bed3c21452ea5e587cd6651f1beb19c88cb12955d67a549f2",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 66,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/invert-query-membership/logs/cargo-check.log",
+              "log_sha256": "0d1626c1e29569acbd26d43b45e6b900019a16369f4d1e85283a09c70232eaa1",
+              "stage": "cargo-check"
+            },
+            {
+              "elapsed_ms": 157,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/invert-query-membership/logs/charon.log",
+              "log_sha256": "0cf3119eefe61f0af114ca74827bfcd2f3ffe9c9a14ca386bf6488d98ceeb3c1",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1032,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/invert-query-membership/logs/aeneas.log",
+              "log_sha256": "9d18b7ffdb88caa4665e5c5d088c87e1c4a2e976d101f98db1f14c02186f93bc",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 4184,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/invert-query-membership/logs/lake-model-build.log",
+              "log_sha256": "95d866d78870958e642b14b3259112aeeca539ee0596f48af94f2b2d1889c201",
+              "stage": "lake-model-build"
+            },
+            {
+              "elapsed_ms": 3852,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/invert-query-membership/logs/lake-prebuild-ResolutionProof.log",
+              "log_sha256": "7ccb94a6bf0c5d0bcaad368b5f3e154a86342d577fdc7401d8e5f32400fa5207",
+              "stage": "lake-prebuild-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3413,
+              "exit": 1,
+              "log": "qualification-exec-6/variants/invert-query-membership/logs/semantic-proof.log",
+              "log_sha256": "edda8bbbcaa07d484090290cc86ee1f03bd827682a0ab7c8f1eb894435bc767a",
+              "stage": "semantic-proof"
+            },
+            {
+              "elapsed_ms": 166,
+              "exit": 101,
+              "log": "qualification-exec-6/variants/invert-query-membership/logs/semantic-witness.log",
+              "log_sha256": "87b137923a41bf8900209b4fb0b15cb019918aa21e6c1c6d8bd21c4b788c42a4",
+              "stage": "semantic-witness"
+            }
+          ],
+          "status": "passed"
+        },
+        "restored": {
+          "kernel_sha256": "8ed2b007bb457eed5057054367e2c9e6aac38664bc9e89cddc580d61de3e6bf8",
+          "kind": "baseline",
+          "llbc_sha256": "ad7963f7dad1b873713656739d5e0c1de146ff88000ed83881f52f9f955d5f04",
+          "model_sha256": "f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f",
+          "source_paths_verified": 27,
+          "stages": [
+            {
+              "elapsed_ms": 189,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/cargo-test.log",
+              "log_sha256": "b7208973a3932f9ab59a4256bc05976a7687307a87006ab739f5759cd2bc55bc",
+              "stage": "cargo-test"
+            },
+            {
+              "elapsed_ms": 153,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/charon.log",
+              "log_sha256": "0b3245123244d9f1a63c8c0729086055a5c9fabf7a2ac3c8b2aee4a09d646958",
+              "stage": "charon"
+            },
+            {
+              "elapsed_ms": 1026,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/aeneas.log",
+              "log_sha256": "8f3dc7d6ac7b2daced274df2cd1379632c30cd3d260d65df42b91bc2ad1632ee",
+              "stage": "aeneas"
+            },
+            {
+              "elapsed_ms": 17110,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/lake-build.log",
+              "log_sha256": "1da44c6853d452083c79de40aef13ad338d80ca76cd7550acb0914b9d2107446",
+              "stage": "lake-build"
+            },
+            {
+              "elapsed_ms": 3443,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/lean-ResolutionProof.log",
+              "log_sha256": "cd46e86493b4ddbea102e7857f66d88ce23197ec1c4a0b556a9ee1d920394384",
+              "stage": "lean-ResolutionProof"
+            },
+            {
+              "elapsed_ms": 3571,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/lean-TemplateProof.log",
+              "log_sha256": "e4677d04adc02c18128920b7cd2cbe595065e26022b69e129a59db38690f2975",
+              "stage": "lean-TemplateProof"
+            },
+            {
+              "elapsed_ms": 3156,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/lean-PathProof.log",
+              "log_sha256": "8ee2a1d57cc04f5e00e8e780640cd4e3b73a2fe76daf2e28e123907513741b3f",
+              "stage": "lean-PathProof"
+            },
+            {
+              "elapsed_ms": 2724,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/lean-MatcherProof.log",
+              "log_sha256": "057792b75ddfd6d57b543eeae92332f84eef7e4b19f80462bd5f4fb553fea94c",
+              "stage": "lean-MatcherProof"
+            },
+            {
+              "elapsed_ms": 2603,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/lean-AuthorizationProof.log",
+              "log_sha256": "856ee843f9ff5d7940c263d717df29b965c18e3fada14a433bf76698f4b521eb",
+              "stage": "lean-AuthorizationProof"
+            },
+            {
+              "elapsed_ms": 2685,
+              "exit": 0,
+              "log": "qualification-exec-6/variants/restored/logs/lean-ContractInterpretation.log",
+              "log_sha256": "02483e9a0546ebd091cdbc5fc38a980befd35dc6c6bbe9301dadae2615f24f9c",
+              "stage": "lean-ContractInterpretation"
+            }
+          ],
+          "status": "passed"
+        }
+      }
+    }
+  },
+  "attempt_history": [
+    {
+      "classification": "setup-only excluded",
+      "reason": "evidence directory was not empty; no validation stages",
+      "run": "qualification-exec-1"
+    },
+    {
+      "classification": "setup-only excluded",
+      "reason": "runner expected absent plan key primary_semantic_proof; no variant stages",
+      "run": "qualification-exec-2"
+    },
+    {
+      "classification": "partially accepted; baseline, exact-hit-none, ignore-conflict, reject-empty-tail, and restore accepted",
+      "reason": "literal/query reached compile, Charon, Aeneas, model build, and prebuild ResolutionProof; runner misclassified their intended TemplateProof semantic failures as prebuild failure and did not execute witnesses; corrected controls executed in exec-6",
+      "run": "qualification-exec-3"
+    },
+    {
+      "classification": "partial accidental baseline excluded",
+      "partial_validation_count": "8 stages: cargo-test, Charon, Aeneas, lake-build, and four direct proofs; all observed exit 0 before termination.",
+      "reason": "--skip-baseline was parsed but ignored; baseline completed 5 Rust tests, Charon, Aeneas, generated model Lake build, and first four direct proof files (Resolution, Template, Path, Matcher), then run terminated. It is not counted as accepted baseline.",
+      "run": "qualification-exec-4",
+      "stages": [
+        {
+          "elapsed_ms": 189,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/cargo-test.log",
+          "log_sha256": "55ed4e65b2e867be65f294354390bd41f625589ceb31031373fb5c65ddb783fd",
+          "stage": "cargo-test"
+        },
+        {
+          "elapsed_ms": 155,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/charon.log",
+          "log_sha256": "dd67cc3602d898cd3e7108dea6ed2fb45ed1152d750ff544124bbd614bcd87ec",
+          "stage": "charon"
+        },
+        {
+          "elapsed_ms": 1060,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/aeneas.log",
+          "log_sha256": "fa880255684c91ae5081c55c8a1c2dbd6875ba740b0e944f7222d4a420432d92",
+          "stage": "aeneas"
+        },
+        {
+          "elapsed_ms": 17114,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/lake-build.log",
+          "log_sha256": "1da44c6853d452083c79de40aef13ad338d80ca76cd7550acb0914b9d2107446",
+          "stage": "lake-build"
+        },
+        {
+          "elapsed_ms": 3428,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/lean-ResolutionProof.log",
+          "log_sha256": "cd46e86493b4ddbea102e7857f66d88ce23197ec1c4a0b556a9ee1d920394384",
+          "stage": "lean-ResolutionProof"
+        },
+        {
+          "elapsed_ms": 3520,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/lean-TemplateProof.log",
+          "log_sha256": "e4677d04adc02c18128920b7cd2cbe595065e26022b69e129a59db38690f2975",
+          "stage": "lean-TemplateProof"
+        },
+        {
+          "elapsed_ms": 3125,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/lean-PathProof.log",
+          "log_sha256": "8ee2a1d57cc04f5e00e8e780640cd4e3b73a2fe76daf2e28e123907513741b3f",
+          "stage": "lean-PathProof"
+        },
+        {
+          "elapsed_ms": 2713,
+          "exit": 0,
+          "log": "qualification-exec-4/variants/baseline/logs/lean-MatcherProof.log",
+          "log_sha256": "057792b75ddfd6d57b543eeae92332f84eef7e4b19f80462bd5f4fb553fea94c",
+          "stage": "lean-MatcherProof"
+        }
+      ]
+    },
+    {
+      "classification": "setup-only excluded",
+      "reason": "runner selection NameError args not defined; no validation stages",
+      "run": "qualification-exec-5"
+    },
+    {
+      "classification": "accepted corrected literal/query controls and fresh restore",
+      "reason": "literal/query proof failures were checked in TemplateProof and matching Rust witnesses failed with expected assertions; restored package passed.",
+      "run": "qualification-exec-6"
+    }
+  ],
+  "boundaries": [
+    "Proofs establish properties of the extracted authorization decision/matcher kernel under the stated model and native-operation laws; they do not verify Rust compiler correctness or all SDK transport/hosting behavior.",
+    "Mutation controls demonstrate these proof statements and witnesses detect the five injected behavior changes.",
+    "No application deployment or real model inference was performed."
+  ],
+  "commands": {
+    "baseline_and_restored": [
+      "cd proofs/authorization/rust && cargo test --locked --lib",
+      "cd proofs/authorization/rust && charon cargo --preset=aeneas",
+      "cd proofs/authorization && aeneas -backend lean -dest . rust/sdk_authorization_proof.llbc",
+      "cd proofs/authorization && lake build",
+      "cd proofs/authorization && lake env lean ResolutionProof.lean",
+      "cd proofs/authorization && lake env lean TemplateProof.lean",
+      "cd proofs/authorization && lake env lean PathProof.lean",
+      "cd proofs/authorization && lake env lean MatcherProof.lean",
+      "cd proofs/authorization && lake env lean AuthorizationProof.lean",
+      "cd proofs/authorization && lake env lean ContractInterpretation.lean"
+    ],
+    "each_mutant": [
+      "cargo check --locked --lib",
+      "charon cargo --preset=aeneas",
+      "aeneas -backend lean -dest . rust/sdk_authorization_proof.llbc",
+      "lake build SdkAuthorizationProof",
+      "lake env lean <intended proof module>.lean (expected semantic failure)",
+      "cargo test --locked --lib tests::<named witness> -- --exact (expected assertion failure)"
+    ],
+    "proof_tool_env": "Pinned Aeneas/Charon/Lean tool paths with Rust nightly-2026-09-17; isolated per-variant source, Cargo target and Lake build; shared immutable .lake/packages."
+  },
+  "host": {
+    "architecture": "amd64",
+    "cache_root": "/home/rozgo/.cache/lean-pilot/sdk-contract-proof",
+    "os": "Linux"
+  },
+  "native_seam_checks": {
+    "receipt_path": "/home/rozgo/.cache/lean-pilot/sdk-contract-proof/seam4/sdk-seam-validation-receipt.json",
+    "receipt_sha256": "de32348dc2162697de1a08e49696eff60460f6f6968e8035fe4bd074f2e6d574",
+    "seam3": "registration_wire 28/28 with testing feature; contract_boundary 3/3; 5/5 Rust witness harness; Charon/Aeneas passed",
+    "seam4": "cargo fmt --all --check and cargo clippy --locked -p veoveo-hub-sdk --lib --no-default-features --features contract -- -D warnings passed after lifetime-only lint fix."
+  },
+  "proofs": {
+    "allowed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "axiom_closures_baseline_and_restored": {
+      "AuthorizationProof.authorization_success_iff": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "AuthorizationProof.bool_result_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "AuthorizationProof.decoded_trace_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "AuthorizationProof.derived_matcher": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "AuthorizationProof.native_decoded_equivalence": [
+        "propext",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.authenticated_agreement": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.composed_laws": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.cursor_law": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.equality_law": [
+        "propext",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.exact_overrides_conflict": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.full_access_conflict": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.native_view": [
+        "propext",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.nontrivial_match": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.query_law": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ContractInterpretation.segment_law": [
+        "propext",
+        "Quot.sound"
+      ],
+      "MatcherProof.matches_view_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "MatcherProof.native_matches_view_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "MatcherProof.native_query_equivalence": [
+        "propext",
+        "Quot.sound"
+      ],
+      "MatcherProof.same_root_correct": [
+        "propext",
+        "Quot.sound"
+      ],
+      "PathProof.geometry_expression_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "PathProof.path_allowed_with_trim": [
+        "propext",
+        "Quot.sound"
+      ],
+      "PathProof.path_matches_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "PathProof.tail_expression_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ResolutionProof.exact_without_visits": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ResolutionProof.first_matching_conflict_stops": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ResolutionProof.resolve_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ResolutionProof.resolve_loop_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "ResolutionProof.resolve_success_iff": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "TemplateProof.path_loop1_eq": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "TemplateProof.path_loop2_eq": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "TemplateProof.path_loop3_eq": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "TemplateProof.path_loop_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "TemplateProof.query_loop1_eq": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "TemplateProof.query_loop_correct": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ]
+    },
+    "axiom_sets_identical": true,
+    "generated_model_baseline_and_restored_sha256": "f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f",
+    "handwritten_modules": {
+      "AuthorizationProof.lean": "53bf1badb6f115b1a935aff9b2883719070ef45e2004cee8aa8baa14b6ed9e05",
+      "ContractInterpretation.lean": "59e63b9e85bca0a34932a15660f5cb89ad53e02d08687c2f88ede50937fdec16",
+      "MatcherProof.lean": "c66ca529456c652a88ab47b920cc63342a56b9dc12bccc8089ef51a8b7d4066e",
+      "PathProof.lean": "fc62b83f1be8ca89366b5c53470c08ae50a4d4b074b3f9d968a83d49fa17ff25",
+      "ResolutionProof.lean": "f85b40f834b08be227dd9d9d697b6e74740838b33bde293853594d6b8ed8d852",
+      "TemplateProof.lean": "a1c6693b597ec7eff9553cf505f54fed9f8e5d34af6e7a1910f8c6bed8fcdb2e",
+      "lakefile.lean": "2b6ff04098411020a783394e09546a65f300d34f90c3e7727ef3f2239d8cb9e5"
+    },
+    "historical_seam3_llbc_sha256": "7e334bd173c6594b9563775e1cea573ea215e55c31537fba2cf4ee44ce17a1bf",
+    "mutation_patch_hashes": {
+      "accept-mismatching-literal.patch": "1e3bee1f12fb8a52c8053f7712c55a588f3771cb57254353e89225fdd8c67029",
+      "exact-hit-none.patch": "520a7b2d697629df049c4ae1549560873a3e67e15f1910eb17a839a4eae8825e",
+      "ignore-conflict.patch": "d94045c997082aa94bd9bcd30f1a35eb7252531e7f03ce6101b79ffb68c3fd58",
+      "invert-query-membership.patch": "1103d23d359ae290500b513d86d673e21ad07a7be6489cf8e8ed729228f22d16",
+      "reject-empty-tail.patch": "29dbeaed6f9a065dc617e0a1d09032d55790965de700ce635a1b959cb5b73373"
+    },
+    "sorryAx_present": false
+  },
+  "scope": "Five independent semantic mutation controls plus fresh restored baseline for SDK authorization proof package; no deployment/model calls.",
+  "semantic_controls": [
+    {
+      "expected_semantic_failure": "mutant returns None where Some(Authenticated) is required",
+      "proof": "ResolutionProof.resolve_correct / exact override behavior",
+      "proof_exit": 1,
+      "run": "qualification-exec-3",
+      "rust_witness": "tests::exact_access_overrides_conflicting_templates_without_visiting_them",
+      "variant": "exact-hit-none",
+      "witness_exit": 101
+    },
+    {
+      "expected_semantic_failure": "mutant returns Some(Authenticated) where the conflict must return None",
+      "proof": "ResolutionProof.resolve_correct / first matching conflict behavior",
+      "proof_exit": 1,
+      "run": "qualification-exec-3",
+      "rust_witness": "tests::every_raw_candidate_is_matched_and_first_conflict_short_circuits",
+      "variant": "ignore-conflict",
+      "witness_exit": 101
+    },
+    {
+      "expected_semantic_failure": "mismatching literal is accepted; generated loop goal fails semantically",
+      "proof": "TemplateProof.path_loop_correct",
+      "proof_exit": 1,
+      "run": "qualification-exec-6; exec-3 semantic failure retained but not accepted as complete control",
+      "rust_witness": "tests::scalar_keeps_empty_segment_and_tail_accepts_zero_or_many",
+      "variant": "accept-mismatching-literal",
+      "witness_exit": 101
+    },
+    {
+      "expected_semantic_failure": "valid declared query subset is rejected; generated loop goal fails semantically",
+      "proof": "TemplateProof.query_loop_correct",
+      "proof_exit": 1,
+      "run": "qualification-exec-6; exec-3 semantic failure retained but not accepted as complete control",
+      "rust_witness": "tests::trailing_slash_and_query_checks_keep_native_semantics",
+      "variant": "invert-query-membership",
+      "witness_exit": 101
+    },
+    {
+      "expected_semantic_failure": "valid empty Tail match is refused",
+      "proof": "PathProof geometry/path-tail behavior",
+      "proof_exit": 1,
+      "run": "qualification-exec-3",
+      "rust_witness": "tests::scalar_keeps_empty_segment_and_tail_accepts_zero_or_many",
+      "variant": "reject-empty-tail",
+      "witness_exit": 101
+    }
+  ],
+  "setup_attempts": [
+    {
+      "result": "setup failure; nonempty evidence directory; no stages",
+      "run": "qualification-exec-1"
+    },
+    {
+      "result": "setup failure; absent primary_semantic_proof plan key; no stages",
+      "run": "qualification-exec-2"
+    },
+    {
+      "result": "setup failure; NameError args undefined; no stages",
+      "run": "qualification-exec-5"
+    }
+  ],
+  "source": {
+    "assembled_archive_identity": {
+      "path": "/home/rozgo/.cache/lean-pilot/sdk-contract-proof/qualification-runner-prepared/sdk-qualification-source.tar.gz",
+      "sha256": "65314f86fa765a8f4cf5b1f8f052ea173ca662b58a0ff465e6ab8b415e71039d",
+      "verified_variant_roots": 270
+    },
+    "base_commit": "8489a58d12f880e88bb71b226c720e57a5399084",
+    "baseline_kernel_sha256": "8ed2b007bb457eed5057054367e2c9e6aac38664bc9e89cddc580d61de3e6bf8",
+    "frozen_overlay_paths": {
+      "crates/veoveo-hub-sdk/src/registration/DESIGN.md": "ff4669481fc589323d317088243b7795960c4d70db9558d915dedec7d44b489e",
+      "crates/veoveo-hub-sdk/src/registration/authorization.rs": "4581408a56cef847179428a73f947e2d947c1269273f9416c286df46be8ce50f",
+      "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs": "8ed2b007bb457eed5057054367e2c9e6aac38664bc9e89cddc580d61de3e6bf8",
+      "crates/veoveo-hub-sdk/src/registration/authorization_template.rs": "f767bec5e81d58cbcbbe1255dddb70d7c7801c89958ea29fda41b3aa0d3c423f",
+      "crates/veoveo-hub-sdk/src/registration/mcp.rs": "069e01c4ce0f9da4743ffd3363e1f21ecbc6d658fcddd6510d0333eeb6179386",
+      "crates/veoveo-hub-sdk/src/registration/mod.rs": "a0d6de917d81590d1ff4a32e66e7aa528b6d28d59bdabce1c2ca9637839a38a0",
+      "crates/veoveo-hub-sdk/tests/registration_wire.rs": "fa2ee456e32be3fbdeb249cb00a860437b0f338b00140af0d6eb66d22303bf12",
+      "proofs/authorization/.gitignore": "7de9a038ed7452f806bbb44d79e4fee66c1418669b7f474e7e3c21b617a416fc",
+      "proofs/authorization/AuthorizationProof.lean": "53bf1badb6f115b1a935aff9b2883719070ef45e2004cee8aa8baa14b6ed9e05",
+      "proofs/authorization/ContractInterpretation.lean": "59e63b9e85bca0a34932a15660f5cb89ad53e02d08687c2f88ede50937fdec16",
+      "proofs/authorization/MatcherProof.lean": "c66ca529456c652a88ab47b920cc63342a56b9dc12bccc8089ef51a8b7d4066e",
+      "proofs/authorization/PathProof.lean": "fc62b83f1be8ca89366b5c53470c08ae50a4d4b074b3f9d968a83d49fa17ff25",
+      "proofs/authorization/README.md": "7b9374431e8c44a0bae3d669dace7cc9f778107880c8ad368affa1c23926d497",
+      "proofs/authorization/ResolutionProof.lean": "f85b40f834b08be227dd9d9d697b6e74740838b33bde293853594d6b8ed8d852",
+      "proofs/authorization/SdkAuthorizationProof.lean": "f7c597d997b34b800578f39168924a4666426bc6d5a5dfee23bc7313708e2e0f",
+      "proofs/authorization/TemplateProof.lean": "a1c6693b597ec7eff9553cf505f54fed9f8e5d34af6e7a1910f8c6bed8fcdb2e",
+      "proofs/authorization/lake-manifest.json": "74bf0c58dd47a3f41f645f72446e65d298b9d28c2b7ea13c5a93c8a35b15ab62",
+      "proofs/authorization/lakefile.lean": "2b6ff04098411020a783394e09546a65f300d34f90c3e7727ef3f2239d8cb9e5",
+      "proofs/authorization/lean-toolchain": "ca5f1f601d34c49079e38d7e7041eb0f2a9c227fbc1df0f404820069a052330c",
+      "proofs/authorization/mutations/accept-mismatching-literal.patch": "1e3bee1f12fb8a52c8053f7712c55a588f3771cb57254353e89225fdd8c67029",
+      "proofs/authorization/mutations/exact-hit-none.patch": "520a7b2d697629df049c4ae1549560873a3e67e15f1910eb17a839a4eae8825e",
+      "proofs/authorization/mutations/ignore-conflict.patch": "d94045c997082aa94bd9bcd30f1a35eb7252531e7f03ce6101b79ffb68c3fd58",
+      "proofs/authorization/mutations/invert-query-membership.patch": "1103d23d359ae290500b513d86d673e21ad07a7be6489cf8e8ed729228f22d16",
+      "proofs/authorization/mutations/reject-empty-tail.patch": "29dbeaed6f9a065dc617e0a1d09032d55790965de700ce635a1b959cb5b73373",
+      "proofs/authorization/rust/Cargo.lock": "c4fbcfc8724d153f3e18ed306ec5eea0b58b4604697db0cdb143e112662e7716",
+      "proofs/authorization/rust/Cargo.toml": "453da39e7f762f375afdf45c3ef363c13ceff3589da6edfb3a54accd6db0a620",
+      "proofs/authorization/rust/src/lib.rs": "f89f932449de0919e1090cd092d9bdc1a16d6925ddda4b4e4f2ca4d25ac30456"
+    },
+    "kernel_path": "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+    "manifest_paths": 27,
+    "overlay_archive_local_path": "/tmp/sdk-contract-proof-20261029/qualification-1.tar",
+    "overlay_archive_sha256": "6151394422cacaeafbc293bd888358a6fe6da666d259a6823eb0c945744154a9",
+    "overlay_manifest_contents_verified_against_tar": {
+      "declared_files": 27,
+      "matched_files": 27,
+      "mismatches": 0,
+      "verified_on": "Mac source host; archive and manifest SHA256 are recorded above"
+    },
+    "overlay_manifest_local_path": "/tmp/sdk-contract-proof-20261029/qualification-1.json",
+    "overlay_manifest_sha256": "ad09ebe80e1504fa5beda7c00e3f659737231a301fc69c493f0f119812a70dfd",
+    "source_archive_sha256": "65314f86fa765a8f4cf5b1f8f052ea173ca662b58a0ff465e6ab8b415e71039d",
+    "variant_manifest_comparison": {
+      "qualification-exec-3/accept-mismatching-literal": {
+        "kind": "mutant",
+        "manifest_matches": 25,
+        "missing_paths": [],
+        "mutated_paths": [
+          "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+          "proofs/authorization/SdkAuthorizationProof.lean"
+        ],
+        "verified": true
+      },
+      "qualification-exec-3/baseline": {
+        "kind": "baseline",
+        "manifest_matches": 27,
+        "missing_paths": [],
+        "mutated_paths": [],
+        "verified": true
+      },
+      "qualification-exec-3/exact-hit-none": {
+        "kind": "mutant",
+        "manifest_matches": 25,
+        "missing_paths": [],
+        "mutated_paths": [
+          "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+          "proofs/authorization/SdkAuthorizationProof.lean"
+        ],
+        "verified": true
+      },
+      "qualification-exec-3/ignore-conflict": {
+        "kind": "mutant",
+        "manifest_matches": 25,
+        "missing_paths": [],
+        "mutated_paths": [
+          "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+          "proofs/authorization/SdkAuthorizationProof.lean"
+        ],
+        "verified": true
+      },
+      "qualification-exec-3/invert-query-membership": {
+        "kind": "mutant",
+        "manifest_matches": 25,
+        "missing_paths": [],
+        "mutated_paths": [
+          "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+          "proofs/authorization/SdkAuthorizationProof.lean"
+        ],
+        "verified": true
+      },
+      "qualification-exec-3/reject-empty-tail": {
+        "kind": "mutant",
+        "manifest_matches": 25,
+        "missing_paths": [],
+        "mutated_paths": [
+          "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+          "proofs/authorization/SdkAuthorizationProof.lean"
+        ],
+        "verified": true
+      },
+      "qualification-exec-3/restored": {
+        "kind": "baseline",
+        "manifest_matches": 27,
+        "missing_paths": [],
+        "mutated_paths": [],
+        "verified": true
+      },
+      "qualification-exec-6/accept-mismatching-literal": {
+        "kind": "mutant",
+        "manifest_matches": 25,
+        "missing_paths": [],
+        "mutated_paths": [
+          "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+          "proofs/authorization/SdkAuthorizationProof.lean"
+        ],
+        "verified": true
+      },
+      "qualification-exec-6/invert-query-membership": {
+        "kind": "mutant",
+        "manifest_matches": 25,
+        "missing_paths": [],
+        "mutated_paths": [
+          "crates/veoveo-hub-sdk/src/registration/authorization_decision.rs",
+          "proofs/authorization/SdkAuthorizationProof.lean"
+        ],
+        "verified": true
+      },
+      "qualification-exec-6/restored": {
+        "kind": "baseline",
+        "manifest_matches": 27,
+        "missing_paths": [],
+        "mutated_paths": [],
+        "verified": true
+      }
+    }
+  },
+  "timing_note": "Per-stage measured elapsed_ms and log SHA256 are recorded in each accepted variant; total_recorded_stage_ms sums those stage wall times and does not represent end-to-end elapsed time.",
+  "toolchain": {
+    "aeneas": "nightly-2026.10.23-fdebf20",
+    "binary_sha256": {
+      "aeneas": "d968af5e01e50cef84add48a75cf2af8f80751458cab931066d05f42098d934c",
+      "charon": "813d8ce502b7fe1b4bbb5e149ce7b403a031ce17c2cfd6fab831342ed397dc74",
+      "lean": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38"
+    },
+    "charon": "0.1.293 (de8736f7c995ac54dc490345cef9ea5143c06c62)",
+    "lake": "5.0.0-src",
+    "lean": "4.35.0; commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+    "rust": "nightly-2026-09-17; rustc 1.100.0-nightly (923c95cdf 2026-09-16)"
+  }
+}

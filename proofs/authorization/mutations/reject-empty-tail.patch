@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
++++ b/crates/veoveo-hub-sdk/src/registration/authorization_decision.rs
+@@ -87,7 +87,7 @@
+     if tail {
+         // A terminal Tail establishes path_len > 0. This is the same cardinality
+         // test as active + 1 < path_len, without addition at the integer limit.
+-        if active < path_len - 1 {
++        if active <= path_len - 1 {
+             return false;
+         }
+     } else if active != path_len {

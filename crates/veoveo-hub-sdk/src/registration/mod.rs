@@ -10,6 +10,7 @@
 //! server's key.
 mod access;
 pub mod authorization;
+mod authorization_decision;
 pub(crate) mod authorization_template;
 pub mod declaration;
 mod error;

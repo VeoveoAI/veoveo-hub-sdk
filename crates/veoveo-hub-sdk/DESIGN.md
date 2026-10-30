@@ -285,7 +285,10 @@ lifetime from MCP transport locality.
 The hub signs a fresh RFC 9068 access token for every upstream request. Ordinary
 requests have a 60-second maximum token lifetime. A `subscriptions/listen` POST has a
 15-minute maximum, because the source enforces token expiry throughout the stream.
-Both lifetimes end at the source access token's expiration when it is earlier. This
+For direct calls, both lifetimes also end at the source access token's expiration
+when it is earlier. Delegated calls are bounded by the exchanged authority and any
+delegation-context deadline; an earlier original caller token expiry does not cap
+those calls again. This
 permits a longer bearer lifetime only for tokens minted when opening a subscription;
 those credentials stay on the private hub-to-server transport. Clients renew their
 own authority and reopen listeners before that deadline. Connection reuse depends only
@@ -300,7 +303,7 @@ Attributed requests must match automated service identity, client, tenant and Wo
 Context and cannot carry a browser session family. It preserves the JWT-verified principal before delegated actor
 derivation and its access-token metadata. Rust and Python verify the context against
 the actor, tenant, Work Context, scopes and invocation provenance. The token's
-expiration cannot exceed the source access token's expiration. Every supplied context
+expiration follows the direct or delegated lifetime rules above. Every supplied context
 also carries the platform audit contract's checked request, trace and span IDs and
 optional source IP address. Reusing a transport
 never supplies another browser family's request context.

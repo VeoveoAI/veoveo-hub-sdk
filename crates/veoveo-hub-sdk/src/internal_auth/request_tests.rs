@@ -169,6 +169,75 @@ fn source_expiry_caps_assertions_and_cannot_be_extended_by_a_signed_context() {
 }
 
 #[test]
+fn admitted_task_delegation_outlives_source_expiry_without_renewing_its_deadline() {
+    let now = Utc::now();
+    let deadline = DateTime::<Utc>::from_timestamp(now.timestamp() + 300, 0).unwrap();
+    let mut fixture = fixtures().remove(0);
+    fixture.request_context.access_token.expires_at = now - TimeDelta::minutes(5);
+    let mut request = forwarded_with(&fixture.actor, fixture.authority, fixture.request_context);
+    request.expires_at = deadline + TimeDelta::minutes(5);
+    let issuer = tests::issuer();
+    assert!(matches!(
+        issuer.issue(request.clone()),
+        Err(InternalTokenError::ExpiredDelegation)
+    ));
+
+    // Hub admits the live Task before this SDK boundary. The synthetic context
+    // represents that admission; this test does not establish native Task liveness.
+    let origin = ActingServer {
+        server: ServerSlug::parse("first").unwrap(),
+        deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcde").unwrap(),
+        client: OAuthClientId::parse("first-registration").unwrap(),
+    };
+    request.acting_server = Some(ActingServer {
+        server: ServerSlug::parse("second").unwrap(),
+        deployment: DeploymentId::parse("019a5b30-0000-7000-8000-00000000bcdf").unwrap(),
+        client: OAuthClientId::parse("second-registration").unwrap(),
+    });
+    request.delegation_context = Some(DelegationContext {
+        task: Some(DelegatingTask {
+            server: origin.server.clone(),
+            deployment: origin.deployment,
+            task: OpaqueTaskId::parse("origin-task").unwrap(),
+        }),
+        actors: vec![origin],
+        expires_at: deadline,
+    });
+    let expected = request.clone();
+    let issued = issuer.issue(request).unwrap();
+    assert_eq!(issued.identity.expires_at, deadline);
+    let received = tests::verifier("computers")
+        .verify(&issued.bearer_token)
+        .unwrap();
+    assert_eq!(received.expires_at, deadline);
+    assert_eq!(received.profile, expected.profile);
+    assert_eq!(received.server, expected.server);
+    assert_eq!(received.deployment, expected.deployment);
+    assert_eq!(received.audience, expected.audience);
+    assert_eq!(received.client, expected.client);
+    assert_eq!(received.actor, expected.actor);
+    assert_eq!(received.authority, expected.authority);
+    assert_eq!(received.permissions, expected.permissions);
+    assert_eq!(received.request_context, expected.request_context);
+    assert_eq!(received.acting_server, expected.acting_server);
+    assert_eq!(received.acting_task, expected.acting_task);
+    assert_eq!(
+        received.delegating_task(),
+        expected.delegation_context.as_ref().unwrap().task
+    );
+    assert_eq!(received.delegation_context, expected.delegation_context);
+
+    // The delegation's own deadline remains binding even though source expiry
+    // is no longer the deadline of this admitted continuation.
+    let mut ended = expected;
+    ended.delegation_context.as_mut().unwrap().expires_at = now - TimeDelta::minutes(2);
+    assert!(matches!(
+        issuer.issue(ended),
+        Err(InternalTokenError::ExpiredDelegation)
+    ));
+}
+
+#[test]
 fn signed_context_rejects_mismatched_actor_tenant_scope_and_provenance() {
     for fixture in fixtures() {
         for mismatch in [

@@ -144,17 +144,17 @@ fn a_linked_component_names_one_runner_per_link() {
         .into_iter()
         .collect(),
     };
-    let composition = selected(&[("n8n", runners.clone())]);
+    let composition = selected(&[("ledger", runners.clone())]);
     // Fixed vector independently calculated over the exact format URI + NUL + JSON bytes.
     assert_eq!(
         String::from_utf8(composition.canonical_bytes()).unwrap(),
         format!(
-            "{{\"format\":\"https://veoveo.ai/formats/resolved-composition\",\"formatVersion\":2,\"components\":{{\"n8n\":{{\"kind\":\"runners\",\"runners\":{{\"team-a\":\"{DEPLOYMENT}\",\"team-b\":\"{other}\"}}}}}}}}"
+            "{{\"format\":\"https://veoveo.ai/formats/resolved-composition\",\"formatVersion\":2,\"components\":{{\"ledger\":{{\"kind\":\"runners\",\"runners\":{{\"team-a\":\"{DEPLOYMENT}\",\"team-b\":\"{other}\"}}}}}}}}"
         )
     );
     assert_eq!(
         composition.revision().digest().as_str(),
-        "sha256:b641b957c662fb7152fea2297e390291af6c26b92818cc70ecfeea099c0c24e7"
+        "sha256:51dfd289f1a98f7a22809855a81fd4d7466a8fa6b5557ac2bc5266ff0113debd"
     );
     assert_eq!(
         ResolvedComposition::from_canonical_bytes(&composition.canonical_bytes()).unwrap(),

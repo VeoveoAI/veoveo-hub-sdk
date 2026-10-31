@@ -124,7 +124,7 @@ The registration member `veoveo_surfaces` spells the declaration in snake_case:
 ```json
 {
   "public_routes": [
-    { "prefix": "/n8n/hooks/", "max_body_bytes": 1048576, "requests_per_minute": 600 }
+    { "prefix": "/ledger/hooks/", "max_body_bytes": 1048576, "requests_per_minute": 600 }
   ],
   "app_origin": true
 }
@@ -180,7 +180,7 @@ MCP Discover advertises the same declaration as `ai.veoveo/authorization`, where
 requirements members are `resourceTemplates` and `appOrigin`.
 
 A server with an app origin adds `"app_origin": {"kind":"permission",
-"permission":"n8n.editor"}` to `requirements`. The Hub admits a person to the app origin
+"permission":"ledger.editor"}` to `requirements`. The Hub admits a person to the app origin
 only through that requirement, evaluated as a tool's is, on every request, and looks it
 up as `RequirementTarget::AppOrigin`. The requirement names a declared permission, or
 is `{"kind":"authenticated"}`.

@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn a_linked_servers_view_names_a_tool_with_its_link() {
-        let view = app_resource("ui://n8n/overview.html", "Overview");
+        let view = app_resource("ui://ledger/overview.html", "Overview");
         let linked = |name: &str| {
             link_tool_to_app(
                 Tool::new(name.to_owned(), "Run", rmcp::model::JsonObject::new()),
@@ -100,14 +100,14 @@ mod tests {
                 &[UiVisibility::App],
             )
         };
-        let tools = [linked("n8n__team-a__run"), linked("n8n__team-b__run")];
+        let tools = [linked("ledger__team-a__run"), linked("ledger__team-b__run")];
         assert_eq!(
             resolve_app_tool(&view, &tools, "team-a__run").map(|tool| tool.name.as_ref()),
-            Some("n8n__team-a__run")
+            Some("ledger__team-a__run")
         );
         assert_eq!(
             resolve_app_tool(&view, &tools, "team-b__run").map(|tool| tool.name.as_ref()),
-            Some("n8n__team-b__run")
+            Some("ledger__team-b__run")
         );
         // The link alone is no tool, nor is an unlisted link, a link that is no DNS label,
         // the catalog name or a third delimiter.
@@ -115,12 +115,12 @@ mod tests {
             "run",
             "team-c__run",
             "Team-A__run",
-            "n8n__team-a__run",
+            "ledger__team-a__run",
             "team-a__run__x",
         ] {
             assert!(resolve_app_tool(&view, &tools, alias).is_none(), "{alias}");
         }
-        assert!(app_allows_tool(&view, &tools, "n8n__team-a__run"));
+        assert!(app_allows_tool(&view, &tools, "ledger__team-a__run"));
     }
 
     #[test]

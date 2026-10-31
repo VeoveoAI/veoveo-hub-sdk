@@ -211,11 +211,11 @@ mod linked_tests {
 
     #[test]
     fn a_linked_name_carries_its_link_between_the_server_and_the_tool() {
-        let server = ServerSlug::parse("n8n").unwrap();
+        let server = ServerSlug::parse("ledger").unwrap();
         let link = LinkName::parse("team-a").unwrap();
         let tool = LocalToolName::parse("run_workflow").unwrap();
         let name = HubToolName::from_linked_parts(&server, &link, &tool).unwrap();
-        assert_eq!(name.as_str(), "n8n__team-a__run_workflow");
+        assert_eq!(name.as_str(), "ledger__team-a__run_workflow");
         assert_eq!(
             name.projection().unwrap(),
             HubToolParts {
@@ -227,15 +227,15 @@ mod linked_tests {
         assert_eq!(name.parts(), Err(HubToolNamespaceError::Linked));
         // A link that is no DNS label, and a third delimiter, have no projection.
         assert!(
-            HubToolName::parse("n8n__Team__run").is_err(),
+            HubToolName::parse("ledger__Team__run").is_err(),
             "no uppercase"
         );
         for name in [
-            "n8n__-team__run",
-            "n8n__team-__run",
-            "n8n__team_a__run",
-            "n8n____run",
-            "n8n__team__run__more",
+            "ledger__-team__run",
+            "ledger__team-__run",
+            "ledger__team_a__run",
+            "ledger____run",
+            "ledger__team__run__more",
         ] {
             assert!(
                 HubToolName::parse(name).unwrap().projection().is_err(),

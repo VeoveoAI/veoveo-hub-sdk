@@ -556,7 +556,7 @@ impl fmt::Display for PublicBase {
 }
 
 /// `veoveo_app_origin`: a server's own origin for a full web application, which the Hub
-/// chooses, such as `https://n8n.apps.veoveo.example.com`. It is an HTTPS origin, or an
+/// chooses, such as `https://ledger.apps.veoveo.example.com`. It is an HTTPS origin, or an
 /// HTTP origin on a local host, in its RFC 6454 serialization: a scheme, a host and an
 /// optional port, with no path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -577,7 +577,7 @@ impl AppOrigin {
         }
         Ok(Self(url))
     }
-    /// The serialized origin, such as `https://n8n.apps.veoveo.example.com`.
+    /// The serialized origin, such as `https://ledger.apps.veoveo.example.com`.
     pub fn as_str(&self) -> &str {
         self.0.as_str().trim_end_matches('/')
     }

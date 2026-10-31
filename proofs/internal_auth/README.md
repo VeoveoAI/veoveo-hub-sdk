@@ -76,9 +76,47 @@ These modules are opt-in manual targets:
 lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectness
 ```
 
-The context-bearing direct/delegated cases, all-owned nonempty permission sets,
+The context-bearing direct/delegated issuance cases, all-owned nonempty permission sets,
 independent complete signer claims, valid constructed examples and semantic
 mutation controls are still required before qualifying full issuance.
+
+## Exact context admission
+
+`InternalAuthContextProof.validate_for_exact` proves the actual extracted
+`HubRequestContext::validate_for` returns `Ok(Ok(()))` exactly when the independent
+`ContextAccepted` predicate holds, and `Ok(Err(InvalidRequestContext))` otherwise.
+It covers Direct, Automated and Delegated provenance, full direct/automated
+Principal equality including every set and `authenticated_at`, delegated actor
+identity and inherited attributes, common tenant/Work Context/token metadata,
+and the browser-session restriction.
+
+The explicit `ContextTextDomain` assumptions are five pointer-sized UTF-8 byte
+bounds: source subject, actor ID, actor subject, token issuer and OAuth client.
+UTF-8 contents and conversion roundtrip are proved against the operational string
+model. These representation assumptions are not new Rust admission checks, and no
+premise assumes that the validator succeeds. The finite independent
+`invocationMode` projection is an `abbrev` so dependent decision dictionaries
+specialize consistently; its match and the admission predicate are unchanged.
+
+The direct check passed in 4.60 seconds and the named target in 5.82 seconds.
+Their executable dependency audit permits
+only `propext`, `Classical.choice` and `Quot.sound`, and rejects `sorryAx`.
+The proof keeps an 800,000-heartbeat allowance local to this theorem and uses
+Lean's supported `backward.split = false` only for the final case analysis;
+neither setting changes runtime behavior or the statement. See the
+[context receipt](evidence/context-admission.json).
+
+The opt-in target is:
+
+```sh
+lake build InternalAuthContextProof
+```
+
+This proves model-relative context admission, not authentication of the supplied
+context, current-policy provenance, expiry, complete issuance/claims, or verifier
+cryptography. Constructed admitted examples for each mode and actual-source
+semantic controls remain pending. Native collection/string/allocation
+correspondence remains the boundary described below.
 
 ## Operational boundaries
 

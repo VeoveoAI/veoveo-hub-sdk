@@ -12,3 +12,4 @@ lean_lib InternalAuthModelAudit
 lean_lib InternalAuthSpecification
 lean_lib InternalAuthValueLaws
 lean_lib InternalAuthCorrectness
+lean_lib InternalAuthContextProof

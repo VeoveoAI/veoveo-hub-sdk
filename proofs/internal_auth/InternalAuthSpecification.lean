@@ -12,7 +12,7 @@ abbrev Authority := veoveo_types.authority.InvocationAuthority
 abbrev Request := internal_auth.ForwardedRequest
 abbrev Identity := internal_auth.HubInternalIdentity
 
-def invocationMode (provenance : veoveo_types.provenance.InvocationProvenance) :
+abbrev invocationMode (provenance : veoveo_types.provenance.InvocationProvenance) :
     veoveo_types.provenance.InvocationMode :=
   match provenance with
   | .Direct _ => .Direct

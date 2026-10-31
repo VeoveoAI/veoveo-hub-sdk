@@ -1,0 +1,124 @@
+{
+  "milestone": "Exact all-mode request-context admission",
+  "date": "2026-10-31",
+  "status": "Direct and opt-in named target checks passed; admitted mode constructions and actual-source mutation qualification remain pending.",
+  "source_parent": "de98b25df9212d81ed267e7921ca3149395e4296",
+  "agents": {
+    "implementation": "GPT-6.1 Sol",
+    "validation": "GPT-6 Luna",
+    "review": "GPT-6 Astra"
+  },
+  "model_receipt": {
+    "path": "internal-auth-model.json",
+    "sha256": "4540ae4d9f59f180daad402a09bb06cf4c0f1603cc03fb60f74d8b4c52fbb453"
+  },
+  "source_files_sha256": {
+    "InternalAuthContextProof.lean": "a639392a51c2130812f307172eabb59dca2f7669e84018f4d45c99023586b22c",
+    "InternalAuthSpecification.lean": "dcaa5f5a4c4edecc2e4aa3ca1e43f4988ccf0ffd24284deafba82bc30c8d83e0",
+    "lakefile.lean": "9446db33498f5a85c299f56472ef2acd28eca37c9dafc7f885ed19ce7eaadc51"
+  },
+  "contract": {
+    "declaration": "InternalAuthContextProof.validate_for_exact",
+    "actual_function": "RequestCompositionSdk.internal_auth.request.HubRequestContext.validate_for",
+    "result": "Outer Aeneas Ok containing Rust Ok(()) iff independent ContextAccepted; otherwise outer Ok containing InvalidRequestContext.",
+    "modes": [
+      "Direct",
+      "Automated",
+      "Delegated"
+    ],
+    "preserved_checks": "Complete direct/automated Principal equality, delegated actor and inherited attributes, issuer/subject/scopes/tenant/Work Context/provenance metadata, initiator/delegation and session-family conditions.",
+    "representation_domain": [
+      "source subject",
+      "actor ID",
+      "actor subject",
+      "token issuer",
+      "OAuth client"
+    ],
+    "domain_meaning": "Each listed String has UTF-8 byte length <= native Usize.max. Roundtrip/content follow the operational model, not an assumed validator success."
+  },
+  "audit": {
+    "allowed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "observed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "executable_guard_passed": true,
+    "sorryAx": false
+  },
+  "direct": {
+    "directory": "/tmp/hub-request-composition-20261030/sdk-internal-auth-context-run17",
+    "command": "LAKE_NO_UPDATE=1 lake env lean InternalAuthContextProof.lean",
+    "exit_status": 0,
+    "elapsed_seconds": 4.6,
+    "max_rss_kib": 2754872,
+    "immutable_input_count": 16,
+    "input_before_exit": 0,
+    "input_after_exit": 0,
+    "input_manifest_sha256": "cce8e8f4d29bc9b68d1fb9dc7f2bdf55609388b706111c50711aea2b5ddc0747",
+    "log_sha256": "ca9592b8ece5be4191fadb92258cdb217d5e51014a8d9a66b05f29801add3185",
+    "time_v_sha256": "5b3ce6657f0ee1cf687b94fb140277dd88efe8b32e3969bdaeda72beedf5657b",
+    "runner_sha256": "581185ee12d9c0f56e79157fc160f2ba02fcd494f542843f109f64534bd0677b"
+  },
+  "named_target": {
+    "status": "passed",
+    "command": "LAKE_NO_UPDATE=1 lake build InternalAuthSpecification InternalAuthContextProof",
+    "private_lakefile_sha256": "a1cd543237485a1f601317ed89454903bd578d13cb561d5449ab61e1fd9d32b1",
+    "private_config_delta": "Only appended nondefault lean_lib InternalAuthContextProof; existing relative Aeneas override/dependency manifest unchanged.",
+    "directory": "/tmp/hub-request-composition-20261031/context-target-run1",
+    "exit_status": 0,
+    "elapsed_seconds": 5.82,
+    "max_rss_kib": 2763196,
+    "reported_jobs": 1804,
+    "immutable_input_count": 13,
+    "input_before_exit": 0,
+    "input_after_exit": 0,
+    "input_count_note": "The direct check has 16 immutable entries; the target gate excludes its 3 package OLean outputs and records those artifact hashes separately.",
+    "input_manifest_sha256": "99c39858e5e8d7dc37159b1656284ac3b797b6ad81597eccf22109807c722932",
+    "log_sha256": "f30dc688ade3b4ce4ca95a57c8e923377d901d5ecdc2b3e055356217777ef0bc",
+    "time_v_sha256": "d03a8c06cbb72c897fa8054b7ae61e68aac4ade0c8227b5b1ee81e5e1c72e9aa",
+    "runner_sha256": "bfcd2b3c304b49050deaee5e3af7fc8b023be5b202a00786369929953fe986d8",
+    "artifacts": {
+      "InternalAuthContextProof.olean": "a1b79520207eb2aa1357a4afca1ef6964ba36b510c6cad7ecdfafb88518e7b79",
+      "InternalAuthSpecification.olean": "52223fd0501a6e167495542995de8d3116f5f4ede42c09dcd8664a91abba8c27",
+      "InternalAuthValueLaws.olean": "2957b2356b33f78606a428dd30bda176ce291512cd7f0da7370e282225f4bf3b",
+      "InternalAuthCorrectness.olean": "b396dfe3dc28a0a6a69c92244eb28ec6a703187605cbd6bb76f0dd73a13d8016"
+    },
+    "audit_passed": true,
+    "job_count_note": "Lake total includes cache replay; this is not a claim of 1804 fresh compilations."
+  },
+  "proof_tool_scope": {
+    "lean": "4.35.0",
+    "aeneas": "fdebf20d78e8007bb92fc17068f17fc2e6cfbbbf",
+    "maxHeartbeats": {
+      "value": 800000,
+      "scope": "validate_for_exact only",
+      "actual_used": "not instrumented"
+    },
+    "split": {
+      "option": "backward.split=false",
+      "scope": "final finite case analysis only",
+      "pinned_source": "Lean/Meta/Tactic/SplitIf.lean:131,284-293",
+      "reason": "Legacy split revisited nested conditionals and reached simp step limit; supported targeted semantics avoids that path."
+    },
+    "tuple_reduction": "Pinned Aeneas Do/Elab.lean:182-190 emits Std.uncurry; the supplied Std/Primitives.lean:364 uncurry_apply_pair normalizes the actual tuple continuation.",
+    "specification_delta": "Only def -> abbrev for the unchanged finite invocationMode projection, ensuring dependent decision dictionaries reduce consistently before indexing."
+  },
+  "iteration_classification": [
+    "Failed compiler iterations were proof-local representation, tuple/guard, dependent-dictionary, tactic-syntax and propositional-normalization failures; no runtime defect was established.",
+    "Run14 malformed option/doc-comment placement is not budget-adequacy evidence. Corrected run15 completed without timeout but had unsolved goals.",
+    "Manifest/path setup failures before Lean are not compiler failures. Scratch diagnostics intentionally incomplete are not qualification. DelegatedBind baseline gate did not include its scratch file; this is a recorded diagnostic limit, not a new qualified input claim.",
+    "Direct15 first setup used a stale expected leaf hash; DelegatedBind first setup used a mismatched evidence directory. Both stopped before Lean and were corrected in fresh evidence directories without a compiler rerun."
+  ],
+  "boundaries": [
+    "This is the recorded extracted SDK source graph and operational model, not proof of native collection/string/allocation implementation correspondence.",
+    "No authentication/cryptographic validity of the supplied context or current-policy/async caller provenance is established.",
+    "No full issuer/deadline/complete signer-claims or Hub pinned-stack integration theorem is claimed.",
+    "Constructed admitted witnesses for each mode and actual-source semantic mutation controls remain pending.",
+    "No runtime/raw-model change, new native test, external dependency pin change, paid call or deployment in this checkpoint."
+  ]
+}

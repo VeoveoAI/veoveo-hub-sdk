@@ -12,7 +12,7 @@ rules.
 | [Model Context Protocol](https://modelcontextprotocol.io/specification/) | App discovery and invocation remain ordinary MCP resource, tool and Task traffic, version `2026-07-28`, through the Hub. |
 | MCP Apps SEP-1865 / `ext-apps` | Version `2026-01-26`: `ui://` resources, `text/html;profile=mcp-app`, tool-to-app metadata, host context and display modes, lifecycle notifications, the `postMessage` bridge, and for a web host the sandbox proxy on an origin different from the host's. Where the specification provides a mechanism, the contract uses it and adds no metadata. |
 | Forwarded MCP methods | MCP Apps `2026-01-26` lists `tools/call`, `resources/read`, `notifications/message` and `ping` for a view, and lets a host forward any other message whose method does not start with `ui/`. This host forwards the Tasks methods and `subscriptions/listen` of MCP `2026-07-28`, and passes the server's own `notifications/subscriptions/acknowledged` and `notifications/resources/updated` back to the view unchanged. Nothing is added to the `ui/` namespace. |
-| Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. An exact `ui://` target navigates only when it is in the caller-visible App catalog. Other targets fail closed. |
+| Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile: a URL of the App's own server's app origin opens top-level; an exact `ui://` target navigates only when it is in the caller-visible App catalog. Other targets fail closed. |
 | MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`. App-started durable work keeps the lifecycle and ownership rules of an ordinary MCP client. |
 | Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. |
 | [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/) | Linked tool arguments and structured results use the same canonical schemas exposed outside the app. |
@@ -35,7 +35,9 @@ app; if it needs new operations, it ships tools.
 
 One exception exists. A server whose UI is an existing full web application, which
 needs its own cookies, storage and HTTP routes, serves it through its
-`authenticated_routes` on its own app origin. Its app resource frames that origin. The
+`authenticated_routes` on its own app origin. Its app resource opens that origin
+top-level with `ui/open-link`; it cannot frame it, since a frame nested in the view
+inherits the view's sandbox and opaque origin, and so has no cookies or storage. The
 app resource stays the entry point that hosts discover and authorize.
 
 ## Server Obligations
@@ -69,8 +71,9 @@ derive, as for its other routes:
 7. Choose presentation through the specification: the view declares the display modes it
    supports in `ui/initialize` and asks for a change with `ui/request-display-mode`. A
    card supports `inline`; an editor supports only `fullscreen`.
-8. A full web application: the view declares its server's app origin, and only that
-   origin, in `_meta.ui.csp.frameDomains` and frames it.
+8. A full web application: the view opens its server's app origin with `ui/open-link`,
+   such as from a button, and frames nothing; a frame nested in the view would inherit
+   the view's `sandbox="allow-scripts"` and opaque origin and hold no session.
 
 The lower-level helpers (`extend_capabilities`, `app_resource`, `app_html_contents`,
 `link_tool_to_app`) remain for a server that does not host through `Routes`.
@@ -137,8 +140,10 @@ any host does.
   the view reads current state through an ordinary bridge request. Configured ceilings
   bound listens per browser session, and the end of the session's authorization closes
   them.
-- **Navigation.** An App may send `ui/open-link` for another exact `ui://` resource; the
-  host resolves it against the caller-visible catalog and opens that App's direct URL.
+- **Navigation.** An App may send `ui/open-link` for a URL of its own server's app
+  origin, when the server declares one; the host opens it top-level. It may send
+  `ui/open-link` for another exact `ui://` resource; the host resolves it against the
+  caller-visible catalog and opens that App's direct URL. Every other target fails.
 - **App origins.** A server's app origin, `{slug}.apps.{host}`, carries only that server's
   `authenticated_routes`, behind the permission the server declares for it. The origin is
   the server's alone: it is never the host page's origin, the proxy's origin or another

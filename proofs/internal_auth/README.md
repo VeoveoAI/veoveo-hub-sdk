@@ -77,8 +77,8 @@ lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectne
 ```
 
 The context-bearing direct/delegated issuance cases, all-owned nonempty permission sets,
-independent complete signer claims, constructed issuance examples and semantic
-mutation controls are still required before qualifying full issuance.
+independent complete signer claims, constructed issuance examples and issuer
+semantic controls are still required before qualifying full issuance.
 
 ## Exact context admission
 
@@ -114,8 +114,9 @@ lake build InternalAuthContextProof
 
 This proves model-relative context admission, not authentication of the supplied
 context, current-policy provenance, expiry, complete issuance/claims, or verifier
-cryptography. Actual-source semantic controls remain pending. Native
-collection/string/allocation correspondence remains the boundary described below.
+cryptography. The two actual-source context controls below qualify this
+validator contract. Native collection/string/allocation correspondence remains
+the boundary described below.
 
 ## Constructed admitted contexts
 
@@ -151,9 +152,63 @@ lake build InternalAuthContextExamples InternalAuthContextWitnesses
 ```
 
 This is model-relative admission of constructed inputs, not full issuance,
-authenticity, cryptography, current-policy provenance or actual-source mutation
-qualification. Complete context-bearing claims and deadline composition remain
-pending.
+authenticity, cryptography, current-policy provenance or complete issuance. The
+context controls below qualify wrong acceptance/refusal sensitivity; complete
+claims and deadline composition remain pending.
+
+## Actual-source context controls
+
+Two deliberate private Rust mutations qualify the frozen all-mode theorem;
+canonical runtime, raw models and checked theorem statements are unchanged.
+The [receipt](evidence/context-semantic-controls.json) records exact patches,
+source/tool/output hashes, timings, isolated build inputs, proof failures,
+independent witnesses and restoration checks.
+
+- [Direct actor bypass](mutations/direct-actor-equality-bypass.patch) removes only
+  Direct's actor/source rejection. The [independent witness](mutations/DirectActorBypassWitness.lean)
+  adds `superuser` to the populated user's roles while retaining every other
+  Principal field. The mutant accepts and the independent predicate refuses.
+  This proves no downstream grant change.
+- [Automated kind mutation](mutations/automated-kind-refusal.patch) changes only
+  the required kind Service to User. The [independent witness](mutations/AutomatedKindRefusalWitness.lean)
+  proves refusal of the independently admitted populated Service fixture. The
+  frozen theorem separately exposes valid-Service refusal and User acceptance
+  cases; these are distinct counterexamples.
+
+Each source variant used the unchanged two-root/34-include/seven-opaque extraction
+selection and a fresh package build directory. The actual raw model and unaffected
+helpers built first, then the unchanged `validate_for_exact` contract failed on
+its semantic obligation. Standalone witnesses imported Examples/raw/value laws,
+never the failed correctness module or its objects. Their seven key audits pass
+with standard-only dependencies and no `sorryAx`. Direct's witness-only retry
+added the missing native inequality default unfolding; the Automated patch-path
+and existing-job failures stopped before Charon. These were qualification setup
+or proof-authoring errors, not native defects.
+
+Both patches were reversed in their original private source trees. Full original
+173-file maps and all four canonical raw output hashes were restored exactly.
+Fresh restored builds of ContextProof, Examples and Witnesses passed all nine
+audits in 17.317 s (Direct) and 17.032 s (Automated). The controls apply to the
+recorded e268 source plus adopted String/binder preparation, not automatically
+to another SDK/Hub pin or extraction. These mutation witnesses are checked only
+against their respective mutant graph and are not default targets.
+
+The manual sequence in each fresh variant is:
+
+```sh
+lake build RequestCompositionSdk InternalAuthSpecification InternalAuthValueLaws InternalAuthContextExamples
+lake env lean InternalAuthContextProof.lean # expected semantic rejection
+# Run only the witness matching that private mutant graph:
+lake env lean mutations/DirectActorBypassWitness.lean
+# or: lake env lean mutations/AutomatedKindRefusalWitness.lean
+# After same-tree source reversal and exact raw4 regeneration, in a fresh package:
+lake build InternalAuthContextProof InternalAuthContextExamples InternalAuthContextWitnesses
+```
+
+These intentional faults establish model-relative contract sensitivity and
+constructed wrong results. They introduce no runtime rule, security defect claim,
+authentication, complete issuer/claims or cryptographic verification guarantee.
+No native/full-stack suite, deployment, dependency update or paid call was needed.
 
 ## Operational boundaries
 
@@ -198,6 +253,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. The complete context-bearing issuer theorem, admitted issuance constructions
-and validator mutation controls are the next proof obligations. Context-only
-examples do not close the issuer or recipient verification gaps.
+model-boundary audit. The complete context-bearing issuer theorem and admitted issuance constructions
+are the next proof obligations. Context admission and its controls do not close
+the issuer or recipient verification gaps.

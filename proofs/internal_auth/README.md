@@ -326,11 +326,42 @@ See [claims assembly evidence](evidence/claims-assembly.json).
 lake build InternalAuthClaimsComponents InternalAuthClaimsExamples InternalAuthClaimsProof
 ```
 
-The actual-Rust permission-detail inversion control and exact restoration are the
-next separate qualification checkpoint. Full public issuance and concrete signer
+The actual-Rust permission-detail inversion control and exact restoration are
+qualified below. Full public issuance and concrete signer
 argument composition, Core namespace-helper refinement, verification wrapper and
 Hub pinned-stack integration remain open. No runtime, generated body, operational
 model, dependency pin or native suite changed for this proof milestone.
+
+## Actual-source permission-detail control
+
+A one-expression private Rust fault removes `!` from the `from_identity`
+permission-empty guard. The unchanged complete-claims theorem rejects both wrong
+branches: a nonempty set loses its detail, while an empty set emits a spurious
+empty detail. `mutations/PermissionDetailInversionWitness.lean` independently
+derives the complete actual wrong values for the two closed fixtures and proves
+they violate unchanged `ClaimsExact`. All other independently specified fields
+are preserved. This is a deliberate regression fault, not a product defect or a
+current-policy-grant assertion.
+
+The witness imports fresh unaffected Components and independent Examples, never
+the expected-failing ClaimsProof or its OLean. Model/component build passed in
+19.635 s; the frozen contract rejected in 2.758 s; the independent witness passed
+in 2.764 s with three standard-only audits and no `sorryAx`. Same-tree source
+reversal restored all 173 archived source hashes. Regeneration reproduced all
+four canonical raw outputs exactly, and a fresh three-target build passed in
+21.292 s with all fourteen claims audits standard-only. OLean identities are
+recorded for each build; binary equality to earlier packages is not claimed.
+
+The initial raw diagnostic used a stale pre-binder comparison; the corrected
+comparison against checked canonical raw contains only the inverted Boolean.
+A restoration static-review pause concerned an unused old LLBC initializer;
+the continuation binds its effective digest to the measured restored receipt.
+Neither correction changed raw/source bytes or required repeating extraction.
+See [permission-detail control evidence](evidence/claims-permission-control.json).
+Temporary extraction trees, runners and log streams are evidence assets rather
+than package source. Canonical runtime, models and theorem statements are unchanged;
+the public issuance, native namespace refinement and signer/Hub boundaries remain
+open.
 
 ## Operational boundaries
 

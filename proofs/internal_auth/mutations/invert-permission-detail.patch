@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/internal_auth.rs
++++ b/crates/veoveo-hub-sdk/src/internal_auth.rs
+@@ -859,7 +859,7 @@
+                 token_identity.not_before,
+                 token_identity.expires_at,
+             ),
+-            authorization_details: (!token_identity.permissions.is_empty())
++            authorization_details: (token_identity.permissions.is_empty())
+                 .then(|| PermissionsDetail::new(token_identity.permissions.clone()))
+                 .into_iter()
+                 .collect(),

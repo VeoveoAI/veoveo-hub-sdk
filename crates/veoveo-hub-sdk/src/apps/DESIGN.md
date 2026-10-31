@@ -44,23 +44,24 @@ A server shipping a view (Time's app is the reference implementation) declares i
 typed `Routes`, from which discovery, reading, registration requirements and capabilities
 derive, as for its other routes:
 
-1. Declare the view: `RoutesBuilder::app` takes the App's `ui://{slug}/{page}` URI, which
-   must be under the server's own slug, its name, title, description, icons as `data:`
-   URIs and UI metadata, its `RoutePolicy`, and a reader that returns the server's
-   `AppHtml`. Discovery lists it with the App MIME type, a read returns the document, and
-   the registration's requirements cover its URI. Hosts build catalog and navigation
-   entries from these fields.
+1. Declare the view: `RoutesBuilder::app` takes an `AppBuilder` with the App's
+   `ui://{slug}/{page}` address as an `AppUri`, which must be under the server's own slug,
+   its name, title, description, icons as `data:` URIs of images and UI metadata, its
+   `RoutePolicy`, and a reader that returns the server's `AppHtml`. Discovery lists it with
+   the App MIME type, a read returns the document as text under that MIME type, and the
+   registration's requirements cover its URI. A client may reuse a read for the private
+   resource lifetime, as the document is an immutable startup snapshot. Hosts build
+   catalog and navigation entries from these fields.
 2. The document is self-contained unless its function requires a declared live-data
    connection. Such a view declares exact installation-owned origins in its UI metadata's
    `csp`; it names no wildcards, paths, credentials, queries or fragments.
 3. Link tools: `RoutesBuilder::app_tools` names the App's URI, the server's tools the view
-   may invoke and their visibility, such as model and app. Building the routes fails for
-   an unknown tool or App. A tool without an app link is never app-callable.
-4. Capability: when the routes include an App, the server declares the
-   `io.modelcontextprotocol/ui` extension with the App MIME type.
-
-The lower-level helpers (`extend_capabilities`, `app_resource`, `app_html_contents`,
-`link_tool_to_app`) remain for a server that does not host through `Routes`.
+   may invoke and their visibility, such as model and app. Each linked tool carries
+   `_meta.ui` naming the App in `tools/list` and in tool lookup. `_meta.ui.resourceUri`
+   names one App, so a tool links to one App. Building the routes fails for an unknown
+   tool or App, or a tool linked twice. A tool without an app link is never app-callable.
+4. Capability: when the routes include an App, the setup declares the
+   `io.modelcontextprotocol/ui` extension with the App MIME type, and only then.
 5. Gate in the server: administrative tools check the domain's administrative scope as
    any scoped tool does; resources carry the scope their data warrants.
 6. Keep JSON numbers within the range a JavaScript number holds exactly, as I-JSON
@@ -70,6 +71,9 @@ The lower-level helpers (`extend_capabilities`, `app_resource`, `app_html_conten
    card supports `inline`; an editor supports only `fullscreen`.
 8. A full web application: the view declares its server's app origin, and only that
    origin, in `_meta.ui.csp.frameDomains` and frames it.
+
+The lower-level helpers (`extend_capabilities`, `app_resource`, `app_html_contents`,
+`link_tool_to_app`) remain for a server that does not host through `Routes`.
 
 ### Packaged App Assets
 

@@ -5,12 +5,14 @@
 //! extension there are no new MCP-layer JSON-RPC methods — everything custom
 //! happens between host and view — so no transport adapter is needed.
 
+mod address;
 mod admission;
 mod asset;
 mod client;
 mod models;
 mod server;
 
+pub use address::{AppUri, AppUriError};
 pub use admission::{app_allows_tool, resolve_app_tool};
 pub use asset::{AppHtml, MAX_APP_HTML_BYTES};
 pub use client::*;

@@ -184,6 +184,12 @@ impl<C: McpServerContract> McpServerSetup<C> {
                 rmcp::model::JsonObject::new(),
             );
         }
+        // The UI extension names the App MIME type exactly when the routes hold an App.
+        if C::Server::routes().has_apps() {
+            crate::apps::extend_capabilities(&mut info.capabilities);
+        } else if let Some(extensions) = info.capabilities.extensions.as_mut() {
+            extensions.remove(crate::apps::EXTENSION_ID);
+        }
         let extensions = info.capabilities.extensions.get_or_insert_default();
         extensions.remove(crate::registration::AUTHORIZATION_EXTENSION_ID);
         if extensions.contains_key(crate::registration::REGISTRATION_EXTENSION_ID) {

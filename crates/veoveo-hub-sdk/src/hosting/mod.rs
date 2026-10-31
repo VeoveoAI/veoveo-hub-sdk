@@ -42,7 +42,9 @@ pub mod operations;
 mod results;
 mod routes;
 pub use crate::definition::TemplateRead;
-pub use routes::{ResourceBuilder, RoutePolicy, Routes, RoutesBuilder, ToolError, task_result};
+pub use routes::{
+    AppBuilder, ResourceBuilder, RoutePolicy, Routes, RoutesBuilder, ToolError, task_result,
+};
 mod schema;
 mod server;
 mod subscriptions;

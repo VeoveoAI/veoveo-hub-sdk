@@ -478,9 +478,12 @@ supplies three things:
    through dispatch. `.collection_resource` shares `CollectionRequest` selection
    parsing and the paging-template constructor with list tools. A fixed collection
    root is optional for nested paths. `.prompt` registers one native descriptor,
-   admitted name, explicit policy and render closure. Discovery and registration
-   derive from these same ready entries; there are no owner catalog-list hooks or
-   second descriptor/permission tables.
+   admitted name, explicit policy and render closure. `.app` registers an MCP App at its
+   `ui://{slug}/{page}` address with its policy and a reader of the server's `AppHtml`,
+   and `.app_tools` links the server's tools to it, as
+   [MCP Apps](src/apps/DESIGN.md#server-obligations) specifies. Discovery and
+   registration derive from these same ready entries; there are no owner catalog-list
+   hooks or second descriptor/permission tables.
 3. **Optional task support.** A server with durable tasks wraps its
    `DurableTaskService` in `veoveo_hub_sdk::durable_tasks::DurableTasks::tasks_only`. A server
    that also publishes resource changes implements `ResourceSubscriptions` and uses
@@ -562,7 +565,7 @@ The host gives every server the same behavior:
 | Well-known reads | `{scheme}://docs` routes and `{scheme}://contract` |
 | Completion | `doc_id` on the document template; other references go to the domain |
 | Address admission | An unparseable read or subscribed URI is Invalid Params (-32602) before domain code runs |
-| Read cache | The explicit `ResourceBuilder` cache policy: one second private, or no reuse; protocol continuation reads are never reused |
+| Read cache | The explicit `ResourceBuilder` cache policy: one second private, or no reuse; an App's document one second private; protocol continuation reads are never reused |
 | Tools | The registered route policy is checked before Task admission; remaining calls dispatch through their typed request/output adapter |
 | Shutdown | SIGTERM or Ctrl-C, cancelling in-flight MCP work |
 

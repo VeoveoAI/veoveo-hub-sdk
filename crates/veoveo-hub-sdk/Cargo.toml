@@ -123,6 +123,10 @@ tower.workspace = true
 uuid.workspace = true
 
 [[test]]
+name = "apps"
+required-features = ["testing"]
+
+[[test]]
 name = "registration_client"
 required-features = ["server"]
 

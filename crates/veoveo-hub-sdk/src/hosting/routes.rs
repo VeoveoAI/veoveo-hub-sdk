@@ -2,6 +2,7 @@
 //! registered request/output association and its current policy have succeeded.
 use super::{DomainServer, ReadCache, hub_identity};
 use crate::{
+    apps::{AppHtml, AppUri, ResourceUiMeta, ToolUiMeta, UiVisibility},
     calls::{ResourceRead, ToolCall},
     definition::{
         CollectionRequest, CollectionResource, CollectionTool, List, ReadCollection, SingleOutput,
@@ -12,14 +13,20 @@ use crate::{
 use rmcp::{
     ErrorData, RoleServer,
     model::{
-        CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, Prompt,
-        ReadResourceResult, Resource, ResourceTemplate, Tool,
+        CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, Icon,
+        MetaObject, Prompt, ReadResourceResult, Resource, ResourceTemplate, Tool,
     },
     service::RequestContext,
 };
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use std::{collections::BTreeMap, future::Future, marker::PhantomData, pin::Pin, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+    marker::PhantomData,
+    pin::Pin,
+    sync::Arc,
+};
 use veoveo_types::{
     Collection, Page, PermissionName, ResourceAddress, ResourceTemplateUri, ResourceTypeName,
 };
@@ -186,6 +193,96 @@ impl<R, H, P, K> ResourceBuilder<R, H, P, K> {
     }
 }
 
+/// One MCP App the routes declare: its `ui://{slug}/{page}` address, the fields hosts
+/// build catalog and navigation entries from, its access policy and a reader that
+/// returns the server's [`AppHtml`]. The reader and the policy are required steps,
+/// so a partial App cannot be registered.
+pub struct AppBuilder<H = Missing, P = Missing> {
+    uri: AppUri,
+    name: String,
+    title: Option<String>,
+    description: Option<String>,
+    icons: Vec<Icon>,
+    ui: ResourceUiMeta,
+    reader: H,
+    policy: P,
+}
+impl AppBuilder {
+    /// An App at `uri` whose programmatic resource name is `name`.
+    pub fn new(uri: AppUri, name: impl Into<String>) -> Self {
+        Self {
+            uri,
+            name: name.into(),
+            title: None,
+            description: None,
+            icons: Vec::new(),
+            ui: ResourceUiMeta::default(),
+            reader: Missing,
+            policy: Missing,
+        }
+    }
+}
+impl<H, P> AppBuilder<H, P> {
+    /// The title hosts show for the App.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+    /// What the App is for.
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+    /// An icon, whose `src` is an RFC 2397 `data:` URI of an image.
+    pub fn icon(mut self, icon: Icon) -> Self {
+        self.icons.push(icon);
+        self
+    }
+    /// The App's `_meta.ui`: its Content Security Policy declarations and framing.
+    pub fn ui(mut self, ui: ResourceUiMeta) -> Self {
+        self.ui = ui;
+        self
+    }
+    pub fn reader<F>(self, reader: F) -> AppBuilder<Ready<F>, P> {
+        AppBuilder {
+            uri: self.uri,
+            name: self.name,
+            title: self.title,
+            description: self.description,
+            icons: self.icons,
+            ui: self.ui,
+            reader: Ready(reader),
+            policy: self.policy,
+        }
+    }
+    pub fn policy(self, policy: RoutePolicy) -> AppBuilder<H, Ready<RoutePolicy>> {
+        AppBuilder {
+            uri: self.uri,
+            name: self.name,
+            title: self.title,
+            description: self.description,
+            icons: self.icons,
+            ui: self.ui,
+            reader: self.reader,
+            policy: Ready(policy),
+        }
+    }
+}
+
+/// Whether `src` is an RFC 2397 `data:` URI of an image.
+fn is_image_data_uri(src: &str) -> bool {
+    src.strip_prefix("data:")
+        .and_then(|rest| rest.split_once(','))
+        .is_some_and(|(media_type, _)| media_type.starts_with("image/"))
+}
+
+/// The tools one App may invoke, as `RoutesBuilder::app_tools` named them.
+struct AppLink {
+    app: AppUri,
+    tools: Vec<String>,
+    visibility: Vec<UiVisibility>,
+}
+
 use crate::definition::TemplateRead;
 
 struct ToolRoute<D> {
@@ -240,6 +337,9 @@ impl<D: DomainServer> Routes<D> {
     }
     pub(crate) fn has_tools(&self) -> bool {
         !self.inner.tools.is_empty()
+    }
+    pub(crate) fn has_apps(&self) -> bool {
+        !self.inner.apps.is_empty()
     }
     /// The descriptions the server changes while it runs, when it has them.
     pub(crate) fn descriptions(&self) -> Option<&super::ToolDescriptions> {
@@ -348,6 +448,8 @@ pub struct RoutesBuilder<D: DomainServer> {
     uses: Vec<PermissionName>,
     calls_hub: bool,
     descriptions: Option<super::ToolDescriptions>,
+    apps: BTreeSet<AppUri>,
+    app_links: Vec<AppLink>,
 }
 impl<D: DomainServer> RoutesBuilder<D> {
     fn new(documents: RoutePolicy) -> Self {
@@ -359,11 +461,42 @@ impl<D: DomainServer> RoutesBuilder<D> {
             uses: vec![],
             calls_hub: false,
             descriptions: None,
+            apps: BTreeSet::new(),
+            app_links: vec![],
         }
     }
-    pub fn build(self) -> Routes<D> {
+    pub fn build(mut self) -> Routes<D> {
         let _ = self.permission_declarations();
+        self.link_app_tools();
         Routes { inner: self }
+    }
+    /// Attach each App link to its tool's descriptor as `_meta.ui`. Every link names a
+    /// declared App and declared tools, and a tool links to one App.
+    fn link_app_tools(&mut self) {
+        let mut linked = BTreeSet::new();
+        for link in std::mem::take(&mut self.app_links) {
+            assert!(
+                self.apps.contains(&link.app),
+                "App tool links name an App the routes do not declare"
+            );
+            let meta = serde_json::to_value(ToolUiMeta {
+                resource_uri: link.app.as_str().to_owned(),
+                visibility: (!link.visibility.is_empty()).then_some(link.visibility),
+            })
+            .expect("tool UI metadata serializes");
+            for tool in link.tools {
+                let route = self
+                    .tools
+                    .get_mut(&tool)
+                    .expect("App tool links name a tool the routes do not declare");
+                assert!(linked.insert(tool), "a tool links to one App");
+                route
+                    .descriptor
+                    .meta
+                    .get_or_insert_with(MetaObject::new)
+                    .insert(crate::apps::UI_META_KEY.to_owned(), meta.clone());
+            }
+        }
     }
     fn permission_declarations(&self) -> BTreeMap<PermissionName, PermissionDeclaration> {
         let policies = std::iter::once(&self.documents)
@@ -477,6 +610,75 @@ impl<D: DomainServer> RoutesBuilder<D> {
                 .is_none(),
             "duplicate typed prompt route"
         );
+        self
+    }
+    /// Register one MCP App. Its address lies under the server's own `ui://{slug}/`.
+    /// Discovery lists it with the App MIME type and its UI metadata, a read returns
+    /// the reader's document as text under that MIME type, and the registration's
+    /// requirements cover its address with `policy`. A server whose routes hold an App
+    /// declares the `io.modelcontextprotocol/ui` extension. A client may reuse a read
+    /// for [`PRIVATE_RESOURCE_TTL_MS`](crate::PRIVATE_RESOURCE_TTL_MS), since the
+    /// document is an immutable startup snapshot.
+    pub fn app<H, F>(mut self, app: AppBuilder<Ready<H>, Ready<RoutePolicy>>) -> Self
+    where
+        H: Fn(D, RequestContext<RoleServer>) -> F + Send + Sync + 'static,
+        F: Future<Output = Result<AppHtml, ErrorData>> + Send + 'static,
+    {
+        assert!(
+            *app.uri.server() == crate::server_contract::provider_slug::<D::Contract>(),
+            "App address lies outside the server's ui://{{slug}}/"
+        );
+        assert!(
+            app.icons.iter().all(|icon| is_image_data_uri(&icon.src)),
+            "App icons are data: URIs of images"
+        );
+        let mut descriptor =
+            crate::apps::app_resource_with_meta(app.uri.as_str(), &app.name, app.ui.clone());
+        descriptor.title = app.title;
+        descriptor.description = app.description;
+        descriptor.icons = (!app.icons.is_empty()).then_some(app.icons);
+        let uri = app.uri.clone();
+        let fixed = McpResource::new(uri.clone(), |_| descriptor).expect("typed App descriptor");
+        let policy = app.policy.0;
+        let access = policy.clone();
+        let handler = Arc::new(app.reader.0);
+        let invoke: ReadHandler<D> = Arc::new(move |domain, requested, context| {
+            if requested != *uri.resource_uri() {
+                return None;
+            }
+            let access = access.clone();
+            let handler = handler.clone();
+            let uri = uri.clone();
+            Some(Box::pin(async move {
+                access.check(&context)?;
+                let html = handler(domain, context).await?;
+                let contents = crate::apps::app_html_contents(uri.as_str(), html.as_str());
+                Ok((ReadResourceResult::new(vec![contents]), ReadCache::Private))
+            }))
+        });
+        self.apps.insert(app.uri);
+        self.insert_resource(ResourceRoute {
+            fixed: Some(fixed),
+            template: None,
+            policy,
+            invoke,
+        });
+        self
+    }
+    /// Link the server's `tools` to the App at `app` with `visibility`, such as model
+    /// and app; empty visibility leaves the specification's default, both. Each linked
+    /// tool carries `_meta.ui` naming the App in `tools/list` and tool lookup, and a
+    /// tool without a link is never App-callable. Building the routes fails when a link
+    /// names an App or a tool the routes do not declare, or links a tool twice.
+    pub fn app_tools(mut self, app: &AppUri, tools: &[&str], visibility: &[UiVisibility]) -> Self {
+        for tool in tools {
+            crate::identity::LocalToolName::parse(tool).expect("valid App-linked tool name");
+        }
+        self.app_links.push(AppLink {
+            app: app.clone(),
+            tools: tools.iter().map(|tool| (*tool).to_owned()).collect(),
+            visibility: visibility.to_vec(),
+        });
         self
     }
     pub fn authorization(&self) -> crate::registration::AuthorizationDeclaration {

@@ -528,7 +528,12 @@ such as `https://veoveo.example.com`, with each server's public routes under its
 path. A server parses it as a `PublicOrigin` and passes it to
 `PublicDeployment::with_origin`, so requests that arrive for the origin's host pass
 host validation, and builds the public URLs it hands out, such as callback and share
-URLs, under the origin.
+URLs, under the origin. A server whose registration response names a
+`veoveo_public_base` passes it to `PublicDeployment::with_public_base` instead, which
+admits that base's host and builds every public URL under the base, path included; a
+factory instance learns its base this way. A server whose response names a
+`veoveo_app_origin` admits that origin's host for its `authenticated_routes`, which it
+then serves at the root of the origin as well as under its mount.
 `internal` replaces `deployment` for a server the hub reaches at an internal
 authority under `/{slug}`. `internal_root` serves a cluster-internal server whose
 hub upstream and protocol paths are root-relative. Both admit only the internal

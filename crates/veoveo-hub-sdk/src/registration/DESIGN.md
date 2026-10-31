@@ -68,8 +68,8 @@ Every Veoveo addition uses the extension point of the standard it extends:
 
 | Extension point | Names |
 |---|---|
-| RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization` |
-| RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_access_tokens`, `veoveo_database` |
+| RFC 7591 client metadata, RFC 6749 §8.2 vendor prefix | `veoveo_uri_scheme`, `veoveo_mcp_endpoint`, `veoveo_authorization`, `veoveo_surfaces` |
+| RFC 7591 response members, RFC 6749 §8.2 vendor prefix | `veoveo_access_tokens`, `veoveo_database`, `veoveo_public_base`, `veoveo_app_origin` |
 | RFC 9396 authorization details type | `https://veoveo.ai/oauth/permissions` |
 | RFC 8693 token type URI | `https://veoveo.ai/token-types/task` |
 | JWT public claims, RFC 7519 §4.2 collision-resistant names | `https://veoveo.ai/claims/invocation` |
@@ -102,6 +102,45 @@ hyphens. The endpoint uses `https`, or `http` on a local host as the
 [conventions](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/docs/CONVENTIONS.md#http-paths) allow, names a host and carries no
 credentials, query or fragment.
 
+### Surfaces
+
+Besides MCP, a server may serve two kinds of HTTP, which it declares so that the Hub can
+route them:
+
+- **Public routes** carry no Hub authentication and serve only callers that verify
+  themselves, such as a signed webhook. Each is a prefix under the server's mount,
+  `/{slug}`, with the largest request body it admits and its request rate. The SDK's
+  operation and provider-event callbacks, `{mount}/operations/` and `{mount}/providers/`,
+  are declared the same way whenever the server serves them.
+- **The app origin** is the server's own origin for a full web application,
+  `{slug}.apps.{public host}`. Its requests reach the server's `authenticated_routes` at
+  the root of the origin. A server declares that it has one; the permission that admits a
+  person is the `app_origin` requirement of its authorization declaration, of the same
+  kinds as a tool's requirement.
+
+The registration member `veoveo_surfaces` spells the declaration in snake_case:
+
+```json
+{
+  "public_routes": [
+    { "prefix": "/n8n/hooks/", "max_body_bytes": 1048576, "requests_per_minute": 600 }
+  ],
+  "app_origin": true
+}
+```
+
+MCP Discover advertises the same declaration as `surfaces` in `ai.veoveo/registration`,
+in camelCase. A prefix starts with the mount, ends with `/`, covers neither `{mount}/mcp`
+nor `{mount}/admin`, and overlaps no other prefix. A body limit is 1 byte to 16 MiB and
+a rate 1 to 6000 requests a minute. A server that declares `app_origin` declares the
+`app_origin` requirement, and a server that does not declares none. A server with
+neither public routes nor an app origin omits the member.
+
+The registration response names where the Hub serves them: `veoveo_public_base` when the
+server declares a public route, and `veoveo_app_origin` when it declares an app origin.
+The server builds every public URL it hands out under these values and never constructs a
+Hub URL itself.
+
 ### Authorization
 
 The server's permissions, the permission each tool, resource, resource template and
@@ -128,7 +167,11 @@ prompt requires, and the permissions it uses on other servers. The registration 
 ```
 
 MCP Discover advertises the same declaration as `ai.veoveo/authorization`, where the
-requirements member is `resourceTemplates`.
+requirements members are `resourceTemplates` and `appOrigin`.
+
+A server with an app origin adds `"app_origin": {"kind":"permission",
+"permission":"n8n.editor"}` to `requirements`. The Hub admits a person to the app origin
+only through that requirement, evaluated as a tool's is, on every request.
 
 `access` is exactly one of `read` or `write`. `risks` holds any of `sensitive`,
 `destructive`, `billed`, `physical` and `administer`, and an empty set is omitted.
@@ -289,6 +332,14 @@ the Hub's issuer URL, the value its RFC 8414 metadata announces, and the
 audience is the registered MCP endpoint. The keys are the server's initial set, which
 [key refresh](#key-refresh) replaces when the Hub rotates its key. Every URL here
 uses `https`, or `http` on a local host.
+
+`veoveo_public_base`, present when the server declares a public route, is the public URL
+of this instance's mount: an absolute URL with a path and no query or fragment. A public
+route `{mount}/x` is reachable at `{veoveo_public_base}/x`. The base names the instance,
+so two branches of one server have different bases. `veoveo_app_origin`, present when
+the server declares an app origin, is the server's app origin: a scheme and host with no
+path. Both are the Hub's to choose; a server treats them as opaque and changes nothing
+when they change on a later registration.
 
 ### Software Statement
 

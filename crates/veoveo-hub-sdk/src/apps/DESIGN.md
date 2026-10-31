@@ -1,211 +1,142 @@
 # MCP Apps Contract Design
 
-This document is the canonical contract for how domain MCP servers ship
-user-facing views and administrative surfaces to Veoveo hosts (the Console
-today, any MCP Apps host tomorrow). The `apps` module of `veoveo-hub-sdk`
-owns the pinned protocol constants and helpers; this document owns the rules.
+This document is the contract for how servers ship user-facing views to the Hub, the
+installation's MCP Apps host, and to any other MCP Apps host. The `apps` module of
+`veoveo-hub-sdk` owns the pinned protocol constants and helpers; this document owns the
+rules.
 
 ## Standards And Protocols
 
 | Standard or protocol | Implemented profile |
 |---|---|
-| [Model Context Protocol](https://modelcontextprotocol.io/specification/) | App discovery and invocation remain ordinary MCP resource, tool, and task traffic. The hosting path uses JSON-RPC 2.0 over Streamable HTTP. |
-| MCP Apps SEP-1865 / `ext-apps` | Version `2026-01-26`, with `ui://` resources, `text/html;profile=mcp-app`, tool-to-app metadata, host context, lifecycle notifications, and the `postMessage` bridge. |
-| Veoveo reactive App resource adapter | Repository-owned extension over MCP Apps `2026-01-26`. A sandboxed App requests an authorized resource filter through one final-profile `subscriptions/listen` stream; the Console projects contentless `ui/notifications/resource-updated` wakes from its auth-scoped MCP client. This adapter is not claimed as part of SEP-1865. |
-| Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. Exact `ui://` targets navigate only when present in the caller-visible App catalog. Other custom, missing, or unexposed targets fail closed. |
-| MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`; app-started durable work retains the same task lifecycle and ownership rules as a normal MCP client. |
+| [Model Context Protocol](https://modelcontextprotocol.io/specification/) | App discovery and invocation remain ordinary MCP resource, tool and Task traffic, version `2026-07-28`, through the Hub. |
+| MCP Apps SEP-1865 / `ext-apps` | Version `2026-01-26`: `ui://` resources, `text/html;profile=mcp-app`, tool-to-app metadata, host context and display modes, lifecycle notifications, the `postMessage` bridge, and for a web host the sandbox proxy on an origin different from the host's. Where the specification provides a mechanism, the contract uses it and adds no metadata. |
+| Veoveo reactive App resource adapter | Repository-owned extension over MCP Apps `2026-01-26`, which has no final resource listener. An App requests an authorized resource filter through one `subscriptions/listen` stream; the host projects contentless `ui/notifications/resource-updated` wakes from its auth-scoped MCP client. This adapter is not part of SEP-1865. |
+| Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. An exact `ui://` target navigates only when it is in the caller-visible App catalog. Other targets fail closed. |
+| MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`. App-started durable work keeps the lifecycle and ownership rules of an ordinary MCP client. |
 | Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. |
 | [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/) | Linked tool arguments and structured results use the same canonical schemas exposed outside the app. |
-| HTML iframe sandbox and Content Security Policy | HTML runs in an opaque-origin `sandbox="allow-scripts"` frame. The default CSP denies remote network access while permitting local `data:` fetches; a live-data App may declare exact origins through `_meta.ui.csp`, which the host validates before adding them. Cookies, storage, and same-origin privilege remain absent. |
+| HTML iframe sandbox and Content Security Policy | An App runs in an inner `sandbox="allow-scripts"` frame, without `allow-same-origin`, so it has an opaque origin, no cookies and no storage. The inner frame sits in the host's sandbox proxy, which is served from its own origin. The host builds each App's CSP from its validated `_meta.ui.csp` declarations. |
 
 ## The rule
 
-A domain server's entire operational surface crosses exactly one protocol
-boundary: MCP.
+A server's operational surface crosses one protocol boundary: MCP.
 
-- **Reads are resources.** Domain state an operator or app needs is a
-  `{slug}://…` resource (plus templates for addressable entities).
-- **Mutations are tools.** Administrative writes are ordinary MCP tools,
-  scope-gated inside the server and policy-gated at the hub.
-- **Views are app resources.** Interactive UI ships as a self-contained HTML
-  document at `ui://{slug}/{page}` with MIME `text/html;profile=mcp-app`
-  (SEP-1865 / ext-apps "2026-01-26").
+- **Reads are resources.** Domain state an operator or app needs is a `{slug}://…`
+  resource, with templates for addressable entities.
+- **Changes are tools.** Administrative writes are ordinary MCP tools, scope-gated inside
+  the server and policy-gated at the Hub.
+- **Views are app resources.** Interactive UI ships as an HTML document at
+  `ui://{slug}/{page}` with MIME `text/html;profile=mcp-app`.
 
-Domain servers must not expose bespoke admin REST routers, and hosts must not
-hardcode domain pages, domain nav entries, or domain proxy routes. If a
-domain needs UI, it ships an app; if it needs new operations, it ships tools.
-The Console's platform views are the only compiled-in views: they render
-installation-generic state, never one server's domain vocabulary.
+Servers do not expose bespoke administrative REST routers, and hosts do not hardcode a
+server's pages, navigation entries or proxy routes. If a server needs UI, it ships an
+app; if it needs new operations, it ships tools.
 
-## Server obligations
+One exception exists. A server whose UI is an existing full web application, which
+needs its own cookies, storage and HTTP routes, serves it through its
+`authenticated_routes` on its own app origin. Its app resource frames that origin. The
+app resource stays the entry point that hosts discover and authorize.
 
-A server shipping a view (see `servers/timeseries-mcp` and
-`servers/map-mcp` for reference implementations):
+## Server Obligations
+
+A server shipping a view (Time's app is the reference implementation):
 
 1. Declare the extension: `extend_capabilities(&mut caps)` in `get_info`.
-2. List the view: `app_resource(uri, name)` in `list_resources`, with
-   `.with_title(...)`, `.with_description(...)`, and optionally
-   `.with_icons(...)` (data: URIs — hosts render nav/catalog entries from
-   these fields, so they are the server-owned menu contribution).
-3. Serve the view: `app_html_contents(uri, html)` from
-   `read_resource`. The document stays self-contained unless its function
-   requires a declared live-data connection. Such a view uses
-   `app_resource_with_meta` and lists exact installation-owned origins in
-   `_meta.ui.csp`; it does not name wildcards, paths, credentials, queries, or
-   fragments.
-4. Link tools: `link_tool_to_app(tool, uri, &[Model, App])` in `list_tools`
-   for every tool the view may invoke. Tools without an app link are never
-   app-callable.
-5. Gate in-server: admin tools call `require_scope` with the domain admin
-   scope (e.g. `map:admin`) exactly like any other scoped tool; resources
-  carry the scope their data warrants.
+2. List the view: `app_resource(uri, name)` in `list_resources`, with `.with_title(...)`,
+   `.with_description(...)` and optionally `.with_icons(...)`, as `data:` URIs. Hosts build
+   catalog and navigation entries from these fields.
+3. Serve the view: `app_html_contents(uri, html)` from `read_resource`. The document is
+   self-contained unless its function requires a declared live-data connection. Such a
+   view uses `app_resource_with_meta` and lists exact installation-owned origins in
+   `_meta.ui.csp`; it names no wildcards, paths, credentials, queries or fragments.
+4. Link tools: `link_tool_to_app(tool, uri, &[Model, App])` in `list_tools` for every
+   tool the view may invoke. A tool without an app link is never app-callable.
+5. Gate in the server: administrative tools check the domain's administrative scope as
+   any scoped tool does; resources carry the scope their data warrants.
+6. Choose presentation through the specification: the view declares the display modes it
+   supports in `ui/initialize` and asks for a change with `ui/request-display-mode`. A
+   card supports `inline`; an editor supports only `fullscreen`.
+7. A full web application: the view declares its server's app origin, and only that
+   origin, in `_meta.ui.csp.frameDomains` and frames it.
 
 ### Packaged App Assets
 
-`AppHtml` reads an image-owned HTML file into an immutable startup snapshot. It
-requires a regular, nonempty UTF-8 file within the Console's 2 MiB limit. Missing or
-invalid assets fail startup. The server applies the same resource authorization to
-these bytes as to an embedded document; the loader creates no route or permission.
+`AppHtml` reads an image-owned HTML file into an immutable startup snapshot. It requires
+a regular, nonempty UTF-8 file within the host's 2 MiB limit. Missing or invalid assets
+fail startup. The server applies the same resource authorization to these bytes as to an
+embedded document; the loader creates no route or permission.
 
-A server packages its App HTML in its own image and passes the file path at startup.
-The loader reads the file on each process start, so new bytes arrive with a new image.
+A server packages its App HTML in its own image and passes the file path at startup. The
+loader reads the file on each process start, so new bytes arrive with a new image.
 
-## Host obligations
+## Host Obligations
 
-The hosting core (hub + console BFF + console web) stays fully generic:
+The Hub is the installation's host. Its design owns the routes; this contract fixes what
+any host does.
 
-- **Host surfaces** — the Console shell and `/apps/{server}/{page...}` mount
-  the same frame component, bridge, theme projection, resource adapters, and
-  internal-link policy. The BFF parses the standalone path into one canonical
-  `ui://{server}/{page...}` URI with a typed `ServerSlug`, then returns an App
-  descriptor only when that exact resource is present in the caller-visible
-  catalog. Browser code forwards its path and never derives App authority from
-  it. The public no-store entry document gains no session authority. Its first
-  JSON bootstrap uses the existing Console cookie and OAuth transition, and
-  `BrowserReturnPath` returns a completed login only to a same-origin
-  `/console/` or `/apps/` document. Standalone chrome displays the authorized
-  App title and a Console return link; it does not expose the principal subject.
-- **Hub** — the server's catalog entry lists its tools in the manifest,
-  exposes them per profile, applies `tools_call` policy rules, and registers
-  `resource_projection: server_owned` so `ui://…` URIs project as
-  `ui://{mounted-slug}/{page}`.
-- **Catalog** — the BFF discovers apps dynamically from `resources/list`
-  (`is_app_resource`), derives ownership from the `ui://{server}/…` prefix,
-  and attaches only that server's app-visible linked tools. There is no
-  manual registration step anywhere. The initial catalog may be empty or
-  partial while hosted servers discover. Each auth-scoped BFF client opens one
-  resource-and-tool list-change listener before taking its first snapshot, then
-  streams complete caller-visible catalog snapshots to the browser. Partial catalogs
-  keep their degradation metadata and use the same five-second cache window as
-  successful catalogs. The hub delays retrying a failed source for five seconds;
-  subsequent demand starts its retry without holding healthy discovery behind it.
-  A successful retry sends a list-change notification. Source invalidation or a new
-  catalog generation clears the retry delay. The shell
-  renders immediately and replaces its catalog query data as each server
-  responds; one unresponsive server cannot retain the page's loading state.
-- **Frame** — app HTML is served same-origin with `default-src 'none'` into an
-  `<iframe sandbox="allow-scripts">`. The BFF validates every declared CSP
-  origin, sorts and deduplicates the result, and adds only those exact sources
-  to the relevant directive. Local `data:` fetches do not add a remote network
-  origin. The opaque origin has no cookies, storage, or same-origin privilege.
-  Apps receive the complete Console content workspace by default. An explicit
-  `_meta.ui.prefersBorder: true` requests the bordered presentation; absent or
-  `false` metadata retains the full-workspace presentation.
-- **Bridge** — the host declares `serverTools` and `serverResources`
-  capabilities. `tools/call` from a view is proxied only to app-visible
-  tools linked to that exact view on that view's server. Own-server resource
-  reads remain implicit; a view reads no other server's resources.
-  Console catalog updates with unchanged descriptor values preserve the iframe and
-  bridge. Theme changes travel through `ui/notifications/host-context-changed`;
-  link callbacks use the current shell navigation without replacing the bridge.
-  An open App keeps its last complete descriptor while that server's resource or
-  tool discovery reports pending or unavailable. The Console resolves the selected
-  route against that retained descriptor before rendering navigation and the frame;
-  an incomplete catalog cannot clear the route's selection. A complete resource list that
-  omits the App closes its frame, even if tool discovery is incomplete. Navigating
-  away or clearing the caller's catalog also discards the retained descriptor.
-  This preserves document state across server restarts; every operation still uses
-  the BFF's current App admission and hub policy.
-  A changed descriptor replaces both the document and bridge, so a newly admitted
-  resource or tool set starts with a fresh handshake and subscriptions.
-- **Tasks** — task-based tools stay task-based inside apps. A view may send
-  `tools/call` with final request metadata plus `tasks/get`, `tasks/update`,
-  and `tasks/cancel`; the console host intercepts these ahead of the
-  AppBridge (which rejects task traffic) and proxies them through the BFF,
-  which records task ownership per app view and forwards spec task requests
-  on its hub session. The same allowlists apply: only app-visible linked
-  tools may start tasks, and a view may only poll tasks it started
-  (`servers/view-mcp/assets/preview-app.template.html` is the reference
-  task-driving view).
-- **Reactive resources** — the Console intercepts App `subscriptions/listen`
-  requests because MCP Apps `2026-01-26` does not include the final listener.
-  The BFF registers UUID-bound references concurrently on the auth-scoped MCP
-  client and returns one contentless authenticated SSE wake stream
-  for the App's bounded subscription set. This multiplexed fetch stream avoids
-  the browser's per-origin `EventSource` limit. Upstream
-  `notifications/resources/updated` becomes
-  `ui/notifications/resource-updated` inside the opaque frame. Reconnecting
-  the stream reuses each UUID, and multiple frames retain independent
-  references to the one upstream subscription. Healthy operation is
-  notification-driven; bounded backoff runs only after the stream fails.
-  Authorization expiry closes the stream. Each browser-session auth scope has
-  configured ceilings for active upstream listeners and downstream browser
-  registrations. Admission beyond either ceiling returns the typed
-  `app_resource_capacity_exhausted` response without disturbing admitted
-  streams. Access-token replacement cancels the old scope's listeners within
-  the BFF bound before opening its replacement transport. Domain state never
-  travels in the wake; the App reads current state through an explicitly
-  settled ordinary bridge request.
-- **Navigation** — the host's menu merges its static platform views with one
-  entry per discovered app (label from the resource title, icon from the
-  resource icons). Discovery failures are isolated by server and surface.
-  Healthy Apps appear independently beside a typed degradation notice, and a
-  failed server never blocks the shell or the rest of the catalog. Catalog
-  arrivals use MCP `listChanged` through the BFF event stream; timer-based
-  refresh is not part of the correctness path.
-- **Context links** — an App may send `ui/open-link` for another exact `ui://`
-  resource. The Console resolves
-  App targets against its current caller-visible catalog and never accepts a
-  browser-supplied server alias or arbitrary Console route.
+- **Direct URL.** `/apps/{slug}/{page}` on the Hub's public host opens
+  `ui://{slug}/{page}` for the signed-in person, against the branch the person selected
+  for that server. The host parses the path into one canonical URI with a typed slug and
+  renders the App only when that exact resource is in the caller-visible catalog. Browser
+  code never derives App authority from the path. A direct URL renders the App with the
+  display mode `fullscreen`.
+- **Sandbox proxy.** The host page and the sandbox proxy have different origins. The proxy
+  is the host's own code, the same for every App, and holds no session or data. It creates
+  each App's inner frame with `sandbox="allow-scripts"` and never adds
+  `allow-same-origin`, and it forwards messages between the host and the App. The host
+  accepts a message only from the proxy frame it created for that App, so one App cannot
+  speak as another.
+- **CSP.** The host validates every declared origin and adds only those exact sources to
+  their directives. `frameDomains` admits only the App's own server's app origin. Local
+  `data:` fetches add no remote origin.
+- **Catalog.** The host discovers Apps from `resources/list` (`is_app_resource`), derives
+  ownership from the `ui://{server}/…` prefix and attaches only that server's app-visible
+  linked tools. Nothing is registered by hand. A failed server's discovery is isolated;
+  healthy Apps stay available beside a degradation notice.
+- **Bridge.** The host declares `serverTools` and `serverResources`. It proxies a view's
+  `tools/call` only to app-visible tools linked to that exact view on that view's server,
+  through the shared admission below. A view reads its own server's resources and no
+  other server's. Every call runs through the Hub's ordinary authorization as the signed-in
+  person; browser code holds no bearer token.
+- **Tasks.** Task-based tools stay task-based inside Apps. A view may send `tools/call`
+  with final request metadata and `tasks/get`, `tasks/update` and `tasks/cancel`; the
+  host records Task ownership per view and forwards Task requests as the person. Only
+  app-visible linked tools may start Tasks, and a view may poll only Tasks it started.
+- **Reactive resources.** The host serves the reactive adapter: it registers a view's
+  bounded subscription set on its auth-scoped MCP client and delivers
+  `ui/notifications/resource-updated` wakes into the frame. Domain state never travels in
+  a wake; the view reads current state through an ordinary bridge request. Configured
+  ceilings bound listeners per browser session, and authorization expiry closes them.
+- **Navigation.** An App may send `ui/open-link` for another exact `ui://` resource; the
+  host resolves it against the caller-visible catalog and opens that App's direct URL.
+- **App origins.** A server's app origin, `{slug}.apps.{host}`, carries only that server's
+  `authenticated_routes`, behind the permission the server declares for it. The origin is
+  the server's alone: it is never the host page's origin, the proxy's origin or another
+  server's.
 
-## View obligations
+## View Obligations
 
-The view side of the postMessage protocol (see
-`servers/timeseries-mcp/assets/forecast-app.html` for the reference bridge):
-
-- `ui/initialize` → apply `hostContext` (theme, display mode), then
+- `ui/initialize`: apply `hostContext`, its theme and display mode, then send
   `ui/notifications/initialized`.
-- Self-driving views load their own data through `resources/read` after
-  initialize — a view must render meaningful content without waiting for a
-  `tool-result` push.
-- Report height via `ui/notifications/size-changed`; respond to
-  `ui/resource-teardown`.
-- Handle tool/resource failures inline (authorization errors surface as
-  ordinary failed requests — degrade to read-only or show the error).
-- A reactive view subscribes only to resources owned by its server, treats
-  each update as a wake to read current state, and unsubscribes during
-  teardown. It does not use a timer as a substitute for resource updates.
-
-## Why not admin REST
-
-The previous pattern (server-local admin REST + hub
-`/admin/{profile}/servers/{server}/{*path}` proxy + a hand-written console
-page per domain) required four hardcoded integration points per domain:
-console view, console nav entry, BFF proxy route, and server router. The
-apps contract replaces all four with discovery. The generic hub server
-admin proxy remains for platform infrastructure, but domain servers must not
-grow new REST surfaces behind it.
+- A self-driving view loads its own data through `resources/read` after initialize and
+  renders meaningful content without waiting for a `tool-result` push.
+- Report height through `ui/notifications/size-changed`; answer `ui/resource-teardown`.
+- Handle tool and resource failures inline: authorization errors are ordinary failed
+  requests, after which the view degrades to read-only or shows the error.
+- A reactive view subscribes only to resources its own server owns, treats each update as
+  a wake to read current state, and unsubscribes during teardown. It uses no timer in place
+  of resource updates.
 
 ## Shared Host Admission
 
-`admission.rs` resolves an App-local tool alias from the current caller-visible
-resource and tool catalogs. Linked tools must declare App visibility for that
-exact view, on the view's own server. Untrusted frame metadata never enters this
-resolver. Console and Workspace use the same helper; their operation
-retention differs. Workspace persists origin-bound Task references in its private
-operation journal and rechecks admission during dispatch and App recovery.
+`admission.rs` resolves an App-local tool alias from the current caller-visible resource
+and tool catalogs. A linked tool declares App visibility for that exact view, on the view's
+own server. Untrusted frame metadata never enters this resolver.
 
-`apps/console/web/src/apps/resourceTransport.ts` owns the reusable App resource
-subscription bridge. Each host supplies fixed browser routes and authenticated
-transport functions. Workspace's client design declares its supported subset of
-Console extensions rather than implying full Console host parity.
+## Why Not Administrative REST
+
+A server-local administrative REST router, a Hub proxy for it and a hand-written host page
+per server would need four hardcoded integration points per server. Apps replace all four
+with discovery. A full web application on its own app origin is the one exception, and its
+app resource still enters through discovery.

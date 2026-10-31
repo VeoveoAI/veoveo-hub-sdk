@@ -114,7 +114,8 @@ route them:
   are declared the same way whenever the server serves them.
 - **The app origin** is the server's own origin for a full web application,
   `{slug}.apps.{public host}`. Its requests reach the server's `authenticated_routes` at
-  the root of the origin. A server declares that it has one; the permission that admits a
+  the root of the origin, except `/_veoveo/`, which the Hub answers itself for the
+  person's sign-in. A server declares that it has one; the permission that admits a
   person is the `app_origin` requirement of its authorization declaration, of the same
   kinds as a tool's requirement.
 

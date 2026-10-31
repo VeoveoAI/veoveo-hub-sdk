@@ -11,7 +11,7 @@ rules.
 |---|---|
 | [Model Context Protocol](https://modelcontextprotocol.io/specification/) | App discovery and invocation remain ordinary MCP resource, tool and Task traffic, version `2026-07-28`, through the Hub. |
 | MCP Apps SEP-1865 / `ext-apps` | Version `2026-01-26`: `ui://` resources, `text/html;profile=mcp-app`, tool-to-app metadata, host context and display modes, lifecycle notifications, the `postMessage` bridge, and for a web host the sandbox proxy on an origin different from the host's. Where the specification provides a mechanism, the contract uses it and adds no metadata. |
-| Veoveo reactive App resource adapter | Repository-owned extension over MCP Apps `2026-01-26`, which has no final resource listener. An App requests an authorized resource filter through one `subscriptions/listen` stream; the host projects contentless `ui/notifications/resource-updated` wakes from its auth-scoped MCP client. This adapter is not part of SEP-1865. |
+| Forwarded MCP methods | MCP Apps `2026-01-26` lists `tools/call`, `resources/read`, `notifications/message` and `ping` for a view, and lets a host forward any other message whose method does not start with `ui/`. This host forwards the Tasks methods and `subscriptions/listen` of MCP `2026-07-28`, and passes the server's own `notifications/subscriptions/acknowledged` and `notifications/resources/updated` back to the view unchanged. Nothing is added to the `ui/` namespace. |
 | Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile. An exact `ui://` target navigates only when it is in the caller-visible App catalog. Other targets fail closed. |
 | MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`. App-started durable work keeps the lifecycle and ownership rules of an ordinary MCP client. |
 | Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. |
@@ -127,15 +127,16 @@ any host does.
   ownership per view and forwards Task requests as the person, passing `resultType: "task"`
   results and `tasks/get` results and errors through unchanged. Only app-visible linked
   tools may start Tasks, and a view may poll only Tasks it started.
-- **Reactive resources.** The host serves the reactive adapter: it registers a view's
-  bounded subscription set on its auth-scoped MCP client and delivers
-  `ui/notifications/resource-updated` wakes into the frame. On the wire, the view sends
-  `subscriptions/listen` with `{"notifications":{"resourceSubscriptions":[uri, …]}}`;
-  the host answers `notifications/subscriptions/acknowledged`; each wake carries
-  `{"uri": …}`; and the view ends the listen with `notifications/cancelled` naming its
-  `requestId`. Domain state never travels in
-  a wake; the view reads current state through an ordinary bridge request. Configured
-  ceilings bound listeners per browser session, and authorization expiry closes them.
+- **Live resources.** A view sends MCP's `subscriptions/listen` with
+  `{"notifications":{"resourceSubscriptions":[uri, …]}}`, naming only resources of its
+  own server, which it may read. The host forwards it as the person, on a stream it keeps
+  for the open App, and delivers the server's `notifications/subscriptions/acknowledged`
+  and each `notifications/resources/updated` `{"uri": …}` into the frame unchanged. The
+  view ends the listen with `notifications/cancelled` naming its request; the host ends it
+  when the App is torn down or the page closes. A notification carries no domain state:
+  the view reads current state through an ordinary bridge request. Configured ceilings
+  bound listens per browser session, and the end of the session's authorization closes
+  them.
 - **Navigation.** An App may send `ui/open-link` for another exact `ui://` resource; the
   host resolves it against the caller-visible catalog and opens that App's direct URL.
 - **App origins.** A server's app origin, `{slug}.apps.{host}`, carries only that server's
@@ -152,9 +153,11 @@ any host does.
 - Report height through `ui/notifications/size-changed`; answer `ui/resource-teardown`.
 - Handle tool and resource failures inline: authorization errors are ordinary failed
   requests, after which the view degrades to read-only or shows the error.
-- A reactive view subscribes only to resources its own server owns, treats each update as
-  a wake to read current state, and unsubscribes during teardown. It uses no timer in place
-  of resource updates.
+- A live view subscribes only to resources its own server owns, treats each
+  `notifications/resources/updated` as a wake to read current state, and ends its listen
+  during teardown. It reads again on wakes and when the person asks, never on a timer; it
+  may animate what it shows between reads, such as elapsed time, from its own monotonic
+  clock.
 
 ## Shared Host Admission
 

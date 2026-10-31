@@ -34,7 +34,10 @@ impl HubRequestContext {
             InvocationProvenance::Direct { initiator } => {
                 actor == source
                     && initiator == &source.id
-                    && token.initiator.as_ref() == Some(initiator)
+                    && match &token.initiator {
+                        Some(actual) => actual == initiator,
+                        None => false,
+                    }
                     && token.delegation_id.is_none()
             }
             InvocationProvenance::Automated => {
@@ -51,8 +54,14 @@ impl HubRequestContext {
             } => {
                 source.kind == PrincipalKind::User
                     && initiator == &source.id
-                    && token.initiator.as_ref() == Some(initiator)
-                    && token.delegation_id.as_ref() == Some(delegation_id)
+                    && match &token.initiator {
+                        Some(actual) => actual == initiator,
+                        None => false,
+                    }
+                    && match &token.delegation_id {
+                        Some(actual) => actual == delegation_id,
+                        None => false,
+                    }
                     && actor.kind == PrincipalKind::Service
                     && actor.id.as_str() == format!("{}#{}", token.issuer, token.oauth_client_id)
                     && actor.issuer == token.issuer

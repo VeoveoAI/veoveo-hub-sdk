@@ -347,11 +347,16 @@ impl HubInternalTokenIssuer {
             ));
         }
         let identity = self.create_identity(request)?;
-        let bearer_token = self.sign(&AccessTokenClaims::from_identity(&identity))?;
+        let bearer_token = self.sign_forwarded(&AccessTokenClaims::from_identity(&identity))?;
         Ok(IssuedHubInternalToken {
             bearer_token,
             identity,
         })
+    }
+
+    /// Sign the exact claims assembled for one forwarded request.
+    fn sign_forwarded(&self, claims: &AccessTokenClaims) -> Result<String, InternalTokenError> {
+        self.sign(claims)
     }
 
     /// Sign claims as an RFC 9068 access token.
@@ -790,14 +795,19 @@ impl StandardClaims {
 
 /// RFC 9068 `scope`: the actor's scopes, space-delimited, or absent when it has none.
 fn scope_claim(actor: &Principal) -> Option<String> {
-    (!actor.scopes.is_empty()).then(|| {
-        actor
-            .scopes
-            .iter()
-            .map(|scope| scope.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
-    })
+    if actor.scopes.is_empty() {
+        return None;
+    }
+    let mut value = String::new();
+    let mut first = true;
+    for scope in &actor.scopes {
+        if !first {
+            value.push(' ');
+        }
+        first = false;
+        value.push_str(scope.as_str());
+    }
+    Some(value)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1055,6 +1065,30 @@ pub(crate) mod tests {
             acting_task: None,
             delegation_context: None,
             expires_at: Utc::now() + TimeDelta::minutes(5),
+        }
+    }
+
+    #[test]
+    fn scope_claim_is_absent_for_no_scopes_and_space_delimited_in_set_order() {
+        let issuer = issuer();
+        let verifier = verifier("recipient");
+        for (scopes, expected) in [
+            (vec![], None),
+            (vec!["single"], Some("single")),
+            (vec!["zulu", "alpha", "middle"], Some("alpha middle zulu")),
+        ] {
+            let mut request = forwarded("recipient", &[]);
+            request.actor.scopes = scopes
+                .into_iter()
+                .map(|scope| veoveo_types::ScopeName::parse(scope).unwrap())
+                .collect();
+            let issued = issuer.issue(request).unwrap();
+            let claims: serde_json::Value = verifier.decode_claims(&issued.bearer_token).unwrap();
+            match expected {
+                None => assert!(claims.get("scope").is_none()),
+                Some(expected) => assert_eq!(claims["scope"], expected),
+            }
+            verifier.verify(&issued.bearer_token).unwrap();
         }
     }
 

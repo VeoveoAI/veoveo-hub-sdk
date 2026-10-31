@@ -351,3 +351,11 @@ async fn the_app_origin_reaches_no_other_route() {
     .await;
     assert_eq!((status, body.as_str()), (StatusCode::OK, "hooked"));
 }
+
+#[tokio::test]
+async fn the_test_mesh_registers_a_server_with_an_app_origin() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let mut mesh = testing::TestMesh::bind().await;
+    // The mesh registers the app origin its requirement implies, as the Hub's rules ask.
+    let _calls = mesh.register(Domain::routes().authorization());
+}

@@ -150,7 +150,14 @@ impl TestMesh {
                     url::Url::parse(super::TEST_RESOURCE).expect("the test resource"),
                 )
                 .expect("an endpoint"),
-                surfaces: None,
+                // The mesh routes no public route; a declared app origin requirement
+                // implies the app origin, as the Hub's rules require.
+                surfaces: declaration.requirements.app_origin.is_some().then(|| {
+                    crate::registration::SurfacesDeclaration {
+                        public_routes: Vec::new(),
+                        app_origin: true,
+                    }
+                }),
             },
             declaration.clone(),
         )

@@ -77,7 +77,7 @@ lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectne
 ```
 
 The context-bearing direct/delegated issuance cases, all-owned nonempty permission sets,
-independent complete signer claims, valid constructed examples and semantic
+independent complete signer claims, constructed issuance examples and semantic
 mutation controls are still required before qualifying full issuance.
 
 ## Exact context admission
@@ -114,9 +114,46 @@ lake build InternalAuthContextProof
 
 This proves model-relative context admission, not authentication of the supplied
 context, current-policy provenance, expiry, complete issuance/claims, or verifier
-cryptography. Constructed admitted examples for each mode and actual-source
-semantic controls remain pending. Native collection/string/allocation
-correspondence remains the boundary described below.
+cryptography. Actual-source semantic controls remain pending. Native
+collection/string/allocation correspondence remains the boundary described below.
+
+## Constructed admitted contexts
+
+`InternalAuthContextExamples.lean` supplies populated independent input
+constructions aligned to the native `hub-request-context.json` modes. It imports
+no context-correctness theorem, so semantic-control witnesses can reuse the
+inputs without importing a failed mutated proof. Direct has a browser session
+family and nonempty groups, group roles, roles, scopes, labels and assurances.
+Automated is a service principal. Delegated has a distinct service actor, inherits
+nonempty source scopes/labels/assurances and clears user groups and roles. Scope
+traversals are unique and in lexical order.
+
+`InternalAuthContextWitnesses.lean` proves actual validation success in all three
+modes from the independently proved admission predicates. The five text bounds
+are discharged for the concrete fixture strings, rather than supplied as
+admission assumptions. A closed seed context and authority give a no-argument
+three-mode success theorem, with distinct source/actor authentication times in
+the delegated case. Generic theorems also preserve arbitrary supplied audit,
+execution, token dates/audience/ID, and authority membership/policy/output fields;
+those preserved inputs are not authenticated evidence. Authority provenance is
+not coupled to an acting-server value by these context-only constructions.
+
+All eight key declarations have executable standard-only dependency audits. The
+first passing direct checks completed in 2.53 s (examples) and 2.66 s (witnesses).
+The final named-target check passed in 7.32 s with all eight audits and no
+`sorryAx`. Its inputs use the native fixture's UUIDv7-shaped audit ID; that
+fidelity correction changes no validator condition. Exact source versions,
+final target results and prior proof-authoring errors are in the
+[admitted-context receipt](evidence/context-examples.json).
+
+```sh
+lake build InternalAuthContextExamples InternalAuthContextWitnesses
+```
+
+This is model-relative admission of constructed inputs, not full issuance,
+authenticity, cryptography, current-policy provenance or actual-source mutation
+qualification. Complete context-bearing claims and deadline composition remain
+pending.
 
 ## Operational boundaries
 
@@ -161,6 +198,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. The complete context-bearing issuer theorem and admitted
-direct and delegated constructions are the next proof obligations; they are not
-proved by the initial bootstrap or recipient results.
+model-boundary audit. The complete context-bearing issuer theorem, admitted issuance constructions
+and validator mutation controls are the next proof obligations. Context-only
+examples do not close the issuer or recipient verification gaps.

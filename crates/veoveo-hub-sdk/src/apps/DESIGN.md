@@ -40,24 +40,35 @@ app resource stays the entry point that hosts discover and authorize.
 
 ## Server Obligations
 
-A server shipping a view (Time's app is the reference implementation):
+A server shipping a view (Time's app is the reference implementation) declares it in its
+typed `Routes`, from which discovery, reading, registration requirements and capabilities
+derive, as for its other routes:
 
-1. Declare the extension: `extend_capabilities(&mut caps)` in `get_info`.
-2. List the view: `app_resource(uri, name)` in `list_resources`, with `.with_title(...)`,
-   `.with_description(...)` and optionally `.with_icons(...)`, as `data:` URIs. Hosts build
-   catalog and navigation entries from these fields.
-3. Serve the view: `app_html_contents(uri, html)` from `read_resource`. The document is
-   self-contained unless its function requires a declared live-data connection. Such a
-   view uses `app_resource_with_meta` and lists exact installation-owned origins in
-   `_meta.ui.csp`; it names no wildcards, paths, credentials, queries or fragments.
-4. Link tools: `link_tool_to_app(tool, uri, &[Model, App])` in `list_tools` for every
-   tool the view may invoke. A tool without an app link is never app-callable.
+1. Declare the view: `RoutesBuilder::app` takes the App's `ui://{slug}/{page}` URI, which
+   must be under the server's own slug, its name, title, description, icons as `data:`
+   URIs and UI metadata, its `RoutePolicy`, and a reader that returns the server's
+   `AppHtml`. Discovery lists it with the App MIME type, a read returns the document, and
+   the registration's requirements cover its URI. Hosts build catalog and navigation
+   entries from these fields.
+2. The document is self-contained unless its function requires a declared live-data
+   connection. Such a view declares exact installation-owned origins in its UI metadata's
+   `csp`; it names no wildcards, paths, credentials, queries or fragments.
+3. Link tools: `RoutesBuilder::app_tools` names the App's URI, the server's tools the view
+   may invoke and their visibility, such as model and app. Building the routes fails for
+   an unknown tool or App. A tool without an app link is never app-callable.
+4. Capability: when the routes include an App, the server declares the
+   `io.modelcontextprotocol/ui` extension with the App MIME type.
+
+The lower-level helpers (`extend_capabilities`, `app_resource`, `app_html_contents`,
+`link_tool_to_app`) remain for a server that does not host through `Routes`.
 5. Gate in the server: administrative tools check the domain's administrative scope as
    any scoped tool does; resources carry the scope their data warrants.
-6. Choose presentation through the specification: the view declares the display modes it
+6. Keep JSON numbers within the range a JavaScript number holds exactly, as I-JSON
+   (RFC 7493) recommends, in every result an App may read: views run in browsers.
+7. Choose presentation through the specification: the view declares the display modes it
    supports in `ui/initialize` and asks for a change with `ui/request-display-mode`. A
    card supports `inline`; an editor supports only `fullscreen`.
-7. A full web application: the view declares its server's app origin, and only that
+8. A full web application: the view declares its server's app origin, and only that
    origin, in `_meta.ui.csp.frameDomains` and frames it.
 
 ### Packaged App Assets
@@ -89,23 +100,36 @@ any host does.
   speak as another.
 - **CSP.** The host validates every declared origin and adds only those exact sources to
   their directives. `frameDomains` admits only the App's own server's app origin. Local
-  `data:` fetches add no remote origin.
+  `data:` fetches add no remote origin. A self-contained view's inline script and style
+  run inside its opaque frame; the frame stays `sandbox="allow-scripts"` alone, so forms
+  do not submit and views act on buttons and keys.
+- **Host context.** The host supplies the theme, `timeZone` and `availableDisplayModes`;
+  a direct URL offers at least `fullscreen`.
 - **Catalog.** The host discovers Apps from `resources/list` (`is_app_resource`), derives
   ownership from the `ui://{server}/…` prefix and attaches only that server's app-visible
   linked tools. Nothing is registered by hand. A failed server's discovery is isolated;
   healthy Apps stay available beside a degradation notice.
 - **Bridge.** The host declares `serverTools` and `serverResources`. It proxies a view's
   `tools/call` only to app-visible tools linked to that exact view on that view's server,
-  through the shared admission below. A view reads its own server's resources and no
-  other server's. Every call runs through the Hub's ordinary authorization as the signed-in
-  person; browser code holds no bearer token.
+  through the shared admission below. A view names a tool by its server's own name, such
+  as `resolve_time`, and the host maps it to the catalog name `{slug}__{tool}`. A view
+  reads its own server's resources, at their own addresses including query forms, and no
+  other server's. Every call runs through the Hub's ordinary authorization as the
+  signed-in person; browser code holds no bearer token. The host passes structured
+  results through without changing their numbers.
 - **Tasks.** Task-based tools stay task-based inside Apps. A view may send `tools/call`
   with final request metadata and `tasks/get`, `tasks/update` and `tasks/cancel`; the
-  host records Task ownership per view and forwards Task requests as the person. Only
-  app-visible linked tools may start Tasks, and a view may poll only Tasks it started.
+  host's client declares the Tasks client capability for App traffic, records Task
+  ownership per view and forwards Task requests as the person, passing `resultType: "task"`
+  results and `tasks/get` results and errors through unchanged. Only app-visible linked
+  tools may start Tasks, and a view may poll only Tasks it started.
 - **Reactive resources.** The host serves the reactive adapter: it registers a view's
   bounded subscription set on its auth-scoped MCP client and delivers
-  `ui/notifications/resource-updated` wakes into the frame. Domain state never travels in
+  `ui/notifications/resource-updated` wakes into the frame. On the wire, the view sends
+  `subscriptions/listen` with `{"notifications":{"resourceSubscriptions":[uri, …]}}`;
+  the host answers `notifications/subscriptions/acknowledged`; each wake carries
+  `{"uri": …}`; and the view ends the listen with `notifications/cancelled` naming its
+  `requestId`. Domain state never travels in
   a wake; the view reads current state through an ordinary bridge request. Configured
   ceilings bound listeners per browser session, and authorization expiry closes them.
 - **Navigation.** An App may send `ui/open-link` for another exact `ui://` resource; the

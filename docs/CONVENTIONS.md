@@ -65,7 +65,8 @@ target can change. Business WorkContext and data authorization remain separate.
 `https://veoveo.ai/formats/resolved-composition` identifies canonical compact UTF-8
 JSON with fixed field order `format`, `formatVersion` (2), `components`. Version 1
 also named an environment and is no longer read.
-Components are ordered by logical slug and explicitly select a deployment or
+Components are ordered by logical slug and explicitly select a deployment, the
+`runners` of a linked branch, one deployment for each link name in lexical order, or
 `unavailable`; omission does not instruct a fallback. SHA-256 covers the format URI,
 one NUL byte, then those exact JSON bytes. Labels and transient health are excluded.
 Import recomputes the revision and rejects noncanonical or unsupported records.

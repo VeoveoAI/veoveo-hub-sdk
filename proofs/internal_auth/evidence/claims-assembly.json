@@ -1,0 +1,71 @@
+{
+  "milestone": "Complete actual SDK claims assembly with populated and empty-permission constructions",
+  "date": "2026-10-31",
+  "status": "Generic exact claims equality, unchanged independent ClaimsExact and both closed constructions passed; actual-Rust permission-detail source control remains pending.",
+  "source_parent": "4655e9d469d25a2b44b6623d416e62f15d99737d",
+  "agents": {"implementation": "GPT-6.1 Sol", "validation": "GPT-6 Luna", "review": "GPT-6 Astra"},
+  "unchanged_baseline": {"model_receipt": "internal-auth-model.json", "model_receipt_sha256": "4540ae4d9f59f180daad402a09bb06cf4c0f1603cc03fb60f74d8b4c52fbb453", "identity_receipt": "identity-construction.json", "identity_receipt_sha256": "849b9bd40940389c15d78090341dd4604f94ffb1b3cb87fa1f34cfd2ba807ada", "specification_sha256": "dcaa5f5a4c4edecc2e4aa3ca1e43f4988ccf0ffd24284deafba82bc30c8d83e0", "raw_Types_sha256": "268d39c69a87dc9e0205faf19b356d3cac1d9ef5d6ee051eee88ecaf9b2ccd44", "raw_Funs_sha256": "bec561cc7f7c8bff27ce4a7fc2c4434fd41a7d2de7bc495ed15e1e255808d24d", "operational_models": "Unchanged TypesExternal/FunsExternal and pinned source/tool/native boundaries as recorded. No re-extraction or native suite for new Lean.", "source_correspondence": "Root separately verified the same five covered current local native files still match the archived e268+String/binder inputs; no whole-current dependency, remote-origin, Hub pin or deployed-stack applicability is implied."},
+  "source_sha256": {"InternalAuthClaimsComponents.lean": "c193f6da112de3355765affa1b8ddd88cea133245ad14d8355dd59493362b5bc", "InternalAuthClaimsExamples.lean": "aebd409094a31160f196878a89c2fafde16ddc51b199d1040ce4d4fe1a845e4b", "InternalAuthClaimsProof.lean": "32c38a0d0dc302cba20502531affefa753629ee62f046acf2a9e43eb97e5c247", "lakefile.lean": "2c5c6c08c233c0ad420f06087dfe0af0ee8e00dc0dafaeb87fcce05ac27ae563"},
+  "contract": {
+    "actual_function": "RequestCompositionSdk.internal_auth.AccessTokenClaims.from_identity",
+    "equality": "InternalAuthClaimsProof.from_identity_exact: actual from_identity token = Result.ok (claimsValue token)",
+    "independent_relation": "InternalAuthClaimsProof.actual_claims_complete: actual result satisfies unchanged InternalAuthSpecification.ClaimsExact. claims_value_exact relates the deterministic complete value to that normative specification.",
+    "domain": "Arbitrary complete typed identities. ClaimsTextDomain: physical byte bounds for actor ID, audience, each traversed scope and complete space-joined scope text. No own-code validation/construction success, authenticated identity, nonempty permission or sorted list result premise.",
+    "complete_fields": "iss/sub/aud/client_id/jti; exp/nbf/iat; acting issuer and exact nested prior chain; scope/groups/roles; zero or exactly one Permissions authorization detail preserving every action; entire invocation profile/server/deployment/Principal/authority/request_context/acting server/deployment/Task/delegation_context.",
+    "source_subcalls": "Actual scope_claim and prior_actors loops are total by finite list/slice measure, preserving iterator order and exact space joining; actual forwarded_actors and StandardClaims.new are derived, not assumed successful. Native Option-to-Vec collection and all clone callbacks are discharged. No separate recursive model is equated with an extracted partial_fixpoint.",
+    "time": "NumericDates are exactly I64 seconds projections; no positive whole-second remaining lifetime or timestamp roundtrip claim.",
+    "scope_order": "Exact generic text follows retained operational traversal. Native canonical text requires the existing sorted/unique BTreeSet traversal correspondence; the closed two-scope fixture separately proves ScopeTraversalSorted."
+  },
+  "constructions": {"rich": "Closed typed delegated identity: two lexical scopes operator:read/operator:use; two inherited actors alpha then beta and current gamma, giving outer gamma→beta→alpha nesting; matching originating Task; two permission actions; full populated actor/authority/context, scalar timestamps and UUID-shaped IDs. Actual complete claims equality and unchanged ClaimsExact are derived.", "empty_direct": "Closed Direct identity retains populated Principal/context metadata and two scopes but no permissions: actual authorization_details is empty and prior actor is absent.", "admission_boundary": "populated_inputs separately derives independent ContextAccepted for both fixtures. Claims construction itself validates neither source authenticity nor Task liveness/current-policy grants; it does not prove a native issuer/signature result."},
+  "audit": {
+    "allowlist": ["propext", "Classical.choice", "Quot.sound"],
+    "native_observation_additions": [],
+    "sorryAx": false,
+    "declarations": {
+      "Components": ["scope_loop_exact", "scope_claim_exact", "prior_loop_exact", "forwarded_actors_exact", "claims_value_exact", "standard_claims_exact", "option_vec_collect"],
+      "Examples": ["rich_domain", "empty_direct_domain", "populated_inputs"],
+      "Proof": ["from_identity_exact", "actual_claims_complete", "rich_claims_constructed", "empty_direct_claims_constructed"]
+    },
+    "executable_guards_passed": true
+  },
+  "generic_direct_before_split": {"directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-claims-direct8", "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake env lean InternalAuthClaimsProof.lean", "exit": 0, "elapsed_s": 2.83, "source_count": 17, "import_count": 6, "source_and_import_prepost_passed": true, "log_sha256": "3b60db8aa772b1aff40e414f7f10a1edc16bc2fcc8856d6f4949a46a871177e8", "time_v_sha256": "74b4431eae6d45ee29bcdf5fb452737b85d0ef556cc807f7dffeaad925db3829", "status_sha256": "e9c658ccd508f2febcff72c2b4f7930ee56f1ba9773f7bc7c2bef8a02c866497", "source_sha256": "f58072fb942c43fd932b50bc8b5b41b852b7673b7e18a2a5662b0721cc7d2bba"},
+  "split_direct_checks": [
+    {"directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-claims-composed1", "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake env lean -o .lake/build/lib/lean/InternalAuthClaimsComponents.olean InternalAuthClaimsComponents.lean", "exit": 0, "elapsed_s": 2.79, "source_count": 19, "import_count": 6, "source_and_import_prepost_passed": true, "log_sha256": "9323294a4c07494afc9a252bac3c92814b018e1291e4bd551f9eb94235d9e3bd", "time_v_sha256": "707cc2a268ebee6e7b5400707c4a13dc57c4bd078d4b27447bb4839722b32ed3", "status_sha256": "deda4bb614e4b05f21ffbbc26a9dc02f11e8992d3c06dfebdf5b7e5302349e6c", "olean_sha256": "a2ba6e3e1e988cc3f4ba4e40a255af1b3a40018c754b2ba6b7677e0f291ec765"},
+    {"directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-claims-composed3", "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake env lean -o .lake/build/lib/lean/InternalAuthClaimsExamples.olean InternalAuthClaimsExamples.lean", "exit": 0, "elapsed_s": 2.76, "source_count": 19, "import_count": 7, "source_and_import_prepost_passed": true, "log_sha256": "baa501dcdc158d7fc7aaddb765dcbcef75ba49a7259df25299317ccd011d7853", "time_v_sha256": "b81dc3252427344a3a5a49c992f246afc0dc56c844df2a8fe301a438c0bdc541", "status_sha256": "564b821cfa6c99b0c1619c906f93a7aa62076e6146f1fd8a6f4f41e3fad54125", "olean_sha256": "c4a41d899671aa968b44dfa2e7336ebfd874954348181188917be58c4b9efbc3"},
+    {"directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-claims-composed4", "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake env lean InternalAuthClaimsProof.lean", "exit": 0, "elapsed_s": 2.71, "source_count": 19, "import_count": 8, "source_and_import_prepost_passed": true, "log_sha256": "e0cb2c1f6ed33fe72b180d2ea32699f4f37241e795b268c7d165900daf720ac0", "time_v_sha256": "f007e7fbe3a0943b3e3c39cefaa69e89d2ad845c3ba654e0a8af2eae8a28c1a9", "status_sha256": "21b0f97c374979207edce835be378a78a30039526c1bdef2045bfe7b1a0f5f26"}
+  ],
+  "named_target": {
+    "directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-claims-target1",
+    "command": "LAKE_NO_UPDATE=1 lake build InternalAuthClaimsComponents InternalAuthClaimsExamples InternalAuthClaimsProof",
+    "exit": 0,
+    "elapsed_s": 7.58,
+    "max_rss_kib": 2758960,
+    "source_count": 19,
+    "source_prepost_passed": true,
+    "import_count_checked_before": 8,
+    "import_boundary": "Imports gated before only: named targets may rebuild module artifacts; final three OLeans captured separately, without an import-post equality claim.",
+    "config_delta": "Only three opt-in lean_lib targets; native tool/dependency graph and manifest unchanged. Private require retains the existing relative Aeneas path.",
+    "private_lakefile_sha256": "9da8a1cd4adfd17acc41ccb54e96a7f3522a5da7c979e32ca4fc5fab76519bfa",
+    "private_manifest_sha256": "e5f0a8be448113fb2c89aab3b3d58bae67cd6739e381484be6fc45722b895df2",
+    "source_map_sha256": "4c8df16d35aacb9ddd43d489fd8114aff2b9c824d19eb93e497870df4570ed59",
+    "imports_map_sha256": "ddf848b203724b498354ab33a35a9dc5204836152e276c7a56e215dd993505e4",
+    "runner_sha256": "b1c802408a3efce201e82e9ead58f2dcb230c458b16d8f976973a8480609686a",
+    "log_sha256": "abf4a26135e10cf58340d2396bca303e6a07b87a632bf3947ec8ddb32674a24c",
+    "time_v_sha256": "d0961ad5a1527f43554d790c03344a09881bc0549673216a09a1d4b3686c37e3",
+    "status_sha256": "33f50de4fa6572869d34dacb8e2665967af98a234db47589017722b478e9105e",
+    "output_map_sha256": "5b6ed4e48c6aa59522f7b3652fd634668facaa70dd165f60f104f7f6801d2228",
+    "artifacts": {"InternalAuthClaimsComponents.olean": "62a8a6d3baa8152bfffe5bbae07d186755e9ccac924c11292f02b71eb928c743", "InternalAuthClaimsExamples.olean": "032389ae9244a954542ee9c5048cb7dd83b0d965a3e9b58251c6b62b48981f87", "InternalAuthClaimsProof.olean": "4e7a84374d7491d847850319b7a5c66e9c2928567f28a52860dcbc01a9470820"}
+  },
+  "iteration_classification": [
+    "Failed candidates were proof-local tuple/bind/matcher/implicit-instance/index/clone/collector normalization. A bounded pp.all diagnostic identified the dependent Slice.len_val transport; final proof establishes actual next/body equations before rewriting under the unchanged loop postcondition. No runtime/specification/model/tool patch, new axiom or budget increase. No failed declaration or diagnostic is qualification.",
+    "Component split preserves the established derivations. A Task fixture layout parser error, opaque predicate Decidable issue and omitted module-local String clone simplification were corrected before successful checks; unchanged successful component/example artifacts were reused and gated. No extraction or native rerun was needed."
+  ],
+  "boundaries": [
+    "Model-relative complete claims, not serialization/signature verification or an instrumented native side-effect/call-count trace. No provider/clock/UUID/signer observation is called by the claims constructor.",
+    "Native string/UTF8/size/allocation, scalar/date and sorted collection traversal correspondence remain explicit. Ordinary non-leap TimestampNonLeap correspondence is not asserted for every native Chrono value.",
+    "No token authenticity, policy provenance, Task liveness, UUID uniqueness, positive whole-second lifetime or Hub60/900-second TTL claim.",
+    "Meaningful actual-Rust permission-detail inversion control and exact restoration are next, separately pending. Unaffected Components and independent Examples are importable without the expected-failing ClaimsProof.",
+    "Public issue first-foreign ownership guard, private Core namespace helper refinement, complete concrete signer argument composition, verifier wrapper and Hub pinned-stack integration remain open.",
+    "No runtime/generated/operational model/SDK pin changes, native/full-stack suites, CI, paid calls or deployment."
+  ]
+}

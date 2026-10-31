@@ -6,8 +6,8 @@ replace the issuer with a function that returns a chosen identity. The model
 build and dependency audit pass. The initial bootstrap-identity,
 signing-continuation and recipient contracts also pass. Generic complete identity
 construction, delegation refusal priority and context-bearing Direct/acting-server
-successes now pass; public issuance and independent complete signer-claims
-correctness remain pending.
+successes and independent complete claims assembly now pass. Public issuance
+and the complete claims-to-signer composition remain pending.
 There is no runner or CI integration.
 
 The input is the recorded SDK `e268032` slice, Core `120306e`, with the reviewed
@@ -60,16 +60,17 @@ premise is supplied.
 
 The issue theorem connects that identity to the actual claims constructor and
 concrete signer, preserving signing errors and modeled failure/divergence.
-It is a continuation factorization, not yet an independent proof of every claims
-field. The separate recipient theorem proves exact server/resource/deployment
-comparison, error priority and preservation of the entire presented recipient
-triple under explicit comparator laws. It does not perform cryptographic verification.
+It is a continuation factorization; complete independent claims assembly is
+established separately below. The separate recipient theorem proves exact
+server/resource/deployment comparison, error priority and preservation of the
+entire presented recipient triple under explicit comparator laws. It does not
+perform cryptographic verification.
 
 All four theorem audits pass without `sorryAx`. The final direct check completed
 in 2.86 seconds. `InternalAuthSpecification.lean` independently describes the full
 context, deadline and claims contract; its elaboration alone establishes no
 correctness theorem. `InternalAuthValueLaws.lean` proves six finite clone/equality
-laws used by the next context/claims proof, with standard-only axiom audits.
+laws used by the context/claims proofs, with standard-only axiom audits.
 See the [checkpoint receipt](evidence/identity-recipient-checkpoint.json).
 
 These modules are opt-in manual targets:
@@ -155,8 +156,8 @@ lake build InternalAuthContextExamples InternalAuthContextWitnesses
 
 This is model-relative admission of constructed inputs, not full issuance,
 authenticity, cryptography, current-policy provenance or complete issuance. The
-context controls below qualify wrong acceptance/refusal sensitivity; complete
-claims and deadline composition remain pending.
+context controls below qualify wrong acceptance/refusal sensitivity; full public
+issuance and claims-to-signer composition remain pending.
 
 ## Actual-source context controls
 
@@ -281,10 +282,55 @@ acting witness failed proof normalization before its corrected leaf passed; setu
 failures and that proof-authoring failure are recorded separately. See
 [deadline semantic controls](evidence/identity-deadline-controls.json).
 
-Complete claims/scope/actor-chain assembly, actual public issue permission guard
-and signer arguments, verification wrapper and Hub pinned-stack correspondence
-remain pending. No runtime/model/extraction/dependency change or new native test
+The actual public issue permission guard and full identity/claims-to-signer
+composition, verification wrapper and Hub pinned-stack correspondence remain
+pending. No runtime/model/extraction/dependency change or new native test
 was required for this proof-only constructor checkpoint.
+
+## Complete claims assembly
+
+`InternalAuthClaimsProof.from_identity_exact` proves the actual transparent
+`AccessTokenClaims.from_identity` returns the complete deterministic `claimsValue`
+for any typed identity in `ClaimsTextDomain`. `actual_claims_complete` connects that
+result to the unchanged independent `ClaimsExact` specification. No own-code
+validation, subcall-success or desired-claims premise is supplied. The domain
+contains physical text bounds for actor ID, audience, each scope and the full
+rendered scope text; it adds no native admission rule.
+
+The result includes issuer, subject, audience, OAuth client, token ID, all three
+NumericDate seconds projections, issuer/current/inherited actor nesting, scope
+text, groups, roles, the empty-or-singleton permission detail with every action,
+and the complete invocation with Principal, authority, request context, deployment,
+acting server/Task and inherited delegation fields. The actual scope and prior-actor
+loops are proved finite and preserve exact traversal, spacing and nesting; actual
+`StandardClaims.new`, clones and Option-to-Vec collection are derived. Native
+canonical scope text still requires the existing sorted/unique native traversal
+correspondence, and date/allocation/UTF8 refinement boundaries below remain.
+
+`InternalAuthClaimsComponents.lean` holds these reusable proofs and the independent
+claims value. `InternalAuthClaimsExamples.lean` imports no full claims-correctness
+theorem. Its closed rich fixture has two lexical scopes, two inherited actors then
+the current actor, a matching originating Task, two permission actions and a
+populated context/authority. The empty-permission Direct fixture retains populated
+metadata and scope text while emitting no authorization detail or prior actor.
+Their independent `ContextAccepted` facts are separately proved; claims assembly
+itself authenticates no input and establishes no Task liveness or policy grant.
+
+The generic proof passed in 2.83 s; the split components, independent examples and
+complete proof passed in 2.79 s, 2.76 s and 2.71 s. Final named targets passed in
+7.58 s. All fourteen executable audits use only standard axioms and exclude
+`sorryAx`; this constructor calls no provider, clock, UUID generator or signer.
+See [claims assembly evidence](evidence/claims-assembly.json).
+
+```sh
+lake build InternalAuthClaimsComponents InternalAuthClaimsExamples InternalAuthClaimsProof
+```
+
+The actual-Rust permission-detail inversion control and exact restoration are the
+next separate qualification checkpoint. Full public issuance and concrete signer
+argument composition, Core namespace-helper refinement, verification wrapper and
+Hub pinned-stack integration remain open. No runtime, generated body, operational
+model, dependency pin or native suite changed for this proof milestone.
 
 ## Operational boundaries
 
@@ -333,6 +379,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. Complete public issuance/claims is the next proof obligation.
-Context admission and identity construction do not close signer, verifier or Hub
-integration gaps.
+model-boundary audit. Complete public issuance/signer composition is the next
+proof obligation. Context admission, identity construction and claims assembly do
+not close signer, verifier or Hub integration gaps.

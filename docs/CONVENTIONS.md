@@ -35,7 +35,10 @@ A concept has one noun across every surface, and each surface spells it in its o
 | Permission | `<slug>.<plural>.<verb>` | `time.events.write` |
 
 A server's URI scheme equals its slug. The Hub projects a tool as `<slug>__<tool>`
-when it lists tools from several servers. Resource templates use RFC 6570 simple
+when it lists tools from several servers, and a tool of a server served by the runners
+of linked repositories as `<slug>__<link>__<tool>`, where the link is a lowercase DNS
+label; a slug holds no `__`, so a name splits at its first `__`
+(`HubToolName::projection`). Resource templates use RFC 6570 simple
 expansion, and lists page through MCP cursors.
 
 ## Errors

@@ -485,8 +485,11 @@ forwarded token for a runner, the instance that serves one link of a linked repo
 adds a repository entry, `{"type": "https://veoveo.ai/oauth/repository", "identifier":
 "<Lore repository ID>", "actions": [...]}`, with the caller's Lore actions on the linked
 repository, such as `write` and `owner`; an empty list is a grant that reads. The
-verified identity exposes it as the caller's repository grant, so a runner decides by
-the grant Lore decides by. A server verifies the token and rejects it when:
+verified identity exposes it as the caller's repository grant,
+`HubInternalIdentity::repository_grant`, a `RepositoryGrant` of the repository ID, 32
+lowercase hexadecimal digits, and its actions, each 1 to 64 of `a`–`z` and `-`, which the
+SDK carries without a closed vocabulary, so a runner decides by the grant Lore decides
+by. A server verifies the token and rejects it when:
 
 - `typ` is neither `at+jwt` nor `application/at+jwt`, or `alg` is not `EdDSA`;
 - `kid` names no key the server holds after [key refresh](#key-refresh), or the
@@ -561,7 +564,8 @@ Both end no later than the caller's own access token.
 The server checks the required permission again with
 `HubInternalIdentity::grants`. Per-object rules, such as an owner-only event,
 stay with the server. `veoveo-hub-sdk` issues these tokens with
-`HubInternalTokenIssuer::issue` from a `ForwardedRequest`.
+`HubInternalTokenIssuer::issue` from a `ForwardedRequest`, and a runner's with
+`issue_with_repository`, which adds the caller's repository grant.
 `ForwardedTokenVerifier::new` verifies them against the issuer, keys, deployment and resource in
 `veoveo_access_tokens` and refreshes the keys through the HTTP client it is given. The
 hosted runtime takes the same values through `HostedServerBuilder::internal_trust`.

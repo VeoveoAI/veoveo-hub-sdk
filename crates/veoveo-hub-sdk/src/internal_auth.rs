@@ -36,8 +36,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::registration::{
-    AccessTokenTrust, Ed25519Jwk, Ed25519JwkSet, PermissionsDetail, ResourceIndicator,
-    ServerPublicKey, issuer_url, statement::ServerKeyPair,
+    AccessTokenTrust, Ed25519Jwk, Ed25519JwkSet, PermissionsDetail, RepositoryDetail,
+    RepositoryGrant, ResourceIndicator, ServerPublicKey, issuer_url, statement::ServerKeyPair,
 };
 use crate::{
     DeploymentId, HubProfileId, JwtId, OAuthClientId, OpaqueTaskId, Principal, ServerSlug,
@@ -229,6 +229,11 @@ pub struct HubInternalIdentity {
     /// granted them for this request. The server checks them again.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub permissions: BTreeSet<PermissionName>,
+    /// The caller's grant on the linked repository, when this server is a runner that
+    /// serves one link of a linked repository: the caller's Lore actions on it, as a Lore
+    /// token for it would carry them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<RepositoryGrant>,
     /// Required by consumers that admit renewable grants or recheck accepted work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_context: Option<HubRequestContext>,
@@ -253,6 +258,12 @@ impl HubInternalIdentity {
     /// Whether the Hub granted `permission` for this request.
     pub fn grants(&self, permission: &PermissionName) -> bool {
         self.permissions.contains(permission)
+    }
+
+    /// The caller's grant on the linked repository this runner serves, absent for a
+    /// server that serves no link.
+    pub fn repository_grant(&self) -> Option<&RepositoryGrant> {
+        self.repository.as_ref()
     }
 
     /// The server that called for the caller, when another server made this call.
@@ -337,6 +348,17 @@ impl HubInternalTokenIssuer {
         &self,
         request: ForwardedRequest,
     ) -> Result<IssuedHubInternalToken, InternalTokenError> {
+        self.issue_with_repository(request, None)
+    }
+
+    /// [`Self::issue`] for a runner, the instance that serves one link of a linked
+    /// repository: the token also carries the caller's grant on that repository as an
+    /// RFC 9396 repository entry.
+    pub fn issue_with_repository(
+        &self,
+        request: ForwardedRequest,
+        repository: Option<RepositoryGrant>,
+    ) -> Result<IssuedHubInternalToken, InternalTokenError> {
         if let Some(foreign) = request
             .permissions
             .iter()
@@ -346,7 +368,8 @@ impl HubInternalTokenIssuer {
                 foreign.clone(),
             ));
         }
-        let identity = self.create_identity(request)?;
+        let mut identity = self.create_identity(request)?;
+        identity.repository = repository;
         let bearer_token = self.sign_forwarded(&AccessTokenClaims::from_identity(&identity))?;
         Ok(IssuedHubInternalToken {
             bearer_token,
@@ -431,6 +454,7 @@ impl HubInternalTokenIssuer {
             actor,
             authority,
             permissions,
+            repository: None,
             request_context,
             acting_server,
             acting_task,
@@ -571,9 +595,27 @@ impl HubInternalTokenVerifier {
         let audience = self.audience.resource.clone();
         let invocation = claims.invocation;
         claims.standard.check_actor(&invocation.actor)?;
-        let permissions = match claims.authorization_details.as_slice() {
-            [] => BTreeSet::new(),
-            [detail] => {
+        // At most one permissions entry and one repository entry; an entry of another
+        // type does not deserialize.
+        let mut permissions = None;
+        let mut repository = None;
+        for detail in &claims.authorization_details {
+            match detail {
+                AuthorizationDetail::Permissions(detail) => {
+                    if permissions.replace(detail).is_some() {
+                        return Err(InternalTokenError::InconsistentClaims);
+                    }
+                }
+                AuthorizationDetail::Repository(detail) => {
+                    if repository.replace(detail.grant()).is_some() {
+                        return Err(InternalTokenError::InconsistentClaims);
+                    }
+                }
+            }
+        }
+        let permissions = match permissions {
+            None => BTreeSet::new(),
+            Some(detail) => {
                 if let Some(foreign) = detail
                     .actions
                     .iter()
@@ -585,7 +627,6 @@ impl HubInternalTokenVerifier {
                 }
                 detail.actions.clone()
             }
-            _ => return Err(InternalTokenError::InconsistentClaims),
         };
         let acting_server = match (
             claims.standard.act.act.as_ref(),
@@ -633,6 +674,7 @@ impl HubInternalTokenVerifier {
             actor: invocation.actor,
             authority: invocation.authority,
             permissions,
+            repository,
             request_context: invocation.request_context,
             acting_server,
             acting_task: invocation.acting_task,
@@ -814,11 +856,20 @@ fn scope_claim(actor: &Principal) -> Option<String> {
 struct AccessTokenClaims {
     #[serde(flatten)]
     standard: StandardClaims,
-    /// RFC 9396: at most one [`PermissionsDetail`], absent when nothing is granted.
+    /// RFC 9396: at most one [`PermissionsDetail`], absent when nothing is granted, and
+    /// for a runner one [`RepositoryDetail`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    authorization_details: Vec<PermissionsDetail>,
+    authorization_details: Vec<AuthorizationDetail>,
     #[serde(rename = "https://veoveo.ai/claims/invocation")]
     invocation: Invocation,
+}
+
+/// One RFC 9396 entry of a forwarded token, told apart by its `type`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum AuthorizationDetail {
+    Permissions(PermissionsDetail),
+    Repository(RepositoryDetail),
 }
 
 /// The [`INVOCATION_CLAIM`]: who acts, under which authority and request.
@@ -860,8 +911,18 @@ impl AccessTokenClaims {
                 identity.expires_at,
             ),
             authorization_details: (!identity.permissions.is_empty())
-                .then(|| PermissionsDetail::new(identity.permissions.clone()))
+                .then(|| {
+                    AuthorizationDetail::Permissions(PermissionsDetail::new(
+                        identity.permissions.clone(),
+                    ))
+                })
                 .into_iter()
+                .chain(
+                    identity
+                        .repository
+                        .clone()
+                        .map(|grant| AuthorizationDetail::Repository(RepositoryDetail::new(grant))),
+                )
                 .collect(),
             invocation: Invocation {
                 profile: identity.profile.clone(),
@@ -1192,6 +1253,114 @@ pub(crate) mod tests {
         let mut slugged = granted.clone();
         slugged["aud"] = serde_json::json!("time");
         assert!(verifier.verify(&sign(&slugged)).is_err());
+    }
+
+    #[test]
+    fn a_runners_token_carries_the_callers_grant_on_its_linked_repository() {
+        use crate::registration::{
+            REPOSITORY_DETAIL_TYPE, RepositoryAction, RepositoryGrant, RepositoryId,
+        };
+        let issuer = issuer();
+        let verifier = verifier("time");
+        let grant = RepositoryGrant {
+            repository: RepositoryId::parse("0123456789abcdef0123456789abcdef").unwrap(),
+            actions: ["write", "push-protected"]
+                .into_iter()
+                .map(|action| RepositoryAction::parse(action).unwrap())
+                .collect(),
+        };
+        let issued = issuer
+            .issue_with_repository(forwarded("time", &["time.read"]), Some(grant.clone()))
+            .unwrap();
+        let identity = verifier.verify(&issued.bearer_token).unwrap();
+        assert_eq!(identity.repository_grant(), Some(&grant));
+        assert!(identity.grants(&PermissionName::parse("time.read").unwrap()));
+        assert!(
+            identity
+                .repository_grant()
+                .unwrap()
+                .allows(&RepositoryAction::parse("write").unwrap())
+        );
+        let claims: serde_json::Value = verifier.decode_claims(&issued.bearer_token).unwrap();
+        assert_eq!(
+            claims["authorization_details"],
+            serde_json::json!([
+                {"type": crate::registration::PERMISSIONS_DETAIL_TYPE, "actions": ["time.read"]},
+                {"type": REPOSITORY_DETAIL_TYPE, "identifier": "0123456789abcdef0123456789abcdef",
+                 "actions": ["push-protected", "write"]}
+            ])
+        );
+
+        // A reader's grant is an empty set, and stands without permissions.
+        let reader = RepositoryGrant {
+            actions: BTreeSet::new(),
+            ..grant.clone()
+        };
+        let issued = issuer
+            .issue_with_repository(forwarded("time", &[]), Some(reader.clone()))
+            .unwrap();
+        let identity = verifier.verify(&issued.bearer_token).unwrap();
+        assert_eq!(identity.repository_grant(), Some(&reader));
+        assert!(identity.permissions.is_empty());
+        // A server that serves no link gets none.
+        let issued = issuer.issue(forwarded("time", &["time.read"])).unwrap();
+        assert_eq!(
+            verifier.verify(&issued.bearer_token).unwrap().repository,
+            None
+        );
+
+        // A second repository entry, an entry of another type and a malformed repository
+        // entry are refused.
+        let identity = issuer
+            .create_identity(forwarded("time", &["time.read"]))
+            .map(|mut identity| {
+                identity.repository = Some(grant.clone());
+                identity
+            })
+            .unwrap();
+        let mut header = Header::new(Algorithm::EdDSA);
+        header.typ = Some(ACCESS_TOKEN_TYPE.to_owned());
+        header.kid = Some(signing_key().key_id().to_owned());
+        let sign = |claims: &serde_json::Value| {
+            encode(
+                &header,
+                claims,
+                &EncodingKey::from_ed_der(&signing_key().private_key_der),
+            )
+            .unwrap()
+        };
+        let claims = serde_json::to_value(AccessTokenClaims::from_identity(&identity)).unwrap();
+        assert!(verifier.verify(&sign(&claims)).is_ok());
+        let repository = claims["authorization_details"][1].clone();
+        for (case, details) in [
+            (
+                "two repository entries",
+                serde_json::json!([claims["authorization_details"][0], repository, repository]),
+            ),
+            (
+                "another type",
+                serde_json::json!([{"type": "https://example.test/other", "actions": []}]),
+            ),
+            (
+                "a repository entry without its identifier",
+                serde_json::json!([{"type": REPOSITORY_DETAIL_TYPE, "actions": []}]),
+            ),
+            (
+                "an identifier that is no repository ID",
+                serde_json::json!([{"type": REPOSITORY_DETAIL_TYPE, "identifier": "team-a",
+                    "actions": []}]),
+            ),
+            (
+                "an extra member",
+                serde_json::json!([{"type": REPOSITORY_DETAIL_TYPE,
+                    "identifier": "0123456789abcdef0123456789abcdef", "actions": [],
+                    "locations": []}]),
+            ),
+        ] {
+            let mut forged = claims.clone();
+            forged["authorization_details"] = details;
+            assert!(verifier.verify(&sign(&forged)).is_err(), "{case}");
+        }
     }
 
     #[test]

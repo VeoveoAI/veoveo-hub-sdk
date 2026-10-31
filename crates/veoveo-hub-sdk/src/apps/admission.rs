@@ -1,19 +1,30 @@
 //! Exact App tool admission over the hub-projected, caller-visible catalog.
-use crate::identity::LocalToolName;
+use crate::{hub::LinkName, identity::LocalToolName};
 use rmcp::model::{Resource, Tool};
 
 use crate::apps::{is_app_resource, tool_app_link};
 
 /// Callers supply a resource and tools read through current MCP authority.
 /// App-supplied metadata must never enter this projection.
+///
+/// A view names a tool by its server's own name, or, for a server served by the runners
+/// of linked repositories, by `{link}__{tool}`, which maps to `{slug}__{link}__{tool}`.
 pub fn resolve_app_tool<'a>(
     resource: &Resource,
     tools: &'a [Tool],
     alias: &str,
 ) -> Option<&'a Tool> {
-    LocalToolName::parse(alias).ok()?;
-    if alias.contains("__") {
-        return None;
+    match alias.split_once("__") {
+        None => {
+            LocalToolName::parse(alias).ok()?;
+        }
+        Some((link, tool)) => {
+            LinkName::parse(link).ok()?;
+            LocalToolName::parse(tool).ok()?;
+            if tool.contains("__") {
+                return None;
+            }
+        }
     }
     if !is_app_resource(resource) {
         return None;
@@ -77,6 +88,39 @@ mod tests {
             "media__run"
         ));
         assert!(!app_allows_tool(&view, &[], "media__run"));
+    }
+
+    #[test]
+    fn a_linked_servers_view_names_a_tool_with_its_link() {
+        let view = app_resource("ui://n8n/overview.html", "Overview");
+        let linked = |name: &str| {
+            link_tool_to_app(
+                Tool::new(name.to_owned(), "Run", rmcp::model::JsonObject::new()),
+                &view.uri,
+                &[UiVisibility::App],
+            )
+        };
+        let tools = [linked("n8n__team-a__run"), linked("n8n__team-b__run")];
+        assert_eq!(
+            resolve_app_tool(&view, &tools, "team-a__run").map(|tool| tool.name.as_ref()),
+            Some("n8n__team-a__run")
+        );
+        assert_eq!(
+            resolve_app_tool(&view, &tools, "team-b__run").map(|tool| tool.name.as_ref()),
+            Some("n8n__team-b__run")
+        );
+        // The link alone is no tool, nor is an unlisted link, a link that is no DNS label,
+        // the catalog name or a third delimiter.
+        for alias in [
+            "run",
+            "team-c__run",
+            "Team-A__run",
+            "n8n__team-a__run",
+            "team-a__run__x",
+        ] {
+            assert!(resolve_app_tool(&view, &tools, alias).is_none(), "{alias}");
+        }
+        assert!(app_allows_tool(&view, &tools, "n8n__team-a__run"));
     }
 
     #[test]

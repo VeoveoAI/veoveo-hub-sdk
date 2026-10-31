@@ -15,3 +15,5 @@ lean_lib InternalAuthCorrectness
 lean_lib InternalAuthContextProof
 lean_lib InternalAuthContextExamples
 lean_lib InternalAuthContextWitnesses
+lean_lib InternalAuthIdentityExamples
+lean_lib InternalAuthIdentityProof

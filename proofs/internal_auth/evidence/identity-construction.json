@@ -1,0 +1,180 @@
+{
+  "milestone": "Complete actual SDK identity construction and context-bearing admitted calls",
+  "date": "2026-10-31",
+  "status": "Generic identity/delegation contracts and two populated success constructions passed direct and final named-target checks; deadline source controls and full public issuance/claims remain pending.",
+  "source_parent": "4fb723ea2f8b3f62dddb0ad666242467d72a4778",
+  "agents": {
+    "implementation": "GPT-6.1 Sol",
+    "validation": "GPT-6 Luna",
+    "review": "GPT-6 Astra"
+  },
+  "unchanged_source_model": {
+    "receipt": "internal-auth-model.json",
+    "sha256": "4540ae4d9f59f180daad402a09bb06cf4c0f1603cc03fb60f74d8b4c52fbb453",
+    "archive_sha256": "4d09be8af4e6402e6eb71d556956ce995930b9ff176367d1cc15e07c8258a87f",
+    "manifest_sha256": "ce31cfc7ee25eb3037ded497b2cf040ded851a9300e904e30bdd82bb4d552c4c",
+    "sdk_source": "e268032 with already-adopted explicit String/private binder preparation",
+    "core": "120306eb969c6134dadd422dca701a2ce63e9492",
+    "current_local_covered_files": {
+      "crates/veoveo-hub-sdk/src/internal_auth.rs": "00f82ab02a0a26a110a93427b5a75df6476a0cf870628dfedbd4684ae8ff6082",
+      "crates/veoveo-hub-sdk/src/internal_auth/request.rs": "9468ae3f1cea230ca729c2d3723bac26adcb0d5c31ae24d811c65d4a71eae7ee",
+      "crates/veoveo-hub-sdk/src/internal_auth/exchange.rs": "cffc732039670d37dee2e4b60da90cbc712ec2bfcd257d5ec22d7ebb8680c2e9",
+      "crates/veoveo-hub-sdk/src/internal_auth/recipient.rs": "038868d521a67a8780e458fe404688a960da05c3837aece655372d266d6830f4",
+      "crates/veoveo-hub-sdk/src/identity.rs": "f7902b24c7239cac6c11e0640695a6aa58e6e717154881e4d34d70ad1d71d852"
+    },
+    "correspondence_note": "Only these five current local source files are verified byte-identical to the recorded archive. No whole-current dependency/feature graph, Hub pin or deployed applicability is implied."
+  },
+  "prior_context_contract": {
+    "receipt": "context-admission.json",
+    "sha256": "018bc540a982936d1dc39a660b2435907afae10439784ae6a652436b9d0f6e07"
+  },
+  "source_sha256": {
+    "InternalAuthIdentityExamples.lean": "934b72afc80224e34fc0aec8f4abbf6203de6a202ad09bdb96528e5cd9f0cc76",
+    "InternalAuthIdentityProof.lean": "3ed997065224d30ef7ed1fa403ee1d36b49221909084caf340e09317aa37d3cf",
+    "lakefile.lean": "106c4a7724fd131f7bd202c1f05a5d7f7fbd12c339ee696c3cf4c95a8ad822f4"
+  },
+  "contract": {
+    "actual_function": "RequestCompositionSdk.internal_auth.HubInternalTokenIssuer.create_identity",
+    "declaration": "InternalAuthIdentityProof.create_identity_exact",
+    "domain": "Arbitrary complete ForwardedRequest and permissions, any optional context/acting/Task/inherited chain combination; only the five physical text bounds for each supplied context are premises.",
+    "outcome": "Exact independent identityOutcome including all fields and refusal priority; outer native Aeneas fail/div and inner Rust errors remain explicit.",
+    "priority": [
+      "provider observation",
+      "requested deadline capped by inherited deadline before validation",
+      "acting/Task/context consistency",
+      "nonempty/maximum-depth inherited actors",
+      "originating Task owner equals first actor server/deployment",
+      "final actor-depth and inherited constraints",
+      "clock observation",
+      "independent ContextAccepted",
+      "OAuth-client match",
+      "source cap only when context present and acting_server absent",
+      "expiry must be after sampled now",
+      "UUID generation/text/fallible ID parsing",
+      "complete identity return"
+    ],
+    "complete_fields": "Issuer, profile, server, deployment, audience, client, full Principal, full authority, permissions, request_context, acting_server, acting_task, complete ordered delegation_context and originating Task, parsed jwt_id, issued_at, not_before, expires_at.",
+    "time": "Full I64-seconds/U32-nanoseconds values; issued_at=not_before=now. No positive NumericDate lifetime, timestamp roundtrip or Hub60/900-second TTL claim.",
+    "safe_operations": "Actual inherited vector is derived nonempty before actors[0]; existing depth\u22648 derives safe usize+1, with no success premise."
+  },
+  "constructions": {
+    "direct": "Populated User/browser-session context; arbitrary singleton permission; requested deadline later than source expiry; complete identity expires at source expiry.",
+    "acting": "Populated Delegated context, acting_server Some, inherited singleton actor chain and originating Task owned by its first actor. Source expiry precedes observed now; inherited expiry is future and requested expiry later. Complete identity retains chain/Task/permissions and expires at inherited cap.",
+    "preserved_inputs": "Generic theorem retains arbitrary complete payloads. Concrete fixture definitions remain independent of IdentityProof for future controls.",
+    "external_premises": "Only provider/clock and typed UUID/text/parser observations, including a successful native Rust parse in success constructions. No own validator/construction success, current-policy grant, crypto validity, Task liveness or UUID uniqueness assumption is silently introduced."
+  },
+  "audit": {
+    "standard_allowlist": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "native_identity_additions": [
+      "internal_auth.ensure_jwt_crypto_provider",
+      "chrono.offset.utc.Utc.now",
+      "uuid.v7.Uuid.now_v7",
+      "alloc.string.ToString.Blanket.to_string",
+      "identity.JwtId.parse"
+    ],
+    "standard_only_declarations": [
+      "InternalAuthIdentityExamples.deadline_order",
+      "InternalAuthIdentityExamples.direct_constraints",
+      "InternalAuthIdentityExamples.acting_constraints",
+      "InternalAuthIdentityProof.chain_validation_exact",
+      "InternalAuthIdentityProof.delegation_validation_exact",
+      "InternalAuthIdentityProof.request_delegation_decision"
+    ],
+    "native_five_declarations": [
+      "InternalAuthIdentityProof.create_identity_exact",
+      "InternalAuthIdentityProof.direct_identity_constructed",
+      "InternalAuthIdentityProof.acting_identity_constructed"
+    ],
+    "all_executable_guards_passed": true,
+    "sorryAx": false
+  },
+  "generic_direct": {
+    "directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-identity-direct8",
+    "source_sha256": "ba99f3e7d0377d5ebe3bf78e49ef2da51722f9f43a5a8bec8d008a1a17e47419",
+    "command": "LAKE_NO_UPDATE=1 lake env lean InternalAuthIdentityProof.lean",
+    "exit": 0,
+    "elapsed_seconds": 4.86,
+    "max_rss_kib": 2735028,
+    "source_config_count": 15,
+    "import_artifact_count": 6,
+    "source_and_import_prepost_passed": true,
+    "log_sha256": "8d22ce08e5207adf7db5f2e5e2c41a785d127d1a8bf1dc3f68bc205fa69e9532",
+    "time_v_sha256": "b12c4cea9049baf1efc85e99b202cdb53d217273d6796bc2a2fecfabbeb8e232",
+    "source_map_sha256": "cf44b3ab94c192033bef83badf0e78b995e461e6e429f703dcaa1ec6c4f8750b",
+    "import_map_sha256": "260c0696fdf76b6462d300c47e29445caf519101620a75b1dcc9d5b90e9fa1e6",
+    "runner_sha256": "3af65383ca385a50b363ff5ff23c18322736eb1cd8dfe4b40ac00748c6e2a601",
+    "version_note": "This preceding passing version has the same generic proof, before adding independent fixture import/construction corollaries. Final sources are in source_sha256 and named_target."
+  },
+  "construction_direct": {
+    "directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-identity-examples-run1",
+    "source_config_count": 16,
+    "import_artifact_count": 6,
+    "source_and_import_prepost_passed": true,
+    "source_map_sha256": "dc07ab331afadcd3792f4b3a3e9f93017293021cee345c334f96f7ef55645af0",
+    "import_map_sha256": "260c0696fdf76b6462d300c47e29445caf519101620a75b1dcc9d5b90e9fa1e6",
+    "runner_sha256": "dca87eb717a3c6a1f8d2353bdd60b629c5c61f7f4219a238c4cf1cd7c1335553",
+    "stages": [
+      {
+        "command": "LAKE_NO_UPDATE=1 lake env lean -o .lake/build/lib/lean/InternalAuthIdentityExamples.olean InternalAuthIdentityExamples.lean",
+        "exit": 0,
+        "elapsed_seconds": 2.52,
+        "max_rss_kib": 2701696,
+        "log_sha256": "ca58340f8142da253728858d5a7ded15d9c3948c7ade47ebf6339f1594858166",
+        "time_v_sha256": "d64aef85aeefdc90bfc689a8084e821727230ded0e2c3132345771a4ae1b3299",
+        "olean_sha256": "c9787af569e772a4d8413560ded697c32ba4103648b429278bfbecfe6b44cc98"
+      },
+      {
+        "command": "LAKE_NO_UPDATE=1 lake env lean InternalAuthIdentityProof.lean",
+        "exit": 0,
+        "elapsed_seconds": 5.06,
+        "max_rss_kib": 2739312,
+        "log_sha256": "7e3157dd1ed2c27cf5ba6b96295e2e5bd5a89b45b6675e69d5f255598653baa1",
+        "time_v_sha256": "6a766f0d25c0043142fb0330fc6c4b8f5850f2ed8030655e90a923aca6c7f490"
+      }
+    ]
+  },
+  "named_target": {
+    "directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-identity-target1",
+    "command": "LAKE_NO_UPDATE=1 lake build InternalAuthIdentityExamples InternalAuthIdentityProof",
+    "exit": 0,
+    "elapsed_seconds": 8.14,
+    "max_rss_kib": 2752480,
+    "reported_jobs": 1808,
+    "job_count_note": "Includes cached dependency replay, not1808 fresh compilations.",
+    "source_config_count": 16,
+    "source_prepost_passed": true,
+    "import_artifact_count_checked_before": 6,
+    "import_check_note": "Named target may produce/rebuild artifacts. Imports were gated before; final two target artifacts captured separately. No unrecorded import-post equality claim.",
+    "private_lakefile_sha256": "3201bc8c9e7137c8020056a5f32ad62db9f6671813a1b8c494c4c1ccae784393",
+    "private_manifest_sha256": "e5f0a8be448113fb2c89aab3b3d58bae67cd6739e381484be6fc45722b895df2",
+    "config_delta": "Only two opt-in libraries; relative private Aeneas require and dependency manifest unchanged.",
+    "source_map_sha256": "b6c2edfd80dd7738cb344cf61dc0a42b3bad1d3eea37c38c62b24267d2a71f41",
+    "import_map_sha256": "260c0696fdf76b6462d300c47e29445caf519101620a75b1dcc9d5b90e9fa1e6",
+    "runner_sha256": "bc2ce6d6f09390e85c13f4cbecb895eddfb264642ad1d90fd17374f6e8fd00eb",
+    "log_sha256": "e2020997e0bd5599e8e1234a9ac784099e700b7ddc52fd11ce2bda6551d2f299",
+    "time_v_sha256": "3147e696c6a059a213cbff6117a8ee60c70431173c66a5dd4c72d9e1b3a19d48",
+    "output_manifest_sha256": "16df44fd28b39012690e7f505506595f8ab51409cfb57985a7de312f2246cd5a",
+    "artifacts": {
+      "InternalAuthIdentityExamples.olean": "bea56b013af5c9928de7b9ef1c0ced9da61c5e7560b83ad5cff4dd81df934191",
+      "InternalAuthIdentityProof.olean": "024a08edd001e1e32981c07496d0ce59c4d17f993d8220137d02489256f1baa2"
+    }
+  },
+  "iteration_classification": [
+    "Failed direct candidates were proof-local type/coercion, bind/Option/Try reduction, finite conditional distribution and constructor-name errors. Source guards/specification/models were not changed. Recovered synthetic sorryAx was rejected; no failed candidate is qualification.",
+    "Bounded pp.all diagnostic revealed distinct source-generated/private match helper motives behind identical printed branches. The final proof aligns primitive binds pointwise and cases the Rust parse result, avoiding compiler-private names or tool/model patches. Diagnostic is not qualification.",
+    "Setup-only attempts stopped before Lean: older private lakefile gate, scratch evidence-directory mismatch, and missing copied final source. Corrected checks preserved the same intended source; setup attempts are not compiler results.",
+    "No global budget increase, warning cleanup, new opaque own function, source extraction or production change was used."
+  ],
+  "boundaries": [
+    "Native scalar/collection/string/clone/allocation and translator/source refinement remain as recorded. No instrumented native side-effect/call-count trace.",
+    "Core private permission_names::namespace is the handwritten Native.namespacePrefix adapter; extracted wrappers do not close that own-helper/native correspondence gap. create_identity does not call ownership.",
+    "No signature verification, ID-generation uniqueness, current-policy provenance, Task liveness or supplied authority authenticity is proved.",
+    "Public issue permission ownership/first-foreign guard, complete independent claims/scope/actor-chain assembly, actual signer arguments, verifier wrapper and Hub pinned-stack correspondence remain pending.",
+    "Direct-cap omission and incorrectly repeated acting-server source cap controls are the next separate qualification checkpoint.",
+    "No runtime/generated/model/dependency changes, new native/full-stack checks, paid calls or deployment."
+  ]
+}

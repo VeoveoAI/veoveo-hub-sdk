@@ -4,8 +4,10 @@ This SDK-owned package models the actual `issue`, `create_identity`, request-con
 claims, actor-chain and recipient functions. It does not import Hub proof code or
 replace the issuer with a function that returns a chosen identity. The model
 build and dependency audit pass. The initial bootstrap-identity,
-signing-continuation and recipient contracts also pass; full context-bearing
-issuance and independent complete signer-claims correctness remain pending.
+signing-continuation and recipient contracts also pass. Generic complete identity
+construction, delegation refusal priority and context-bearing Direct/acting-server
+successes now pass; public issuance and independent complete signer-claims
+correctness remain pending.
 There is no runner or CI integration.
 
 The input is the recorded SDK `e268032` slice, Core `120306e`, with the reviewed
@@ -76,9 +78,9 @@ These modules are opt-in manual targets:
 lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectness
 ```
 
-The context-bearing direct/delegated issuance cases, all-owned nonempty permission sets,
-independent complete signer claims, constructed issuance examples and issuer
-semantic controls are still required before qualifying full issuance.
+Public issuance with all-owned nonempty permission sets, independent complete
+signer claims and issuer semantic controls are still required before qualifying
+full issuance. The complete private constructor contract is described below.
 
 ## Exact context admission
 
@@ -210,6 +212,61 @@ constructed wrong results. They introduce no runtime rule, security defect claim
 authentication, complete issuer/claims or cryptographic verification guarantee.
 No native/full-stack suite, deployment, dependency update or paid call was needed.
 
+## Complete identity construction
+
+`InternalAuthIdentityProof.create_identity_exact` proves the actual transparent
+constructor equals an independent complete outcome for arbitrary typed requests
+and permissions. Optional context is generic: this includes context omission with
+acting/delegation fields, as well as supplied Direct, Automated or Delegated
+contexts. No own validation/construction-success premise is used. The only input
+restriction is `RequestTextDomain`, the existing five physical text bounds for
+each supplied context.
+
+The constructor's priority is preserved: provider observation; pre-cap by the
+inherited deadline; acting/Task/chain consistency, depth and originating-Task
+ownership; clock observation; independent context admission and OAuth-client
+match; effective expiry refusal; then UUID/text/fallible-ID observations. The
+inherited vector is proved nonempty before head indexing, and depth bounds derive
+safe native-size addition. Every output field is explicit through `identityValue`,
+including complete Principal, authority, permissions, request context, acting
+server/Task, ordered inherited chain/Task, full timestamps and parsed token ID.
+
+Direct calls with context cap expiry by the original source access token. Calls
+with an acting server retain the requested/inherited cap, even when that source
+token has already expired; this condition is keyed to the Option, independently
+of provenance. Both Rust errors and Aeneas primitive failures/divergence remain
+visible. Issued-at and not-before equal the same full clock value. The constructor
+asserts no 60-second or subscription TTL; those come from the separate Hub caller.
+
+`InternalAuthIdentityExamples.lean` imports no identity-correctness theorem. Its
+reusable independent fixtures support two actual success constructions: a
+populated Direct context with an earlier source cap, and an acting-server case
+with a nonempty inherited actor chain and matching originating Task, expired
+source token, future inherited cap and later requested deadline. The fixtures
+supply nonempty permissions; the private constructor preserves arbitrary supplied
+values, while public issue ownership/current-policy provenance is separate.
+Success premises describe only native provider/clock/UUID/text/parser outcomes,
+not an own-code success. No Task liveness, authority authenticity, UUID uniqueness
+or actual native clock value is inferred from the fixtures.
+
+The generic result passed directly in 4.86 s. Independent fixtures passed in
+2.52 s and the complete proof with both constructions in 5.06 s. The exact final
+named targets pass in 8.14 s. All nine executable audits reject `sorryAx`:
+fixtures and validation laws are standard-only; the complete identity and its
+constructions additionally retain exactly provider setup, clock, UUID generation,
+UUID text and fallible JWT-ID parsing. See the compact
+[identity receipt](evidence/identity-construction.json).
+
+```sh
+lake build InternalAuthIdentityExamples InternalAuthIdentityProof
+```
+
+Deadline source controls are pending as a separate qualification checkpoint.
+Complete claims/scope/actor-chain assembly, actual public issue permission guard
+and signer arguments, verification wrapper and Hub pinned-stack correspondence
+remain pending. No runtime/model/extraction/dependency change or new native test
+was required for this proof-only constructor checkpoint.
+
 ## Operational boundaries
 
 `TypesExternal.lean` and `FunsExternal.lean` give ordinary native-library operations
@@ -237,8 +294,12 @@ UUID text conversion, fallible native JWT-ID parsing, crypto-provider setup and
 concrete `sign_forwarded` with the actual complete claims argument. Both Aeneas
 failure/divergence and the Rust Result error remain visible. No observation is an
 assumed context/identity/issuer success. Signing serialization and cryptographic
-verification correspondence remain external; actual own context, deadline,
-permission namespace and recipient checks stay transparent.
+verification correspondence remain external. Context/deadline checks, recipient
+binding and the `PermissionName::namespace`/`is_owned_by` wrappers are extracted
+transparently. The private Core `permission_names::namespace` body is not
+extracted: handwritten `Native.namespacePrefix` models its first-dot projection.
+That own-helper/native refinement gap remains explicit before claiming full
+native permission provenance. The private identity constructor does not call it.
 
 Always-successful String, Vec and clone operations retain allocation/memory
 availability and value/alias correspondence boundaries. Result and argument
@@ -253,6 +314,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. The complete context-bearing issuer theorem and admitted issuance constructions
-are the next proof obligations. Context admission and its controls do not close
-the issuer or recipient verification gaps.
+model-boundary audit. Complete public issuance/claims and deadline source
+controls are the next proof obligations. Context admission and identity
+construction do not close signer, verifier or Hub integration gaps.

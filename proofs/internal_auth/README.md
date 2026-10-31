@@ -8,8 +8,9 @@ signing-continuation and recipient contracts also pass. Generic complete identit
 construction, delegation refusal priority and context-bearing Direct/acting-server
 successes, independent complete claims assembly and generic public-issuer
 composition now pass in the recorded operational graph, including populated issuer
-success and first-foreign priority examples. Public-issuer source controls remain
-pending; native-helper/signing/Hub refinement remains explicit.
+success and first-foreign priority examples. One actual-Rust public-issuer guard
+control and exact restoration are qualified below; native-helper/signing/Hub
+refinement remains explicit.
 There is no runner or CI integration.
 
 The input is the recorded SDK `e268032` slice, Core `120306e`, with the reviewed
@@ -26,7 +27,7 @@ pinned-Hub integration nor deployed applicability is claimed.
 Generated `Types.lean` and `Funs.lean` are copied byte-for-byte from those reviewed
 outputs. Untouched external templates are retained under `extraction/` and are
 never compiled or used as model axioms. Dependency pins and other proof packages
-are unchanged. Complete issuer correctness and Hub integration remain pending.
+are unchanged. Native issuer refinement and Hub integration remain pending.
 
 The string expression remedy preserves the existing delegated comparison at the
 same guard position. Pinned Aeneas erases `fmt::Arguments` to Unit, so its old
@@ -82,7 +83,7 @@ lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectne
 ```
 
 Populated all-owned nonempty-permission issuer constructions are proved below;
-public-issuer source controls remain pending. The generic public composition
+the public-issuer source control is qualified below. The generic public composition
 remains model-relative; native helper and cryptographic correspondence is not
 inferred from it.
 
@@ -435,11 +436,43 @@ final named targets passed in 5.33 s. All seven new audits passed: five standard
 and two with exactly the existing six native issuer boundaries, with no `sorryAx`.
 See the [populated public-issue receipt](evidence/public-issue-examples.json) for
 exact input/artifact identities and check boundaries. The actual-Rust public
-guard inversion control and exact restoration are still pending. Native Core-helper
+guard inversion control and exact restoration are qualified next. Native Core-helper
 refinement, cryptographic verification, supplied authority/current-policy
 provenance and Hub pinned-stack composition remain open. No runtime/generated/
 model/dependency change or native/full-stack suite was needed for these proof-only
 checkpoints.
+
+## Public issuer guard source control
+
+The [one-expression Rust fault](mutations/invert-issue-owned-guard.patch) removes
+only the public issuer's ownership negation in a disposable copy of the recorded
+source. The verifier's similar guard stays unchanged. Fresh Charon/Aeneas output
+changes only the predicate Boolean and its source-column metadata; both external
+templates are unchanged. The frozen generic proof rejects the inverted private
+`predicate_exact` obligation; the unchanged ownership model still passes. The
+resulting downstream `sorryAx` is rejected, not accepted as proof evidence.
+
+The [independent witness](mutations/IssueGuardInversionWitness.lean) imports the
+independent populated fixture, never the failed issuer proof or its witness module.
+It derives `PermissionOutsideAudience operator.inspect` for the valid two-action
+Direct request without any native observations. It separately derives complete
+reference success from provider/clock/UUID/text/parser and exact-complete-claims
+signer observations, then proves the mismatch. It assumes no own-function success
+and makes no unconditional claim about the opaque signer's possible errors.
+All four witness audits pass; one is standard-only and three add exactly the six
+existing native issuer boundaries. The final witness check took 2.66 s.
+
+Reversing the same patch in the same native tree restores all 173 source files.
+Fresh extraction reproduces all four canonical raw Lean outputs byte for byte;
+LLBC and compiled artifact identities are recorded separately. A fresh package
+passes the four public targets in 26.312 s, with all eleven public audits accepted
+(seven standard-only, four with the existing six boundaries), no `sorryAx`, and
+32 package source hashes unchanged. The
+[control receipt](evidence/public-issue-guard-control.json) separates the intended
+contract rejection from four earlier witness-authoring failures and a setup-only
+wrong-path command. No canonical runtime/model/spec/proof or dependency changed.
+This is a deliberate fault control, not a newly discovered product defect or a
+closure of native helper, signing, verifier or Hub correspondence.
 
 ## Operational boundaries
 
@@ -488,6 +521,5 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. An actual-source public-issuer guard control is the next
-qualification step. Native helper/refinement, cryptographic signing, verifier and
-Hub integration gaps remain open.
+model-boundary audit. Native helper/refinement, cryptographic signing, verifier
+and Hub integration gaps remain open despite the qualified issuer guard control.

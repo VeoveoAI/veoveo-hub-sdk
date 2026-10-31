@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/internal_auth.rs
++++ b/crates/veoveo-hub-sdk/src/internal_auth.rs
+@@ -340,7 +340,7 @@
+         if let Some(foreign) = request
+             .permissions
+             .iter()
+-            .find(|permission| !permission.is_owned_by(&request.server))
++            .find(|permission| permission.is_owned_by(&request.server))
+         {
+             return Err(InternalTokenError::PermissionOutsideAudience(
+                 foreign.clone(),

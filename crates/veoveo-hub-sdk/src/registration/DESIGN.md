@@ -58,7 +58,7 @@ required kernel login optional.
 | JWT access tokens, RFC 9068 | The forwarded identity: `typ: at+jwt`, `iss` is the Hub's HTTPS issuer URL, `aud` is the target server's resource URL, `client_id` names the OAuth client the caller used, `jti` is a UUIDv7, and `scope`, `groups` and `roles` restate the caller. A server, as resource server, takes the verification keys from the issuer's metadata `jwks_uri` as §4 describes. |
 | Resource indicators, RFC 8707 | A forwarded token's `aud` is an absolute URL: the target server's registered MCP endpoint. |
 | OAuth 2.0 Token Exchange, RFC 8693 | A server calls other servers with the §2.1 grant, presenting the forwarded token it received or one of its Tasks as the subject, the profile's MCP endpoint as `resource` and its client assertion; `actor_token`, `audience`, `scope` and `requested_token_type` are not used. The `act` claim (§4.1) of a forwarded token names the Hub as the party acting for the caller, followed by a bounded nested chain of registered server actors. |
-| Rich Authorization Requests, RFC 9396 | `authorization_details` carries one entry of type `https://veoveo.ai/oauth/permissions` whose `actions` are the granted permissions, in forwarded and exchanged tokens. A token exchange requests permissions in the same form (§6.2), and its response returns the granted entry (§7). |
+| Rich Authorization Requests, RFC 9396 | `authorization_details` carries one entry of type `https://veoveo.ai/oauth/permissions` whose `actions` are the granted permissions, in forwarded and exchanged tokens. A token exchange requests permissions in the same form (§6.2), and its response returns the granted entry (§7). A forwarded token for a runner of a linked repository also carries one entry of type `https://veoveo.ai/oauth/repository`, whose `identifier` is the linked repository's Lore ID and whose `actions` are the caller's Lore actions on it. |
 | Authorization server metadata, RFC 8414 | A server reads `issuer`, `registration_endpoint`, `token_endpoint` and `jwks_uri` from the Hub's well-known metadata. The issuer is the forwarded tokens' `iss`, and the JWK Set at `jwks_uri` holds the keys that verify them. |
 | MCP `2026-07-28` | A server advertises the declarations in Discover under `capabilities.extensions`, with camelCase members. |
 | JSON Schema 2020-12 | Schemas for every request, response and declaration are generated from the Rust types by Schemars 1.2. |
@@ -481,7 +481,12 @@ membership, and the signed request context when one exists. RFC 7519 §4.2 asks 
 collision-resistant names for claims outside the IANA registry, and every registered
 server reads the invocation claim, so it uses a URI in the `veoveo.ai` domain rather
 than a private name. `authorization_details` is omitted when nothing is granted. A
-server verifies the token and rejects it when:
+forwarded token for a runner, the instance that serves one link of a linked repository,
+adds a repository entry, `{"type": "https://veoveo.ai/oauth/repository", "identifier":
+"<Lore repository ID>", "actions": [...]}`, with the caller's Lore actions on the linked
+repository, such as `write` and `owner`; an empty list is a grant that reads. The
+verified identity exposes it as the caller's repository grant, so a runner decides by
+the grant Lore decides by. A server verifies the token and rejects it when:
 
 - `typ` is neither `at+jwt` nor `application/at+jwt`, or `alg` is not `EdDSA`;
 - `kid` names no key the server holds after [key refresh](#key-refresh), or the
@@ -496,8 +501,9 @@ server verifies the token and rejects it when:
   reverse, or the invocation claim names an `acting_task` without an `acting_server`;
 - `sub`, `groups`, `roles` and `scope` disagree with the embedded actor, or
   `client_id` differs from the client in the request context;
-- the token carries more than one authorization details entry, or a granted
-  permission lies outside the server's namespace;
+- the token carries more than one permissions entry, more than one repository entry,
+  or an entry of another type, or a granted permission lies outside the server's
+  namespace;
 - the request context disagrees with the actor or authority, or an undelegated token
   outlives the caller's own access token.
 

@@ -744,7 +744,9 @@ the `client-credentials` feature. That bearer reads the profile endpoint's RFC 9
 metadata for its authorization server and that server's RFC 8414 metadata for the
 token endpoint, and requests a new token once a third of the current one's lifetime
 remains. Such a client also calls without a provider contract:
-`HubClient::call_tool` calls a tool by its Hub name with JSON arguments, waits
+`HubClient::call_tool` calls a tool by its Hub name, `{slug}__{tool}`, or
+`{slug}__{link}__{tool}` for a server served by the runners of linked repositories,
+with JSON arguments, waits
 for its Task like a typed call and resolves with the tool result, error results
 included. `read_resource` reads an address, and `tools`, `resources`,
 `resource_templates` and `prompts` list the profile's complete catalog through

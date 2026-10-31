@@ -120,8 +120,10 @@ any host does.
   `tools/call` only to app-visible tools linked to that exact view on that view's server,
   through the shared admission below. A view names a tool by its server's own name, such
   as `resolve_time`, and the host maps it to the catalog name `{slug}__{tool}`. A view
-  reads its own server's resources, at their own addresses including query forms, and no
-  other server's. Every call runs through the Hub's ordinary authorization as the
+  of a server served by the runners of linked repositories names a tool with its link,
+  as `{link}__{tool}`, mapped to `{slug}__{link}__{tool}`, and reads each link's
+  resources at `{slug}://{link}/…`. A view reads its own server's resources, at their own
+  addresses including query forms, and no other server's. Every call runs through the Hub's ordinary authorization as the
   signed-in person; browser code holds no bearer token. The host passes structured
   results through without changing their numbers.
 - **Tasks.** Task-based tools stay task-based inside Apps. A view may send `tools/call`

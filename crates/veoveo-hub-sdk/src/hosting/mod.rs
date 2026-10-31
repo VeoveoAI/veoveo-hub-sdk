@@ -64,7 +64,7 @@ pub use results::{completion, rank_completions};
 pub use schema::{
     AmbiguousArgument, UndeclaredType, ambiguous_arguments, publish_input_schema, undeclared_types,
 };
-pub use server::{Deployment, HostedServer, HostedServerBuilder, Missing, Provided};
+pub use server::{Deployment, HostedServer, HostedServerBuilder, Missing, Provided, PublicRoutes};
 pub use subscriptions::{
     ListenOnly, ResourceSubscriptions, ResourcesOnly, SubscriptionListener,
     admit_resource_subscriptions, requested_addresses,

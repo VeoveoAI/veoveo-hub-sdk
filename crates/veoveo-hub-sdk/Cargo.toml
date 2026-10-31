@@ -139,6 +139,10 @@ name = "server_contract"
 required-features = ["server"]
 
 [[test]]
+name = "surfaces"
+required-features = ["testing"]
+
+[[test]]
 name = "streamable_notifications"
 required-features = ["server"]
 

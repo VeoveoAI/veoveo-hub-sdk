@@ -941,3 +941,31 @@ async fn a_changed_description_is_listed_and_told_to_listeners() {
     .await
     .expect("the description fixture exceeded its bound");
 }
+
+#[test]
+#[should_panic(expected = "needs their declaration in the routes")]
+fn the_sdks_public_routes_are_served_only_with_their_declaration() {
+    // The fixture's routes declare no operation callbacks.
+    let callbacks = super::server::PublicRoutes::sdk(
+        axum::Router::new().route(
+            "/operations/{operation}/{token}",
+            axum::routing::post(|| async { StatusCode::NO_CONTENT }),
+        ),
+        "/operations/",
+    );
+    let _ = testing::for_domain::<FixtureDomain>()
+        .handler(|| Hosted::new(FixtureDomain::new()))
+        .public_routes(callbacks)
+        .build();
+}
+
+#[test]
+#[should_panic(expected = "public routes need a public route prefix declared in the routes")]
+fn public_routes_need_a_declared_prefix() {
+    let _ = testing::for_domain::<FixtureDomain>()
+        .handler(|| Hosted::new(FixtureDomain::new()))
+        .public_routes(
+            axum::Router::new().route("/hooks/github", axum::routing::post(|| async { "ok" })),
+        )
+        .build();
+}

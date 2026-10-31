@@ -526,6 +526,18 @@ must be that domain's `Hosted` value: a hand-written `ServerHandler` or another
 domain's handler does not compile. `authenticated_routes`, `admin_routes`,
 `public_routes`, `liveness` and `readiness` add server-specific HTTP. A liveness
 check covers only failures a restart repairs, such as a dead worker process.
+A server declares the HTTP it serves besides MCP in its routes, as the
+[surfaces](src/registration/DESIGN.md#surfaces) of its registration:
+`RoutesBuilder::public_route` declares a public route prefix under the mount with its
+body limit and rate, `operation_callbacks` and `provider_events` declare the SDK's
+`{mount}/operations/` and `{mount}/providers/` with their 1 MiB body limit and
+`EVENT_REQUESTS_PER_MINUTE`, 600, and `app_origin` declares the app origin with the
+policy that becomes its `app_origin` requirement. `Routes::surfaces` is the declaration's
+`surfaces` member, which the setup also advertises in Discover. The hosted server
+answers 404 to a public request outside every declared prefix, as the Hub never routes
+one there, and building it fails when it serves the SDK's callback routes without their
+declaration, or public routes with no declared prefix. The Hub enforces the declared
+body limits and rates.
 An installation serves the internet from one HTTPS origin, `VEOVEO_PUBLIC_ORIGIN`,
 such as `https://veoveo.example.com`, with each server's public routes under its own
 path. A server parses it as a `PublicOrigin` and passes it to
@@ -558,7 +570,7 @@ The host gives every server the same behavior:
 
 | Behavior | Host rule |
 |---|---|
-| Routes | `/livez` and optional `/readyz` at the listener root, whatever the mount; `{mount}/admin/docs/*` and `{mount}/mcp` |
+| Routes | `/livez` and optional `/readyz` at the listener root, whatever the mount; `{mount}/admin/docs/*` and `{mount}/mcp`; public routes only under declared prefixes |
 | Authentication | Hub RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug, with the Hub's keys refreshed as [key refresh](src/registration/DESIGN.md#key-refresh) describes; a rejection is 401 with `WWW-Authenticate: Bearer` |
 | Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts: the deployment host, the installation's public origin when the deployment names one, and loopback only when asked |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` from ready routes filtered by current route policy, sorted, 100 per page, private, five-second cache |
@@ -834,7 +846,8 @@ names the Task in the records its work writes. A Task the store reports waiting 
 
 `hosting::operations::operation_callbacks` serves the callback route on a server's
 public routes, and `provider_events` serves `POST /providers/{provider}/events` for a
-provider that sends every event to one fixed URL and names its own job. Both hand the
+provider that sends every event to one fixed URL and names its own job. The server's
+routes declare them with `RoutesBuilder::operation_callbacks` and `provider_events`. Both hand the
 request to the server's `ProviderEvents` parser, which checks the provider's signature
 and reads the event's identifier, payload and finality, and then store the event through
 the Task runtime. A stored event answers 204 whether it was new, a repeat or late. An

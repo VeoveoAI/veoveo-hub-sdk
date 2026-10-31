@@ -192,6 +192,22 @@ impl<C: McpServerContract> McpServerSetup<C> {
         }
         let extensions = info.capabilities.extensions.get_or_insert_default();
         extensions.remove(crate::registration::AUTHORIZATION_EXTENSION_ID);
+        // The registration's surfaces derive from the routes, as its authorization does.
+        if let Some(registration) =
+            extensions.get_mut(crate::registration::REGISTRATION_EXTENSION_ID)
+        {
+            match C::Server::routes().surfaces() {
+                Some(surfaces) => {
+                    registration.insert(
+                        "surfaces".to_owned(),
+                        serde_json::to_value(surfaces).expect("typed route surfaces serialize"),
+                    );
+                }
+                None => {
+                    registration.remove("surfaces");
+                }
+            }
+        }
         if extensions.contains_key(crate::registration::REGISTRATION_EXTENSION_ID) {
             extensions.insert(
                 crate::registration::AUTHORIZATION_EXTENSION_ID.to_owned(),

@@ -145,6 +145,9 @@ struct Options {
     authenticated_routes: Router,
     admin_routes: Router,
     public_routes: Router,
+    /// The prefixes under the mount, such as `/operations/`, of the SDK's own public
+    /// routes among `public_routes`.
+    sdk_public_prefixes: Vec<String>,
     liveness: Option<Probe>,
     readiness: Option<Probe>,
     mcp_request_limit: Option<usize>,
@@ -184,6 +187,7 @@ impl HostedServer {
                 authenticated_routes: Router::new(),
                 admin_routes: Router::new(),
                 public_routes: Router::new(),
+                sdk_public_prefixes: Vec::new(),
                 liveness: None,
                 readiness: None,
                 mcp_request_limit: None,
@@ -389,11 +393,16 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         self
     }
 
-    /// Adds server-specific routes under the mount without hub
-    /// authentication. Use only for endpoints that verify their own callers, such
-    /// as signed provider webhooks, or that serve no caller data.
-    pub fn public_routes(mut self, routes: Router) -> Self {
-        self.options.public_routes = self.options.public_routes.merge(routes);
+    /// Adds routes under the mount without hub authentication. Use only for endpoints
+    /// that verify their own callers, such as signed provider webhooks, or that serve no
+    /// caller data. A request reaches them only under a public route prefix the domain's
+    /// routes declare; the SDK's own [`PublicRoutes`], such as
+    /// [`operation_callbacks`](super::operations::operation_callbacks), require their
+    /// declaration when the server is built.
+    pub fn public_routes(mut self, routes: impl Into<PublicRoutes>) -> Self {
+        let routes = routes.into();
+        self.options.public_routes = self.options.public_routes.merge(routes.router);
+        self.options.sdk_public_prefixes.extend(routes.prefixes);
         self
     }
 
@@ -506,12 +515,14 @@ where
                 .merge(options.admin_routes),
         );
         let authenticated = authenticate(options.authenticated_routes);
+        let public =
+            declared_public_routes::<D>(options.public_routes, &options.sdk_public_prefixes);
 
         let server = Router::new()
             .nest("/admin", admin)
             .nest("/mcp", mcp)
             .merge(authenticated)
-            .merge(options.public_routes);
+            .merge(public);
         let mut router = match &mount {
             Mount::InternalRoot => server,
             mount => Router::new().nest(mount.prefix(), server),
@@ -535,6 +546,74 @@ where
             mount,
             cancel,
         }
+    }
+}
+
+/// Routes served without Hub authentication, and the prefixes under the mount of the
+/// SDK's own routes among them. A server's own router converts with no prefixes.
+pub struct PublicRoutes {
+    router: Router,
+    prefixes: Vec<String>,
+}
+
+impl PublicRoutes {
+    /// The SDK's `router`, which serves only under `prefix`, relative to the mount and
+    /// ending with `/`, such as `/operations/`.
+    pub(super) fn sdk(router: Router, prefix: &str) -> Self {
+        Self {
+            router,
+            prefixes: vec![prefix.to_owned()],
+        }
+    }
+}
+
+impl From<Router> for PublicRoutes {
+    fn from(router: Router) -> Self {
+        Self {
+            router,
+            prefixes: Vec::new(),
+        }
+    }
+}
+
+/// `routes`, answering only under the public route prefixes `D`'s routes declare. Each
+/// of the SDK's routers in it must be declared, and routes need a declared prefix.
+fn declared_public_routes<D: DomainServer>(routes: Router, sdk_prefixes: &[String]) -> Router {
+    let declared = D::routes().public_prefixes();
+    for prefix in sdk_prefixes {
+        assert!(
+            declared.contains(prefix),
+            "serving the SDK's public routes under {prefix} needs their declaration in the routes"
+        );
+    }
+    if !routes.has_routes() {
+        return routes;
+    }
+    assert!(
+        !declared.is_empty(),
+        "public routes need a public route prefix declared in the routes"
+    );
+    routes.route_layer(middleware::from_fn_with_state(
+        Arc::new(declared),
+        admit_declared,
+    ))
+}
+
+/// Answers 404 for a public route outside every declared prefix, as the Hub never
+/// routes one there.
+async fn admit_declared(
+    State(prefixes): State<Arc<Vec<String>>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path();
+    if prefixes
+        .iter()
+        .any(|prefix| path.starts_with(prefix.as_str()))
+    {
+        next.run(request).await
+    } else {
+        StatusCode::NOT_FOUND.into_response()
     }
 }
 

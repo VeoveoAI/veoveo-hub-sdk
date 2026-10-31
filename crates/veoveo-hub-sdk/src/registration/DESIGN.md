@@ -140,6 +140,11 @@ the member, in both spellings. `SurfacesDeclaration` is the type, carried as
 `RegistrationDeclaration::surfaces`, and `SurfacesDeclaration::check` applies these
 rules for `ClientMetadata::check`.
 
+A hosted server declares both in its typed routes, from which `Routes::surfaces` derives
+the member and the setup advertises it, as the authorization declaration derives: the
+SDK's callback routes take their prefixes, body limit and rate from the SDK, and a hosted
+server serves no public route outside a declared prefix.
+
 The registration response names where the Hub serves them: `veoveo_public_base` when the
 server declares a public route, and `veoveo_app_origin` when it declares an app origin.
 The server builds every public URL it hands out under these values and never constructs a

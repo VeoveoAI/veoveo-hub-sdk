@@ -187,6 +187,9 @@ static ROUTES: LazyLock<veoveo_hub_sdk::hosting::Routes<FoundryDomain>> = LazyLo
                 Err(ErrorData::invalid_request("foundry_cast requires Task support", None).into())
             },
         )
+        // Kiln posts a cast's events to its callback URL or to Foundry's provider route.
+        .operation_callbacks()
+        .provider_events()
         .build()
 });
 impl DomainServer for FoundryDomain {

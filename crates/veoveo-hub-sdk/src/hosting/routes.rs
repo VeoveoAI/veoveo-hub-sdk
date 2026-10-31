@@ -7,7 +7,10 @@ use crate::{
     definition::{
         CollectionRequest, CollectionResource, CollectionTool, List, ReadCollection, SingleOutput,
     },
-    registration::{PermissionDeclaration, PermissionDefinition},
+    registration::{
+        BodyLimit, PermissionDeclaration, PermissionDefinition, PublicRouteDeclaration,
+        PublicRoutePrefix, RequestRate, SurfacesDeclaration,
+    },
     server_contract::{McpResource, McpResourceTemplate, McpServerContract},
 };
 use rmcp::{
@@ -351,6 +354,21 @@ impl<D: DomainServer> Routes<D> {
     pub fn authorization(&self) -> crate::registration::AuthorizationDeclaration {
         self.inner.authorization()
     }
+    /// The HTTP the routes serve besides MCP: the `surfaces` of the server's
+    /// [`RegistrationDeclaration`](crate::registration::RegistrationDeclaration).
+    pub fn surfaces(&self) -> Option<SurfacesDeclaration> {
+        self.inner.surfaces()
+    }
+    /// The declared public route prefixes relative to the mount, such as `/hooks/`.
+    pub(crate) fn public_prefixes(&self) -> Vec<String> {
+        let slug = crate::server_contract::provider_slug::<D::Contract>();
+        self.inner
+            .public_routes
+            .iter()
+            .filter_map(|route| route.prefix.within_mount(&slug).map(str::to_owned))
+            .collect()
+    }
+
     pub(crate) fn resources(&self) -> Vec<McpResource> {
         self.inner.resources()
     }
@@ -450,6 +468,8 @@ pub struct RoutesBuilder<D: DomainServer> {
     descriptions: Option<super::ToolDescriptions>,
     apps: BTreeSet<AppUri>,
     app_links: Vec<AppLink>,
+    public_routes: Vec<PublicRouteDeclaration>,
+    app_origin: Option<RoutePolicy>,
 }
 impl<D: DomainServer> RoutesBuilder<D> {
     fn new(documents: RoutePolicy) -> Self {
@@ -463,11 +483,19 @@ impl<D: DomainServer> RoutesBuilder<D> {
             descriptions: None,
             apps: BTreeSet::new(),
             app_links: vec![],
+            public_routes: vec![],
+            app_origin: None,
         }
     }
     pub fn build(mut self) -> Routes<D> {
         let _ = self.permission_declarations();
         self.link_app_tools();
+        if let Some(surfaces) = self.surfaces() {
+            let slug = crate::server_contract::provider_slug::<D::Contract>();
+            if let Err(error) = surfaces.check(&slug, self.app_origin.is_some()) {
+                panic!("invalid typed route surfaces: {error}");
+            }
+        }
         Routes { inner: self }
     }
     /// Attach each App link to its tool's descriptor as `_meta.ui`. Every link names a
@@ -502,7 +530,8 @@ impl<D: DomainServer> RoutesBuilder<D> {
         let policies = std::iter::once(&self.documents)
             .chain(self.tools.values().map(|route| &route.policy))
             .chain(self.prompts.values().map(|route| &route.policy))
-            .chain(self.resources.iter().map(|route| &route.policy));
+            .chain(self.resources.iter().map(|route| &route.policy))
+            .chain(self.app_origin.iter());
         let mut permissions = BTreeMap::new();
         for policy in policies {
             if let RoutePolicy::Permission(permission) = policy
@@ -566,6 +595,64 @@ impl<D: DomainServer> RoutesBuilder<D> {
     pub fn calls_hub(mut self) -> Self {
         self.calls_hub = true;
         self
+    }
+    /// Declare a public route prefix: `path` under the mount, ending with `/`, such as
+    /// `hooks/`, with the largest request body it admits and its request rate. Public
+    /// routes carry no Hub authentication, so they serve only callers that verify
+    /// themselves. The registration and Discover declare the prefix, and the hosted
+    /// server serves no public route outside its declared prefixes. Building the routes
+    /// fails for a prefix the [surfaces](crate::registration::SurfacesDeclaration::check)
+    /// rules refuse.
+    pub fn public_route(
+        mut self,
+        path: &str,
+        max_body_bytes: u64,
+        requests_per_minute: u32,
+    ) -> Self {
+        let slug = crate::server_contract::provider_slug::<D::Contract>();
+        self.public_routes.push(PublicRouteDeclaration {
+            prefix: PublicRoutePrefix::under(&slug, path).expect("valid public route prefix"),
+            max_body_bytes: BodyLimit::new(max_body_bytes).expect("valid public route body limit"),
+            requests_per_minute: RequestRate::per_minute(requests_per_minute)
+                .expect("valid public route rate"),
+        });
+        self
+    }
+    /// Declare the SDK's operation callbacks, `{mount}/operations/`, which
+    /// [`operation_callbacks`](super::operations::operation_callbacks) serves, with its
+    /// body limit and [`EVENT_REQUESTS_PER_MINUTE`](super::operations::EVENT_REQUESTS_PER_MINUTE).
+    pub fn operation_callbacks(self) -> Self {
+        self.public_route(
+            super::operations::OPERATIONS_PATH,
+            super::operations::MAX_EVENT_BYTES as u64,
+            super::operations::EVENT_REQUESTS_PER_MINUTE,
+        )
+    }
+    /// Declare the SDK's provider events, `{mount}/providers/`, which
+    /// [`provider_events`](super::operations::provider_events) serves, with its body
+    /// limit and [`EVENT_REQUESTS_PER_MINUTE`](super::operations::EVENT_REQUESTS_PER_MINUTE).
+    pub fn provider_events(self) -> Self {
+        self.public_route(
+            super::operations::PROVIDERS_PATH,
+            super::operations::MAX_EVENT_BYTES as u64,
+            super::operations::EVENT_REQUESTS_PER_MINUTE,
+        )
+    }
+    /// Declare that the server serves its `authenticated_routes` on its own app origin,
+    /// for a full web application, and admits a person there by `policy`, the `app_origin`
+    /// requirement of its authorization declaration.
+    pub fn app_origin(mut self, policy: RoutePolicy) -> Self {
+        self.app_origin = Some(policy);
+        self
+    }
+    /// The HTTP the routes serve besides MCP, as the registration and Discover declare
+    /// it; `None` when they serve none.
+    pub fn surfaces(&self) -> Option<SurfacesDeclaration> {
+        let surfaces = SurfacesDeclaration {
+            public_routes: self.public_routes.clone(),
+            app_origin: self.app_origin.is_some(),
+        };
+        (!surfaces.is_empty()).then_some(surfaces)
     }
     /// Serve each tool's description from `descriptions` once the server sets one,
     /// and the one its route registered until then. The server then advertises
@@ -728,6 +815,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             crate::docs::docs_member_template(&scheme),
             self.documents.access(),
         );
+        requirements.app_origin = self.app_origin.as_ref().map(RoutePolicy::access);
         crate::registration::AuthorizationDeclaration {
             permissions: permissions.into_values().collect(),
             requirements,

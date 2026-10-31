@@ -24,6 +24,8 @@ use axum::{
     routing::post,
 };
 use serde_json::Value;
+
+use super::PublicRoutes;
 use veoveo_task::{
     CallbackToken, Delivery, EventTarget, ExternalJobId, OperationEvent, OperationEventId,
     ProviderName, StepOperationId, TaskRuntime,
@@ -31,6 +33,12 @@ use veoveo_task::{
 
 /// The largest event body a route reads.
 pub const MAX_EVENT_BYTES: usize = 1024 * 1024;
+/// The request rate the routes declare for provider events, per minute.
+pub const EVENT_REQUESTS_PER_MINUTE: u32 = 600;
+/// The operation callbacks' prefix under the mount.
+pub(crate) const OPERATIONS_PATH: &str = "operations/";
+/// The provider events' prefix under the mount.
+pub(crate) const PROVIDERS_PATH: &str = "providers/";
 
 /// A provider's request as the route received it.
 #[derive(Debug, Clone, Copy)]
@@ -76,29 +84,33 @@ struct Routes<P> {
 }
 
 /// `POST /operations/{operation_id}/{token}`: events a provider sends to an operation's
-/// callback URL. Merge it into the server's public routes.
-pub fn operation_callbacks<P: ProviderEvents>(runtime: TaskRuntime, events: P) -> Router {
-    Router::new()
+/// callback URL. Add it to the server's public routes; the server's routes declare it
+/// with [`RoutesBuilder::operation_callbacks`](super::RoutesBuilder::operation_callbacks).
+pub fn operation_callbacks<P: ProviderEvents>(runtime: TaskRuntime, events: P) -> PublicRoutes {
+    let router = Router::new()
         .route("/operations/{operation_id}/{token}", post(callback::<P>))
         .layer(DefaultBodyLimit::max(MAX_EVENT_BYTES))
-        .with_state(Arc::new(Routes { runtime, events }))
+        .with_state(Arc::new(Routes { runtime, events }));
+    PublicRoutes::sdk(router, &format!("/{OPERATIONS_PATH}"))
 }
 
 /// `POST /providers/{provider}/events`: events a provider sends to one fixed URL, which
-/// name the operation by the provider's job identifier. Merge it into the server's
-/// public routes.
+/// name the operation by the provider's job identifier. Add it to the server's public
+/// routes; the server's routes declare it with
+/// [`RoutesBuilder::provider_events`](super::RoutesBuilder::provider_events).
 pub fn provider_events<P: ProviderEvents>(
     runtime: TaskRuntime,
     provider: ProviderName,
     events: P,
-) -> Router {
-    Router::new()
+) -> PublicRoutes {
+    let router = Router::new()
         .route(
             &format!("/providers/{}/events", provider.as_str()),
             post(job_event::<P>),
         )
         .layer(DefaultBodyLimit::max(MAX_EVENT_BYTES))
-        .with_state(Arc::new((Routes { runtime, events }, provider)))
+        .with_state(Arc::new((Routes { runtime, events }, provider)));
+    PublicRoutes::sdk(router, &format!("/{PROVIDERS_PATH}"))
 }
 
 async fn callback<P: ProviderEvents>(

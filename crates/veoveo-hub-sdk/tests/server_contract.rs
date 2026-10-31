@@ -128,6 +128,9 @@ where
                 .policy(RoutePolicy::Authenticated)
                 .cache(ReadCache::Private),
         )
+        // The routes the trace tests serve without Hub authentication.
+        .public_route("trace/", 1024, 60)
+        .public_route("shares/", 1024, 60)
         .build()
 }
 macro_rules! fixture {
@@ -274,6 +277,16 @@ fn host_supplies_capabilities_and_document_descriptors_from_construction() {
             .unwrap()
             .unwrap();
     assert_eq!(advertised.registration.slug, Independent::slug());
+    // Discover advertises the surfaces the routes declare, whatever the server passed.
+    let surfaces = registered::Domain::routes().surfaces().unwrap();
+    assert_eq!(advertised.registration.surfaces.as_ref(), Some(&surfaces));
+    assert_eq!(
+        serde_json::to_value(&surfaces).unwrap(),
+        serde_json::json!({"publicRoutes": [
+            {"prefix": "/independent/trace/", "maxBodyBytes": 1024, "requestsPerMinute": 60},
+            {"prefix": "/independent/shares/", "maxBodyBytes": 1024, "requestsPerMinute": 60}
+        ]})
+    );
     assert_eq!(
         advertised.authorization,
         registered::Domain::routes().authorization()
@@ -403,7 +416,7 @@ mod security {
                 testing::for_domain::<valid::Domain>()
                     .handler(|| Hosted::new(valid::Domain))
                     .public_routes(axum::Router::new().route(
-                        "/trace-query",
+                        "/trace/query",
                         axum::routing::get(|uri: axum::http::Uri| async move {
                             uri.query().unwrap_or_default().to_owned()
                         }),
@@ -412,7 +425,7 @@ mod security {
             );
             let query = "query-sentinel=query-value&access_token=synthetic-query-token&signature=synthetic-signature%2Fvalue";
             let request = hub
-                .request(&format!("/trace-query?{query}"))
+                .request(&format!("/trace/query?{query}"))
                 .method("GET")
                 .version(axum::http::Version::HTTP_11)
                 .header("authorization", "Bearer synthetic-header-token")

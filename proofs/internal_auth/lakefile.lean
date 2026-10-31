@@ -22,3 +22,5 @@ lean_lib InternalAuthClaimsExamples
 lean_lib InternalAuthClaimsProof
 lean_lib InternalAuthIssueSpecification
 lean_lib InternalAuthIssueProof
+lean_lib InternalAuthIssueExamples
+lean_lib InternalAuthIssueWitnesses

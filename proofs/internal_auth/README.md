@@ -7,9 +7,9 @@ build and dependency audit pass. The initial bootstrap-identity,
 signing-continuation and recipient contracts also pass. Generic complete identity
 construction, delegation refusal priority and context-bearing Direct/acting-server
 successes, independent complete claims assembly and generic public-issuer
-composition now pass in the recorded operational graph. Populated issuer examples
-and source controls remain pending; native-helper/signing/Hub refinement remains
-explicit.
+composition now pass in the recorded operational graph, including populated issuer
+success and first-foreign priority examples. Public-issuer source controls remain
+pending; native-helper/signing/Hub refinement remains explicit.
 There is no runner or CI integration.
 
 The input is the recorded SDK `e268032` slice, Core `120306e`, with the reviewed
@@ -81,9 +81,10 @@ These modules are opt-in manual targets:
 lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectness
 ```
 
-Populated all-owned nonempty-permission issuer constructions and source controls
-are still required. The generic public composition below remains model-relative;
-native helper and cryptographic correspondence is not inferred from it.
+Populated all-owned nonempty-permission issuer constructions are proved below;
+public-issuer source controls remain pending. The generic public composition
+remains model-relative; native helper and cryptographic correspondence is not
+inferred from it.
 
 ## Exact context admission
 
@@ -406,12 +407,39 @@ concrete signer. No `sorryAx` is accepted. See the
 lake build InternalAuthIssueSpecification InternalAuthIssueProof
 ```
 
-Closed populated nonempty-permission issuer success/refusal examples and a
-meaningful actual-Rust issuer source control are the next qualification steps.
-They are not included in this generic checkpoint. Native Core-helper refinement,
-cryptographic verification, supplied authority/current-policy provenance and Hub
-pinned-stack composition remain open. No runtime/generated/model/dependency change
-or native/full-stack suite was needed for this proof-only checkpoint.
+The generic checkpoint is extended by independent populated inputs in
+`InternalAuthIssueExamples` and source-linked results in
+`InternalAuthIssueWitnesses`. The Direct request has two owned actions
+(`operator.inspect`, `operator.operate`), ordered scopes
+`operator:read operator:use`, full user/authority/browser-session context, and a
+requested deadline of 4102444920 capped exactly at source expiry 4102444800.
+The successful result preserves the complete computed identity and observed bearer;
+the signer observation names its exact complete `claimsValue`, separately proved
+to satisfy unchanged `ClaimsExact`. Only provider/clock/UUID/text/parse/signer
+observations are premises, never own-code success.
+
+A second request retains the first owned action, then `other.inspect` and
+`third.inspect`, with an intentionally mismatching OAuth client. Its exact first
+foreign error is `PermissionOutsideAudience other.inspect`, independently of all
+native observations and before the later context rejection. These are value and
+dependency equations, not instrumented effect traces or authenticity evidence.
+The fixtures import no public-issue correctness module, so an independent source
+control can reuse them without a failed theorem or stale proof artifact.
+
+```sh
+lake build InternalAuthIssueExamples InternalAuthIssueWitnesses
+```
+
+The independent fixture and actual-result leaves passed in 2.65 s and 2.53 s;
+final named targets passed in 5.33 s. All seven new audits passed: five standard-only
+and two with exactly the existing six native issuer boundaries, with no `sorryAx`.
+See the [populated public-issue receipt](evidence/public-issue-examples.json) for
+exact input/artifact identities and check boundaries. The actual-Rust public
+guard inversion control and exact restoration are still pending. Native Core-helper
+refinement, cryptographic verification, supplied authority/current-policy
+provenance and Hub pinned-stack composition remain open. No runtime/generated/
+model/dependency change or native/full-stack suite was needed for these proof-only
+checkpoints.
 
 ## Operational boundaries
 
@@ -460,6 +488,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. Populated public-issuer examples and an actual-source guard
-control are the next qualification steps. Native helper/refinement, cryptographic
-signing, verifier and Hub integration gaps remain open.
+model-boundary audit. An actual-source public-issuer guard control is the next
+qualification step. Native helper/refinement, cryptographic signing, verifier and
+Hub integration gaps remain open.

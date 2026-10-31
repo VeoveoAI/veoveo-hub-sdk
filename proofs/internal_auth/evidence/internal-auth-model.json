@@ -1,0 +1,520 @@
+{
+  "milestone": "Actual SDK token issuer model compiles with explicit primitive boundaries",
+  "status": "Model build and axiom-boundary audit passed. Issuer/recipient correctness theorems and Hub integration are pending.",
+  "agents": {
+    "implementation": "GPT-6.1 Sol",
+    "validation": "GPT-6 Luna",
+    "review": "GPT-6 Astra"
+  },
+  "source": {
+    "sdk_base": "e268032a35cfa8f75ef7094622d818dda1f2a736",
+    "core": "120306eb969c6134dadd422dca701a2ce63e9492",
+    "current_hub_sdk_pin": "239622d12c08b771cc5e813fe3e846385d8d04ad",
+    "native_sdk_base": "19a1e65135b34ff2cded7dda49419635e2ab4fd8",
+    "overlays": {
+      "crates/veoveo-hub-sdk/src/internal_auth/request.rs": "9468ae3f1cea230ca729c2d3723bac26adcb0d5c31ae24d811c65d4a71eae7ee",
+      "crates/veoveo-hub-sdk/src/internal_auth.rs": "00f82ab02a0a26a110a93427b5a75df6476a0cf870628dfedbd4684ae8ff6082"
+    },
+    "runtime_change": "Rename only the private from_identity parameter and its references to token_identity; avoid the generated local-name/module collision. No behavior/API/guard/allocation change.",
+    "patch": {
+      "path": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/claims-private-binder.patch",
+      "sha256": "780ade4a613b5b3c298d1a04f23b3fab89a7cc6b30d35a5edff94e200ee51ce0",
+      "bytes": 3066
+    },
+    "extraction_source_manifest_sha256": "ce31cfc7ee25eb3037ded497b2cf040ded851a9300e904e30bdd82bb4d552c4c",
+    "source_archive_sha256": "4d09be8af4e6402e6eb71d556956ce995930b9ff176367d1cc15e07c8258a87f",
+    "extraction_plan_sha256": "9c938e3ec62001a4a6d5572849dd10784a5cf939607ccde5dc3affe8519f85db"
+  },
+  "extraction": {
+    "charon_sha256": "813d8ce502b7fe1b4bbb5e149ce7b403a031ce17c2cfd6fab831342ed397dc74",
+    "aeneas_sha256": "d968af5e01e50cef84add48a75cf2af8f80751458cab931066d05f42098d934c",
+    "llbc": {
+      "bytes": 4823109,
+      "exists": true,
+      "llbc_path": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1/outputs/sdk_request_composition.llbc",
+      "sha256": "625917f96d7dc5e4d1a19d6e65121649939239b4712363c5b779f9e0f494e35d",
+      "source_map_final_verified": true
+    },
+    "charon_stages": [
+      {
+        "stage": "verify-sdk-source-and-metadata",
+        "argv": [
+          "/home/rozgo/.cargo/bin/rustup",
+          "run",
+          "nightly-2026-09-17-x86_64-unknown-linux-gnu",
+          "cargo",
+          "metadata",
+          "--locked",
+          "--offline",
+          "--format-version",
+          "1",
+          "--manifest-path",
+          "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1/source/crates/veoveo-hub-sdk/Cargo.toml"
+        ],
+        "exit": 0,
+        "elapsed_s": 0.214,
+        "max_rss_kib": null,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "time_v_sha256": "c0f8ab6cbd30d71d3f63cf421f04df23a61bdfe199f1b86f69ceffa55a6cfc9e"
+      },
+      {
+        "stage": "clean-sdk-package-only",
+        "argv": [
+          "/home/rozgo/.cargo/bin/rustup",
+          "run",
+          "nightly-2026-09-17-x86_64-unknown-linux-gnu",
+          "cargo",
+          "clean",
+          "-p",
+          "veoveo-hub-sdk",
+          "--manifest-path",
+          "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1/source/crates/veoveo-hub-sdk/Cargo.toml"
+        ],
+        "exit": 0,
+        "elapsed_s": 0.115,
+        "max_rss_kib": null,
+        "log_sha256": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28",
+        "time_v_sha256": "e29c7e83c30c1db114ca8956e5b92b25b5ffc3c749f286089b4827c14e3af68a"
+      },
+      {
+        "stage": "charon-sdk-local",
+        "argv": [
+          "/home/rozgo/.cache/lean-pilot/toolchain/aeneas-release/charon",
+          "cargo",
+          "--sysroot",
+          "default",
+          "--preset=aeneas",
+          "--start-from",
+          "veoveo_hub_sdk::internal_auth::_::issue",
+          "--start-from",
+          "veoveo_hub_sdk::internal_auth::recipient::bind",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::_::issue",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::recipient::bind",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::_::create_identity",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::request::_::validate_for",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::exchange::validate_delegation",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::_::from_identity",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::_::new",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::exchange::forwarded_actors",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::exchange::prior_actors",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::exchange::_::validate",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::scope_claim",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::fresh_jwt_id",
+          "--include",
+          "veoveo_types::permission_names::_::is_owned_by",
+          "--include",
+          "veoveo_types::permission_names::_::namespace",
+          "--include",
+          "veoveo_types::provenance::_::mode",
+          "--include",
+          "veoveo_hub_sdk::registration::declaration::_::as_str",
+          "--include",
+          "veoveo_hub_sdk::registration::grants::_::new",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::HubInternalTokenIssuer",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::HubInternalIdentity",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::ForwardedRequest",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::IssuedHubInternalToken",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::AccessTokenClaims",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::StandardClaims",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::Invocation",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::ActingParty",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::PriorActor",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::request::HubRequestContext",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::exchange::DelegationContext",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::recipient::Recipient",
+          "--include",
+          "veoveo_hub_sdk::internal_auth::recipient::Mismatch",
+          "--include",
+          "veoveo_hub_sdk::registration::declaration::ResourceIndicator",
+          "--include",
+          "veoveo_hub_sdk::registration::grants::PermissionsDetail",
+          "--include",
+          "veoveo_hub_sdk::registration::grants::PermissionsDetailType",
+          "--include",
+          "veoveo_hub_sdk::execution::ExecutionContext",
+          "--opaque",
+          "veoveo_hub_sdk::internal_auth::_::sign_forwarded",
+          "--opaque",
+          "veoveo_hub_sdk::internal_auth::ensure_jwt_crypto_provider",
+          "--opaque",
+          "chrono::offset::utc::_::now",
+          "--opaque",
+          "uuid::v7::_::now_v7",
+          "--opaque",
+          "veoveo_hub_sdk::internal_auth::HubInternalSigningKey",
+          "--opaque",
+          "veoveo_hub_sdk::identity::_::parse",
+          "--opaque",
+          "veoveo_types::permission_names::namespace",
+          "--dest-file",
+          "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1/outputs/sdk_request_composition.llbc",
+          "--rustc-arg=-Zcrate-attr=feature(register_tool)",
+          "--rustc-arg=-Zcrate-attr=register_tool(charon)",
+          "--",
+          "--manifest-path",
+          "crates/veoveo-hub-sdk/Cargo.toml",
+          "--lib",
+          "--locked",
+          "--no-default-features",
+          "--features",
+          "server"
+        ],
+        "exit": 0,
+        "elapsed_s": 12.841,
+        "max_rss_kib": null,
+        "log_sha256": "80b9d46d35e01b5a5f4cf5f1d563c0601ca129bce602d198d996bef842e2da98",
+        "time_v_sha256": "6f71bf3fd294807bb95538efee409f4700ce5864f8f46bc407dbfb7dfa739e7c"
+      }
+    ],
+    "aeneas": {
+      "exit": 0,
+      "timed_out": false,
+      "elapsed_s": 3.374,
+      "log": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/logs/aeneas.log",
+      "log_bytes": 5260,
+      "log_sha256": "a9c5da30e15594fd293559f980e519b9b05044813eb5f7dbe6c1f2e38d3acb23",
+      "time_v_log": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/logs/aeneas.time-v.log",
+      "time_v_sha256": "d4f2a6569916dc1508088d9104338b1f64620efdfa073dc377ed8f5ecf729a54",
+      "max_rss_kib": 762304,
+      "child_rusage_maxrss_before": 0,
+      "child_rusage_maxrss_after": 762304,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "-o",
+        "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/logs/aeneas.time-v.log",
+        "/home/rozgo/.cache/lean-pilot/toolchain/aeneas-release/aeneas",
+        "-backend",
+        "lean",
+        "-filter-trait-methods",
+        "-split-files",
+        "-dest",
+        "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas",
+        "-namespace",
+        "RequestCompositionSdk",
+        "-subdir",
+        "RequestCompositionSdk",
+        "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1/outputs/sdk_request_composition.llbc"
+      ]
+    },
+    "outputs": [
+      {
+        "path": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/RequestCompositionSdk/Funs.lean",
+        "relative_path": "RequestCompositionSdk/Funs.lean",
+        "bytes": 117470,
+        "sha256": "bec561cc7f7c8bff27ce4a7fc2c4434fd41a7d2de7bc495ed15e1e255808d24d"
+      },
+      {
+        "path": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/RequestCompositionSdk/FunsExternal_Template.lean",
+        "relative_path": "RequestCompositionSdk/FunsExternal_Template.lean",
+        "bytes": 52687,
+        "sha256": "320b4a08f466311d81cfe469c30ac1a2ab0d836d78c54bae9b7382f01da9f2fd"
+      },
+      {
+        "path": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/RequestCompositionSdk/Types.lean",
+        "relative_path": "RequestCompositionSdk/Types.lean",
+        "bytes": 27881,
+        "sha256": "268d39c69a87dc9e0205faf19b356d3cac1d9ef5d6ee051eee88ecaf9b2ccd44"
+      },
+      {
+        "path": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/RequestCompositionSdk/TypesExternal_Template.lean",
+        "relative_path": "RequestCompositionSdk/TypesExternal_Template.lean",
+        "bytes": 12196,
+        "sha256": "9ad00707548b206166b1779518c8a82d442b23e66f4f66e4520a6d6ce457196e"
+      },
+      {
+        "path": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/llbc-inventory.json",
+        "relative_path": "llbc-inventory.json",
+        "bytes": 54855,
+        "sha256": "c41cdffbaf4a67ae0cfeea5ded644634149a4fef5955b30a57f2a2e4ce8b44e5"
+      }
+    ],
+    "source_map_unchanged": true,
+    "transparent_roots": 2,
+    "critical_transparent_functions": 15,
+    "raw_comparison": "Against reviewed explicit-String baseline, Types changes one source-span comment; Funs changes only private binder/references, wrapping and source spans. Both external templates byte-identical. Raw files adopted without edits.",
+    "correct_diff": {
+      "path": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/raw-output-diff-from-explicit-string.patch",
+      "sha256": "fe2c24b2e63cd16f336b7817847c2b266c2967976f6d60fe855626c92fd19d93",
+      "bytes": 5843
+    },
+    "summaries": [
+      {
+        "path": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1/summary.json",
+        "sha256": "1f39277c579eb1819b5c0461335cce30fc29abdf7d256df9d5058599f8c8547e",
+        "bytes": 12915
+      },
+      {
+        "path": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/probe-binder1-aeneas/logs/summary.json",
+        "sha256": "bd2973e3c9d5e0794e90e48be9cd2cd33668f22d74ef7dcfa9d85e342f2b667d",
+        "bytes": 63107
+      }
+    ]
+  },
+  "model_validation": {
+    "source": {
+      "sdk_head": "19a1e65135b34ff2cded7dda49419635e2ab4fd8",
+      "runtime_internal_auth_sha256": "00f82ab02a0a26a110a93427b5a75df6476a0cf870628dfedbd4684ae8ff6082",
+      "raw_types_sha256": "268d39c69a87dc9e0205faf19b356d3cac1d9ef5d6ee051eee88ecaf9b2ccd44",
+      "raw_funs_sha256": "bec561cc7f7c8bff27ce4a7fc2c4434fd41a7d2de7bc495ed15e1e255808d24d",
+      "model_funs_external_sha256": "1340cda2de737e449f873b547468b3ea1019d374dee6465a215a5ab9c07494ec",
+      "model_audit_sha256": "91d358a7a5d84c54b1a771ef6acf87c453652816f5467e1b52ef996296ea09dc",
+      "readme_sha256": "557bd39e763ba57161396ef592c6400fffcd586d664022826f5a79080ac17c0c",
+      "source_map_before": {
+        "InternalAuthModelAudit.lean": "91d358a7a5d84c54b1a771ef6acf87c453652816f5467e1b52ef996296ea09dc",
+        "README.md": "557bd39e763ba57161396ef592c6400fffcd586d664022826f5a79080ac17c0c",
+        "RequestCompositionSdk/Funs.lean": "bec561cc7f7c8bff27ce4a7fc2c4434fd41a7d2de7bc495ed15e1e255808d24d",
+        "RequestCompositionSdk/FunsExternal.lean": "1340cda2de737e449f873b547468b3ea1019d374dee6465a215a5ab9c07494ec",
+        "RequestCompositionSdk/Types.lean": "268d39c69a87dc9e0205faf19b356d3cac1d9ef5d6ee051eee88ecaf9b2ccd44",
+        "RequestCompositionSdk/TypesExternal.lean": "7307c0ead47997582e2d096758d998fc03e0814bda1f34db03b101af2245cd35",
+        "RequestCompositionSdk.lean": "bb8f498d204095c8b0b9acc463fe07e89b93cf98c9044579939aee08b67989b8",
+        "extraction/RequestCompositionSdk/FunsExternal_Template.lean": "320b4a08f466311d81cfe469c30ac1a2ab0d836d78c54bae9b7382f01da9f2fd",
+        "extraction/RequestCompositionSdk/TypesExternal_Template.lean": "9ad00707548b206166b1779518c8a82d442b23e66f4f66e4520a6d6ce457196e",
+        "lake-manifest.json": "e5f0a8be448113fb2c89aab3b3d58bae67cd6739e381484be6fc45722b895df2",
+        "lakefile.lean": "b7e71245d1bf1dae15664060bd19fd9366298a861315e633a4d61401fe2101e0",
+        "lean-toolchain": "ca5f1f601d34c49079e38d7e7041eb0f2a9c227fbc1df0f404820069a052330c"
+      },
+      "source_map_unchanged": true,
+      "private_lakefile_sha256": "b7e71245d1bf1dae15664060bd19fd9366298a861315e633a4d61401fe2101e0",
+      "private_manifest_sha256": "e5f0a8be448113fb2c89aab3b3d58bae67cd6739e381484be6fc45722b895df2",
+      "aeneas_path": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/discriminant-private1/stock/proofs/aeneas",
+      "aeneas_head": "fdebf20d78e8007bb92fc17068f17fc2e6cfbbbf",
+      "lean_version": "4.35.0"
+    },
+    "commands": [
+      {
+        "name": "model-build",
+        "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake build RequestCompositionSdk",
+        "exit": 0,
+        "timeout_s": 600,
+        "elapsed": "0:09.91",
+        "max_rss_kib": 2674472,
+        "log_sha256": "2801911df36b521b2f42fa7b6783f3e6e7a9f1003bb8f7d0a1a0b31c3c697bc6",
+        "time_log_sha256": "ef49c2d041e77c74e054292406a299bc88e9ee9ae0ffac3ee6db1d4f18cc472a"
+      },
+      {
+        "name": "model-audit",
+        "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake env lean InternalAuthModelAudit.lean",
+        "exit": 0,
+        "timeout_s": 300,
+        "elapsed": "0:02.57",
+        "max_rss_kib": 2688008,
+        "log_sha256": "d455ca4a2177aaeef51b0e129d715eefbf8905d4836caf780fc32b997b5b36ab",
+        "time_log_sha256": "ea96fac7e8e90b19f893e3180ec60b4075ba925c632d0d94381aaa45417ee9c8"
+      }
+    ],
+    "model_olean_sha256": "e969bba9485600a1553cacf21812f20353495c7959ce2eedbe5421504a3add7b",
+    "axiom_audit": {
+      "RequestCompositionSdk.internal_auth.request.HubRequestContext.validate_for": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "RequestCompositionSdk.internal_auth.exchange.validate_delegation": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "RequestCompositionSdk.veoveo_types.permission_names.PermissionName.is_owned_by": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "RequestCompositionSdk.internal_auth.scope_claim": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "RequestCompositionSdk.internal_auth.StandardClaims.new": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "RequestCompositionSdk.internal_auth.AccessTokenClaims.from_identity": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "RequestCompositionSdk.internal_auth.recipient.bind": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "RequestCompositionSdk.internal_auth.HubInternalTokenIssuer.create_identity": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound",
+        "internal_auth.ensure_jwt_crypto_provider",
+        "identity.JwtId.parse",
+        "uuid.v7.Uuid.now_v7",
+        "alloc.string.ToString.Blanket.to_string",
+        "chrono.offset.utc.Utc.now"
+      ],
+      "RequestCompositionSdk.internal_auth.HubInternalTokenIssuer.issue": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound",
+        "internal_auth.ensure_jwt_crypto_provider",
+        "identity.JwtId.parse",
+        "internal_auth.HubInternalTokenIssuer.sign_forwarded",
+        "uuid.v7.Uuid.now_v7",
+        "alloc.string.ToString.Blanket.to_string",
+        "chrono.offset.utc.Utc.now"
+      ]
+    },
+    "audit_contains_sorryAx": false,
+    "attempted_input_verification": {
+      "command": "sha256sum -c expected-inputs.sha256",
+      "result": "5 files OK",
+      "manifest_sha256": "4aaaff1f35a45a3256d2a943563a03db6f411b9f154fdf0a3e86210c8d911db9"
+    },
+    "notes": [
+      "Run1 failed on reserved `prefix` binder and missing Ord (Int \u00d7 Nat); preserved.",
+      "Run2 resolved parser/comparator but failed while compiling Funs.",
+      "Run3 was a setup failure: three generated Lean inputs were copied to package root instead of RequestCompositionSdk/; valid inputs were not compiled.",
+      "Run4 is the valid freeze3 check.",
+      "No native checks rerun for this Lean model update."
+    ],
+    "summary": {
+      "path": "/tmp/hub-request-composition-20261030/sdk-internal-auth-model-run4/summary.json",
+      "sha256": "9391ecf07a64c41e19ffad7e0ab8f3105a3546ba14722bfc82c3279d3895ce83",
+      "bytes": 7241
+    },
+    "canonical_lakefile": {
+      "path": "/Users/rozgo/VeoveoAI/veoveo-hub-sdk/proofs/internal_auth/lakefile.lean",
+      "sha256": "229ea36580ac6660f14a2e247bb863cce97f766888b5e525fdde8cb522b20830",
+      "bytes": 273
+    },
+    "canonical_manifest": {
+      "path": "/Users/rozgo/VeoveoAI/veoveo-hub-sdk/proofs/internal_auth/lake-manifest.json",
+      "sha256": "f26aacfd608c05db6a69abc488a591e8258ebb33607dfe01e0c5e8dcaa49cc0f",
+      "bytes": 3913
+    },
+    "post_check_readme": {
+      "path": "/Users/rozgo/VeoveoAI/veoveo-hub-sdk/proofs/internal_auth/README.md",
+      "sha256": "2b3dbbd3ea20c960444cb11fb94acb6be85594ab4ac77822d73d2c1078fb547c",
+      "bytes": 5825
+    }
+  },
+  "native_validation": {
+    "method": "Reuse the prior154a473 private source tree after comparing all178 covered source paths to19a1e65, then overlay only internal_auth.rs candidate. This is covered-source equivalence, not a new full git archive of19a1.",
+    "source_files": 178,
+    "source_map_unchanged": true,
+    "stages": [
+      {
+        "name": "fmt",
+        "command": [
+          "rustup",
+          "run",
+          "1.99.0-aarch64-apple-darwin",
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "elapsed_s": 0.295,
+        "log": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/current-main-native-evidence/fmt.log",
+        "log_bytes": 0,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "internal_auth_tests",
+        "command": [
+          "rustup",
+          "run",
+          "1.99.0-aarch64-apple-darwin",
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "veoveo-hub-sdk",
+          "--lib",
+          "internal_auth::",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "elapsed_s": 16.525,
+        "log": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/current-main-native-evidence/internal_auth_tests.log",
+        "log_bytes": 3834,
+        "log_sha256": "d0f1f9d06dcc40ace6a5bd1d088b581a3eec78e02a19633ba5e34a8fa5f45b17"
+      },
+      {
+        "name": "strict_lib_clippy",
+        "command": [
+          "rustup",
+          "run",
+          "1.99.0-aarch64-apple-darwin",
+          "cargo",
+          "clippy",
+          "--locked",
+          "-p",
+          "veoveo-hub-sdk",
+          "--lib",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "elapsed_s": 3.824,
+        "log": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/current-main-native-evidence/strict_lib_clippy.log",
+        "log_bytes": 231,
+        "log_sha256": "c83b9067122a50e8e56397c6edcec1ec56bc0d2c4fe0b9a23d4514dc412dff68"
+      }
+    ],
+    "test_result": [
+      "test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 133 filtered out; finished in 0.36s"
+    ],
+    "summary": {
+      "path": "/tmp/hub-request-composition-20261030/sdk-claims-binder-proposal/current-main-native-evidence/summary.json",
+      "sha256": "a77093e3e301d4ff9fb1e862d5c1d042ea6f80c055e4e6910bcf96c4b5d3d3ba",
+      "bytes": 64536
+    },
+    "executable_identity": null,
+    "executable_identity_limit": "The runner did not capture an executable hash at test time. No later shared-target identity is substituted."
+  },
+  "limits": [
+    "Compilation and standard-only audit entries do not prove the desired contract, native library refinement or termination. Correctness theorems are next.",
+    "Native ordered set traversal, UTF8/text bounds, ID projections, ordinary timestamp correspondence and allocation/memory availability remain explicit model boundaries.",
+    "NumericDate projects seconds; full DateTime expiry does not imply positive whole-second lifetime or exact roundtrip.",
+    "No instrumented side-effect trace/call-count, crypto correspondence, UUID uniqueness, SQL refinement, full current-main or pinned-Hub qualification.",
+    "Recipient.bind preserves the complete server/deployment/resource triple, not the token identity or full verification wrapper.",
+    "No deployment, broad Docker gates, CI integration or paid model calls in this milestone."
+  ],
+  "iteration_corrections": [
+    "Initial runner-generation quoting and absent copy-directory setup failures occurred before affected tool launches.",
+    "Run1 found reserved local prefix and missing pair Ord instance; corrected local name and explicit timestamp comparator.",
+    "Run2 found generic helper universes constrained to Type0 and generated identity namespace shadowing; generalized helper universes and freshly extracted the private Rust binder rename.",
+    "Run3 copied three inputs into the wrong private directory; it was not a valid check of the intended source. Run4 verified exact input hashes before compiling.",
+    "First binder diff accidentally used older probe4, predating the explicit-String change. Correct baseline/diff reviewed independently; no extra extraction or code edits followed that reporting correction."
+  ]
+}

@@ -845,41 +845,41 @@ struct Invocation {
 }
 
 impl AccessTokenClaims {
-    fn from_identity(identity: &HubInternalIdentity) -> Self {
+    fn from_identity(token_identity: &HubInternalIdentity) -> Self {
         Self {
             standard: StandardClaims::new(
-                &identity.issuer,
-                &identity.client,
-                &identity.actor,
-                identity.audience.as_str(),
-                identity.acting_server.as_ref(),
-                identity.delegation_context.as_ref(),
-                &identity.jwt_id,
-                identity.issued_at,
-                identity.not_before,
-                identity.expires_at,
+                &token_identity.issuer,
+                &token_identity.client,
+                &token_identity.actor,
+                token_identity.audience.as_str(),
+                token_identity.acting_server.as_ref(),
+                token_identity.delegation_context.as_ref(),
+                &token_identity.jwt_id,
+                token_identity.issued_at,
+                token_identity.not_before,
+                token_identity.expires_at,
             ),
-            authorization_details: (!identity.permissions.is_empty())
-                .then(|| PermissionsDetail::new(identity.permissions.clone()))
+            authorization_details: (!token_identity.permissions.is_empty())
+                .then(|| PermissionsDetail::new(token_identity.permissions.clone()))
                 .into_iter()
                 .collect(),
             invocation: Invocation {
-                profile: identity.profile.clone(),
-                server: identity.server.clone(),
-                deployment: identity.deployment,
-                actor: identity.actor.clone(),
-                authority: identity.authority.clone(),
-                request_context: identity.request_context.clone(),
-                acting_server: identity
+                profile: token_identity.profile.clone(),
+                server: token_identity.server.clone(),
+                deployment: token_identity.deployment,
+                actor: token_identity.actor.clone(),
+                authority: token_identity.authority.clone(),
+                request_context: token_identity.request_context.clone(),
+                acting_server: token_identity
                     .acting_server
                     .as_ref()
                     .map(|acting| acting.server.clone()),
-                acting_deployment: identity
+                acting_deployment: token_identity
                     .acting_server
                     .as_ref()
                     .map(|acting| acting.deployment),
-                acting_task: identity.acting_task.clone(),
-                delegation_context: identity.delegation_context.clone(),
+                acting_task: token_identity.acting_task.clone(),
+                delegation_context: token_identity.delegation_context.clone(),
             },
         }
     }

@@ -9,3 +9,6 @@ package sdkInternalAuthProof
 @[default_target]
 lean_lib RequestCompositionSdk
 lean_lib InternalAuthModelAudit
+lean_lib InternalAuthSpecification
+lean_lib InternalAuthValueLaws
+lean_lib InternalAuthCorrectness

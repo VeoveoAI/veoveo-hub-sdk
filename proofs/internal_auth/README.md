@@ -2,8 +2,10 @@
 
 This SDK-owned package models the actual `issue`, `create_identity`, request-context,
 claims, actor-chain and recipient functions. It does not import Hub proof code or
-replace the issuer with a function that returns a chosen identity. The first model
-build and dependency audit pass; issuer correctness proofs are still pending.
+replace the issuer with a function that returns a chosen identity. The model
+build and dependency audit pass. The initial bootstrap-identity,
+signing-continuation and recipient contracts also pass; full context-bearing
+issuance and independent complete signer-claims correctness remain pending.
 There is no runner or CI integration.
 
 The input is the recorded SDK `e268032` slice, Core `120306e`, with the reviewed
@@ -13,12 +15,14 @@ check and strict library Clippy pass against both the `e268032` fixture and a
 private current-main `154a473` compilation context. The exact runtime expression
 is adopted and recorded in SDK `19a1e651`; these are focused native/source checks,
 not issuer proof results.
-Current SDK main has additional unrelated work; Hub still pins SDK `239622d`.
-Neither whole-current-main applicability nor pinned-Hub integration is claimed.
+Current SDK main has additional unrelated work. The inspected local Hub source
+pins SDK `239622d`; the observed newer Hub remote-tracking source pins `154a473`
+and includes additional App-origin cases. Neither whole-current-main applicability,
+pinned-Hub integration nor deployed applicability is claimed.
 Generated `Types.lean` and `Funs.lean` are copied byte-for-byte from those reviewed
 outputs. Untouched external templates are retained under `extraction/` and are
 never compiled or used as model axioms. Dependency pins and other proof packages
-are unchanged. Issuer correctness and Hub integration remain pending.
+are unchanged. Complete issuer correctness and Hub integration remain pending.
 
 The string expression remedy preserves the existing delegated comparison at the
 same guard position. Pinned Aeneas erases `fmt::Arguments` to Unit, so its old
@@ -42,6 +46,39 @@ fallible ID parsing and provider setup. `issue` adds only the concrete signer.
 The executable allowlists pass with no `sorryAx`; this is a source-model and
 dependency checkpoint, not an issuer theorem or a native refinement proof. See
 the [model receipt](evidence/internal-auth-model.json).
+
+## Initial identity and recipient contracts
+
+`InternalAuthCorrectness.lean` proves the actual identity constructor's complete
+output for the native API's context-omitted bootstrap case: arbitrary typed
+payloads, empty permissions, and no acting server, Task or inherited delegation.
+Expiry rejection and native ID-parse errors are preserved. Provider, clock and
+ID outcomes remain explicit external observations; no own validation-success
+premise is supplied.
+
+The issue theorem connects that identity to the actual claims constructor and
+concrete signer, preserving signing errors and modeled failure/divergence.
+It is a continuation factorization, not yet an independent proof of every claims
+field. The separate recipient theorem proves exact server/resource/deployment
+comparison, error priority and preservation of the entire presented recipient
+triple under explicit comparator laws. It does not perform cryptographic verification.
+
+All four theorem audits pass without `sorryAx`. The final direct check completed
+in 2.86 seconds. `InternalAuthSpecification.lean` independently describes the full
+context, deadline and claims contract; its elaboration alone establishes no
+correctness theorem. `InternalAuthValueLaws.lean` proves six finite clone/equality
+laws used by the next context/claims proof, with standard-only axiom audits.
+See the [checkpoint receipt](evidence/identity-recipient-checkpoint.json).
+
+These modules are opt-in manual targets:
+
+```sh
+lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectness
+```
+
+The context-bearing direct/delegated cases, all-owned nonempty permission sets,
+independent complete signer claims, valid constructed examples and semantic
+mutation controls are still required before qualifying full issuance.
 
 ## Operational boundaries
 
@@ -86,6 +123,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. The integrated issuer/recipient theorem and admitted direct
-and delegated constructions are the next proof obligations; they are not proved
-by these compilation or axiom-audit results.
+model-boundary audit. The complete context-bearing issuer theorem and admitted
+direct and delegated constructions are the next proof obligations; they are not
+proved by the initial bootstrap or recipient results.

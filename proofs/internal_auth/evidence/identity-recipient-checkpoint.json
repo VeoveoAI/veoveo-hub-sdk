@@ -1,0 +1,171 @@
+{
+  "milestone": "Bootstrap identity, signing continuation and exact recipient binding",
+  "status": "Checked initial contracts; complete context-bearing issuance and independently specified signer claims remain pending.",
+  "agents": {
+    "implementation": "GPT-6.1 Sol",
+    "validation": "GPT-6 Luna",
+    "review": "GPT-6 Astra"
+  },
+  "source_parent": "5d371052fdb904ec2498996d937155f19a12e64b",
+  "model_receipt": {
+    "path": "internal-auth-model.json",
+    "sha256": "4540ae4d9f59f180daad402a09bb06cf4c0f1603cc03fb60f74d8b4c52fbb453"
+  },
+  "source_files_sha256": {
+    "InternalAuthCorrectness.lean": "cf0c01c56adb43000131a6ef1c7f8414efa24ff00b5e7dfcdd01c880ecc39807",
+    "InternalAuthSpecification.lean": "e1def7c67284777461bb42cb630997b4148940a3030c48db542b2aaaa7f0f278",
+    "InternalAuthValueLaws.lean": "54e1096e56e3da71aa2418e5fea8bdd32b07a6e82e0120e6966ecd0fb0ac75ab",
+    "lakefile.lean": "9020b3ae07def556e23ec12e032b9f6131a0d567447f36cf3884dcefd83e5333"
+  },
+  "tools": {
+    "lean": "4.35.0",
+    "aeneas": "fdebf20d78e8007bb92fc17068f17fc2e6cfbbbf",
+    "platform": "Linux x86_64"
+  },
+  "runtime_or_model_changes": false,
+  "proved": [
+    "Complete identity value, expiry rejection and ID-parse error for arbitrary typed bootstrap requests with empty permissions and no context or delegation.",
+    "Actual issue continuation invokes the transparent claims constructor and concrete signer, preserving identity and errors, including modeled failure/divergence. This is factorization, not independent complete-claims correctness.",
+    "Recipient binding returns the entire presented triple exactly on server/resource/deployment agreement, preserving existing error priority under explicit comparator laws.",
+    "Six finite clone/equality value laws, each with a standard-only axiom audit."
+  ],
+  "definitions_only": "InternalAuthSpecification describes context acceptance, deadline, delegation refusals and complete claims independently; elaboration is not a correctness proof.",
+  "correctness_direct": {
+    "directory": "/tmp/hub-request-composition-20261030/sdk-internal-auth-correctness-run6",
+    "command": "LAKE_NO_UPDATE=1 lake env lean -o .lake/build/lib/lean/InternalAuthCorrectness.olean InternalAuthCorrectness.lean",
+    "exit_status": 0,
+    "elapsed_seconds": 2.86,
+    "max_rss_kib": 2724900,
+    "input_manifest_sha256": "f191d17b6d7f58b2c595f005836333e91e1c2870c68c83b0161a60d6eebaea45",
+    "pre_input_manifest_exit": 0,
+    "post_input_manifest_exit": 0,
+    "log_sha256": "c685e089651b8cd8ce3e9457aabf629ff030f47134aafedf607dd84a1c55ff76",
+    "time_v_sha256": "de0e4019817704477231af4281803e0cd179fe30647c341439c3abee8789b153",
+    "olean_sha256": "d874302c212c98d653c81c5ced16540bba7996c1bf4d9a02e67a036eb12164aa"
+  },
+  "manual_targets": {
+    "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectness",
+    "cwd": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-internal-auth-model-run1/source/proofs/internal_auth",
+    "exit_status": 0,
+    "elapsed_seconds": 13.64,
+    "max_rss_kb": 2721028,
+    "pre_manifest_exit": 0,
+    "post_manifest_exit": 1,
+    "post_manifest_note": "Only the three previously compiled target OLean hashes changed as Lake emitted them under the new target configuration; all .lean sources, private lakefile, manifest, toolchain, and RequestCompositionSdk OLean entries in input-after.log passed.",
+    "canonical_lakefile_sha256": "9020b3ae07def556e23ec12e032b9f6131a0d567447f36cf3884dcefd83e5333",
+    "private_lakefile_before_sha256": "b7e71245d1bf1dae15664060bd19fd9366298a861315e633a4d61401fe2101e0",
+    "private_lakefile_after_sha256": "6cebf81629ea6decee82b61869dc5eb3d290a580be33d3ec578d4fd15cda2a0d",
+    "private_config_diff": "Only appended lean_lib InternalAuthSpecification, InternalAuthValueLaws, InternalAuthCorrectness; retained require aeneas from ../aeneas/backends/lean.",
+    "input_manifest_sha256": "6dfa481b03ff70b652ad68f7c275ba59a634a22b340e943793c5966e8542697d",
+    "log_sha256": "b619cffb96fa5331932278c040b7feda744a497dfcf72a7a92f38ac414fab787",
+    "time_v_sha256": "bc4c7e10d0c8dd81acc3f61453351429aad83b591fef9888472406326e9846ab",
+    "artifacts": {
+      "InternalAuthSpecification.olean": "650d8954124d664f6cd09bc4a1839c243b2af5b11523dae20b4fdc561ffb667e",
+      "InternalAuthValueLaws.olean": "2957b2356b33f78606a428dd30bda176ce291512cd7f0da7370e282225f4bf3b",
+      "InternalAuthCorrectness.olean": "b396dfe3dc28a0a6a69c92244eb28ec6a703187605cbd6bb76f0dd73a13d8016"
+    },
+    "audits": {
+      "InternalAuthValueLaws.clone_list_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "InternalAuthValueLaws.list_eq_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "InternalAuthValueLaws.set_clone_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "InternalAuthValueLaws.set_eq_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "InternalAuthValueLaws.option_clone_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "InternalAuthValueLaws.option_eq_exact": [
+        "propext",
+        "Quot.sound"
+      ],
+      "InternalAuthCorrectness.fresh_jwt_id_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound",
+        "identity.JwtId.parse",
+        "uuid.v7.Uuid.now_v7",
+        "alloc.string.ToString.Blanket.to_string"
+      ],
+      "InternalAuthCorrectness.bootstrap_identity_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound",
+        "internal_auth.ensure_jwt_crypto_provider",
+        "identity.JwtId.parse",
+        "uuid.v7.Uuid.now_v7",
+        "alloc.string.ToString.Blanket.to_string",
+        "chrono.offset.utc.Utc.now"
+      ],
+      "InternalAuthCorrectness.bootstrap_issue_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound",
+        "internal_auth.ensure_jwt_crypto_provider",
+        "identity.JwtId.parse",
+        "internal_auth.HubInternalTokenIssuer.sign_forwarded",
+        "uuid.v7.Uuid.now_v7",
+        "alloc.string.ToString.Blanket.to_string",
+        "chrono.offset.utc.Utc.now"
+      ],
+      "InternalAuthCorrectness.recipient_exact": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ]
+    },
+    "target_log_reports": "Build completed successfully (1805 jobs)."
+  },
+  "target_receipt_source": {
+    "path": "/tmp/hub-request-composition-20261030/sdk-internal-auth-issuer-targets1/combined-summary.json",
+    "sha256": "30cbd53462605e16705fbdfaff611f490e08b3a8c90a3a2ba6771610ccf2ea46"
+  },
+  "failed_iterations": {
+    "correctness_runs_1_to_5": "Proof-local parsing, finite-find unfolding, tuple/bind normalization and empty failure-continuation equality; failed guards rejected sorryAx. Final proof preserves failure and divergence by exhaustive Result cases. No runtime defect or changed contract.",
+    "value_laws_run3": "Clone result needed successful-bind normalization; run4 and the named target build pass.",
+    "context_next_iteration": {
+      "leaf_sha256": "0e2720b66583a378c7318f375eed14dfbbb5544454fabe15e7862b350b5cd94a",
+      "command": "LAKE_NO_UPDATE=1 /home/rozgo/.cache/lean-pilot/toolchain/lean-4.35.0-linux/bin/lake env lean InternalAuthContextProof.lean",
+      "cwd": "/home/rozgo/.cache/lean-pilot/hub-request-composition-20261030/sdk-internal-auth-model-run1/source/proofs/internal_auth",
+      "exit_status": 1,
+      "elapsed_seconds": 49.53,
+      "max_rss_kb": 2705604,
+      "pre_input_manifest_exit": 0,
+      "post_input_manifest_exit": 0,
+      "manifest_sha256": "5ea244a90f091891ff3d66949631973d597463560f7a27b206351f6233e104e9",
+      "log_sha256": "fd2b5fd107f2c76260e1e755bbeb89410513e46a18d89e942901f504b68395a1",
+      "time_v_sha256": "ad1c1a69740b44b79b5484a426014668cdfefa48289308ed476836b129c5d68a",
+      "observed_failures": [
+        "TextRepresentable did not establish Usize.max at lines 25 and 30",
+        "UTF-8 list/array equality residual at line 41",
+        "deterministic 200000-heartbeat whnf timeout at line 119",
+        "simp step-limit at line 196",
+        "deterministic 200000-heartbeat whnf timeout at line 156"
+      ],
+      "named_audit": "InternalAuthContextProof.validate_for_exact does not depend on any axioms (printed before command failed)"
+    },
+    "context_note": "The failed ContextProof leaf is excluded from this checkpoint. Its printed no-axioms line is not evidence of a completed theorem; compiler exit 1 is authoritative."
+  },
+  "boundaries": [
+    "Native collection/text/time/allocation correspondence from the model receipt remains explicit.",
+    "Provider, clock, UUID, string conversion, fallible ID parsing and signing are explicit observations; cryptographic correctness and serialization correspondence are not proved.",
+    "Pure value equations establish neither native side-effect counts nor an instrumented trace.",
+    "Context-bearing direct/delegated issuance, all-owned nonempty permissions, complete independent claims, admitted witnesses, mutation qualification and Hub composition remain open.",
+    "No new native tests, extraction, deployment, paid model call or CI integration in this checkpoint."
+  ]
+}

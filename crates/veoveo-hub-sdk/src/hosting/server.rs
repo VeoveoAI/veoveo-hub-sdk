@@ -22,6 +22,8 @@
 //! | `{mount}/admin/docs/llms.txt`, `{mount}/admin/docs/{doc_id}` | hub | embedded documents (C20, C21) |
 //! | `{mount}/mcp` | hub | stateless Streamable HTTP with the 8 MiB response budget |
 //! | additional authenticated routes | hub | server-specific HTTP, such as playback |
+//! | public routes under declared prefixes | none | callers that verify themselves |
+//! | the authenticated routes at the app origin's root | hub and the app origin's policy | a full web application |
 //!
 //! `{mount}` is the public endpoint's path from [`deployment`], `/{slug}` for an
 //! [`internal`] server, or empty for an [`internal_root`] server. The health routes
@@ -78,17 +80,18 @@
 
 use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
-use crate::registration::AccessTokenTrust;
+use crate::registration::{AccessTokenTrust, AppOrigin};
 use axum::{
     Router,
     extract::{MatchedPath, Request, State},
-    http::StatusCode,
+    http::{StatusCode, header::HOST},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
 };
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use tokio_util::sync::CancellationToken;
+use tower::ServiceExt;
 use tower_http::trace::TraceLayer;
 
 use crate::{
@@ -153,6 +156,7 @@ struct Options {
     mcp_request_limit: Option<usize>,
     request_timeout: Option<Duration>,
     calls: Option<super::ServerCalls>,
+    app_origin: Option<AppOrigin>,
 }
 
 /// Builds a [`HostedServer`] for the domain `D`. See the [module
@@ -193,6 +197,7 @@ impl HostedServer {
                 mcp_request_limit: None,
                 request_timeout: None,
                 calls: None,
+                app_origin: None,
             },
         }
     }
@@ -385,6 +390,17 @@ impl<D: DomainServer, Dep, Trust, H> HostedServerBuilder<D, Dep, Trust, H> {
         self
     }
 
+    /// Serves the authenticated routes also at the root of the server's app origin, the
+    /// `veoveo_app_origin` of its registration response, when it names one. A request
+    /// for the origin's host reaches only those routes, behind Hub authentication and
+    /// the app origin's policy, which the domain's routes declare with
+    /// [`RoutesBuilder::app_origin`](super::RoutesBuilder::app_origin); it never
+    /// reaches MCP, administrative, public or health routes.
+    pub fn app_origin(mut self, origin: Option<AppOrigin>) -> Self {
+        self.options.app_origin = origin;
+        self
+    }
+
     /// Adds administrative routes under `{mount}/admin`, beside the document
     /// routes and behind hub authentication. Layer any additional
     /// authorization, such as an administrative scope, onto `routes`.
@@ -514,6 +530,25 @@ where
             admin::docs_router(D::setup().documents(), D::Contract::scheme(), authorize)
                 .merge(options.admin_routes),
         );
+        let app = options.app_origin.map(|origin| {
+            let policy = D::routes()
+                .app_origin()
+                .cloned()
+                .expect("an app origin serves only routes that declare one");
+            let routes =
+                options
+                    .authenticated_routes
+                    .clone()
+                    .layer(middleware::from_fn_with_state(
+                        Arc::new(policy),
+                        admit_app_origin,
+                    ));
+            AppOriginRoutes {
+                host: origin.host_authority(),
+                router: authenticate(routes)
+                    .layer(TraceLayer::new_for_http().make_span_with(request_span)),
+            }
+        });
         let authenticated = authenticate(options.authenticated_routes);
         let public =
             declared_public_routes::<D>(options.public_routes, &options.sdk_public_prefixes);
@@ -540,12 +575,76 @@ where
                 host::validate_host,
             ))
             .layer(TraceLayer::new_for_http().make_span_with(request_span));
+        // The app origin's requests go to its own routes before any of the server's.
+        let router = match app {
+            Some(app) => Router::new()
+                .fallback_service(router)
+                .layer(middleware::from_fn_with_state(app, steer_app_origin)),
+            None => router,
+        };
         HostedServer {
             router,
             slug,
             mount,
             cancel,
         }
+    }
+}
+
+/// The authenticated routes at the root of the app origin, and the origin's host.
+#[derive(Clone)]
+struct AppOriginRoutes {
+    host: String,
+    router: Router,
+}
+
+/// Sends a request for the app origin's host to the app origin's routes, and every other
+/// request to the server's.
+async fn steer_app_origin(
+    State(app): State<AppOriginRoutes>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let authority = match request.headers().get(HOST) {
+        Some(header) => header
+            .to_str()
+            .ok()
+            .and_then(crate::parse_request_host_authority),
+        None => request
+            .uri()
+            .authority()
+            .and_then(|authority| crate::parse_request_host_authority(authority.as_str())),
+    };
+    if authority.is_some_and(|authority| {
+        crate::host_authority_is_allowed(&authority, std::slice::from_ref(&app.host))
+    }) {
+        match app.router.oneshot(request).await {
+            Ok(response) => response,
+            Err(never) => match never {},
+        }
+    } else {
+        next.run(request).await
+    }
+}
+
+/// Admits a verified caller to the app origin only through its declared policy.
+async fn admit_app_origin(
+    State(policy): State<Arc<super::RoutePolicy>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let admitted = request
+        .extensions()
+        .get::<crate::HubInternalIdentity>()
+        .is_some_and(|identity| policy.check_identity(identity).is_ok());
+    if admitted {
+        next.run(request).await
+    } else {
+        (
+            StatusCode::FORBIDDEN,
+            "the app origin's permission was not granted",
+        )
+            .into_response()
     }
 }
 

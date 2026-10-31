@@ -546,9 +546,16 @@ host validation, and builds the public URLs it hands out, such as callback and s
 URLs, under the origin. A server whose registration response names a
 `veoveo_public_base` passes it to `PublicDeployment::with_public_base` instead, which
 admits that base's host and builds every public URL under the base, path included; a
-factory instance learns its base this way. A server whose response names a
-`veoveo_app_origin` admits that origin's host for its `authenticated_routes`, which it
-then serves at the root of the origin as well as under its mount.
+factory instance learns its base this way. `PublicDeployment::public_url` builds a
+public URL under the base, or under `{origin}/{slug}` without one, and
+`CallbackUrls::at_public_base` places operation callbacks under the base. A server whose
+response names a `veoveo_app_origin` passes it to `HostedServerBuilder::app_origin`,
+which admits that origin's host for its `authenticated_routes`, which it then serves at
+the root of the origin as well as under its mount. A request for the app origin's host
+reaches only those routes, behind Hub authentication and the policy the routes declare
+with `RoutesBuilder::app_origin`, which the server checks again on every request and
+answers 403 when it is not granted; it reaches no MCP, administrative, public or health
+route. Building the server fails for an app origin its routes do not declare.
 `internal` replaces `deployment` for a server the hub reaches at an internal
 authority under `/{slug}`. `internal_root` serves a cluster-internal server whose
 hub upstream and protocol paths are root-relative. Both admit only the internal
@@ -572,7 +579,7 @@ The host gives every server the same behavior:
 |---|---|
 | Routes | `/livez` and optional `/readyz` at the listener root, whatever the mount; `{mount}/admin/docs/*` and `{mount}/mcp`; public routes only under declared prefixes |
 | Authentication | Hub RFC 9068 access token on MCP, admin and authenticated routes, addressed to the server's registered resource URL and naming its slug, with the Hub's keys refreshed as [key refresh](src/registration/DESIGN.md#key-refresh) describes; a rejection is 401 with `WWW-Authenticate: Bearer` |
-| Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts: the deployment host, the installation's public origin when the deployment names one, and loopback only when asked |
+| Host validation | 400 without a Host authority, 421 for an authority outside the deployment's allowed hosts: the deployment host, the installation's public origin or the instance's public base when the deployment names one, and loopback only when asked; the app origin's host reaches only the app origin's routes |
 | Discovery | Authenticated `resources/list`, `resources/templates/list`, `tools/list` and `prompts/list` from ready routes filtered by current route policy, sorted, 100 per page, private, five-second cache |
 | Well-known reads | `{scheme}://docs` routes and `{scheme}://contract` |
 | Completion | `doc_id` on the document template; other references go to the domain |
@@ -788,7 +795,8 @@ an earlier run dispatched without a result receives an unsettled attempt with th
 operation identity. `ctx.operation(..).dispatch` records an operation and runs its
 closure once, with the operation identity as the provider's idempotency key and, on the
 first attempt, the callback URL `{base}/{slug}/operations/{operation_id}/{token}` under
-the worker's callback base; an unsettled attempt reconciles with the provider and never
+the worker's callback base, or `{public base}/operations/{operation_id}/{token}` under
+an instance's public base; an unsettled attempt reconciles with the provider and never
 resubmits blindly. `ctx.wait` returns the outcome of a settled operation, runs a due
 status check, carries a cancellation to the provider through the server's
 `OperationCalls`, or parks the Task. A parked wait fails with `TaskError::Parked`, the

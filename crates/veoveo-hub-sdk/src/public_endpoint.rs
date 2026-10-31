@@ -5,13 +5,14 @@ use std::{fmt, str::FromStr};
 use anyhow::{Result, anyhow};
 use url::Url;
 
-use crate::ServerSlug;
+use crate::{ServerSlug, registration::PublicBase};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicDeployment {
     base_url: String,
     host_authority: String,
     origin: Option<PublicOrigin>,
+    public_base: Option<PublicBase>,
 }
 
 /// The installation's public origin, `VEOVEO_PUBLIC_ORIGIN`: the one HTTPS origin an
@@ -37,6 +38,7 @@ impl PublicDeployment {
             base_url,
             host_authority,
             origin: None,
+            public_base: None,
         })
     }
 
@@ -50,6 +52,43 @@ impl PublicDeployment {
     /// The installation's public origin, when it has one.
     pub fn origin(&self) -> Option<&PublicOrigin> {
         self.origin.as_ref()
+    }
+
+    /// The deployment under the public URL of this instance's mount, the
+    /// `veoveo_public_base` of its registration response, when it names one. Requests for
+    /// the base's host pass host validation beside the deployment host's, and
+    /// [`public_url`](Self::public_url) builds every public URL under the base, path
+    /// included. A server passes its base here instead of the installation's origin.
+    pub fn with_public_base(mut self, base: Option<PublicBase>) -> Self {
+        self.public_base = base;
+        self
+    }
+
+    /// The public URL of this instance's mount, when the deployment has one.
+    pub fn public_base(&self) -> Option<&PublicBase> {
+        self.public_base.as_ref()
+    }
+
+    /// The public URL of `segments` under `server`'s mount, each segment percent-encoded:
+    /// under the public base when the deployment has one, otherwise under
+    /// `{origin}/{server}` when it has the installation's origin, and `None` without
+    /// either.
+    pub fn public_url<'a>(
+        &self,
+        server: &ServerSlug,
+        segments: impl IntoIterator<Item = &'a str>,
+    ) -> Option<Url> {
+        match (&self.public_base, &self.origin) {
+            (Some(base), _) => Some(base.join(segments)),
+            (None, Some(origin)) => {
+                let mut url = origin.join([server.as_str()]);
+                url.path_segments_mut()
+                    .expect("an https URL has a path")
+                    .extend(segments);
+                Some(url)
+            }
+            (None, None) => None,
+        }
     }
 
     pub fn base_url(&self) -> &str {
@@ -268,6 +307,33 @@ mod tests {
             .expect("valid deployment")
             .with_origin(Some(origin.clone()));
         assert_eq!(deployment.origin(), Some(&origin));
+    }
+
+    #[test]
+    fn public_urls_lie_under_the_public_base_or_the_origin() {
+        let media = ServerSlug::parse("media").unwrap();
+        let deployment = PublicDeployment::new("http://media.internal:8802").unwrap();
+        assert_eq!(deployment.public_url(&media, ["shares"]), None);
+        let deployment = deployment.with_origin(Some(
+            PublicOrigin::parse("https://veoveo.example.com").unwrap(),
+        ));
+        assert_eq!(
+            deployment
+                .public_url(&media, ["shares", "a b"])
+                .unwrap()
+                .as_str(),
+            "https://veoveo.example.com/media/shares/a%20b"
+        );
+        let base = PublicBase::parse("https://instance-7.veoveo.example.com/b/7/media").unwrap();
+        let deployment = deployment.with_public_base(Some(base.clone()));
+        assert_eq!(deployment.public_base(), Some(&base));
+        assert_eq!(
+            deployment
+                .public_url(&media, ["shares", "t"])
+                .unwrap()
+                .as_str(),
+            "https://instance-7.veoveo.example.com/b/7/media/shares/t"
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use axum::{
     body::Body,
-    http::StatusCode,
+    http::{Request, StatusCode},
     routing::{get, post},
 };
 use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
@@ -18,7 +18,7 @@ use veoveo_hub_sdk::{
         testing::{self, TestHub},
     },
     registration::{
-        Access, AuthorizationDeclaration, ClientMetadata, PermissionDefinition,
+        Access, AppOrigin, AuthorizationDeclaration, ClientMetadata, PermissionDefinition,
         RegistrationDeclaration, RouteAccess, ServerEndpoint, ServerPublicKey, ServerVersion,
     },
     server_contract::{McpServerContract, McpServerSetup},
@@ -254,4 +254,100 @@ fn a_body_limit_outside_its_range_is_refused() {
 #[should_panic(expected = "valid public route rate")]
 fn a_rate_outside_its_range_is_refused() {
     let _ = builder().public_route("hooks/", 1024, 0);
+}
+
+const APP_HOST: &str = "studio.apps.veoveo.test";
+
+/// The status and body of a request to `path` on `host`, with `bearer` when given.
+async fn send_on(
+    hub: &TestHub,
+    method: &str,
+    host: &str,
+    path: &str,
+    bearer: Option<&str>,
+) -> (StatusCode, String) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("host", host);
+    if let Some(bearer) = bearer {
+        request = request.header("authorization", format!("Bearer {bearer}"));
+    }
+    hub.send(request.body(Body::empty()).unwrap()).await
+}
+
+fn app_hub() -> TestHub {
+    hub(served!()
+        .app_origin(Some(
+            AppOrigin::parse(&format!("https://{APP_HOST}")).unwrap(),
+        ))
+        .build())
+}
+
+#[tokio::test]
+async fn the_app_origin_serves_the_authenticated_routes_at_its_root() {
+    let hub = app_hub();
+    let token = hub.token();
+    let (status, body) = send_on(&hub, "GET", APP_HOST, "/editor", Some(&token)).await;
+    assert_eq!((status, body.as_str()), (StatusCode::OK, "editor"));
+    // The same routes stay under the mount on the deployment's host.
+    let (status, body) = send_on(
+        &hub,
+        "GET",
+        testing::TEST_HOST,
+        "/studio/editor",
+        Some(&token),
+    )
+    .await;
+    assert_eq!((status, body.as_str()), (StatusCode::OK, "editor"));
+    // The Hub's token is required, and the app origin's permission on every request.
+    let (status, _) = send_on(&hub, "GET", APP_HOST, "/editor", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let unpermitted = hub.token_granting([]);
+    let (status, _) = send_on(&hub, "GET", APP_HOST, "/editor", Some(&unpermitted)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // Under the mount, an authenticated route needs no app origin permission.
+    let (status, _) = send_on(
+        &hub,
+        "GET",
+        testing::TEST_HOST,
+        "/studio/editor",
+        Some(&unpermitted),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn the_app_origin_reaches_no_other_route() {
+    let hub = app_hub();
+    let token = hub.token();
+    for (method, path) in [
+        ("POST", "/mcp"),
+        ("POST", "/studio/mcp"),
+        ("GET", "/admin/docs/llms.txt"),
+        ("GET", "/studio/admin/docs/llms.txt"),
+        ("GET", "/studio/editor"),
+        ("POST", "/hooks/github"),
+        ("POST", "/studio/hooks/github"),
+        ("GET", "/livez"),
+    ] {
+        let (status, _) = send_on(&hub, method, APP_HOST, path, Some(&token)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+    }
+    // Without a token, nothing on the app origin answers but the challenge.
+    let (status, _) = send_on(&hub, "POST", APP_HOST, "/hooks/github", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // The server's own routes keep their hosts: another app origin is misdirected.
+    let (status, _) = send_on(&hub, "GET", "other.apps.veoveo.test", "/editor", None).await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    let (status, body) = send_on(
+        &hub,
+        "POST",
+        testing::TEST_HOST,
+        "/studio/hooks/github",
+        None,
+    )
+    .await;
+    assert_eq!((status, body.as_str()), (StatusCode::OK, "hooked"));
 }

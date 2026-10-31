@@ -969,3 +969,48 @@ fn public_routes_need_a_declared_prefix() {
         )
         .build();
 }
+
+#[tokio::test]
+async fn the_public_bases_host_is_admitted_beside_the_deployment_host() {
+    let base =
+        crate::registration::PublicBase::parse("https://instance-7.veoveo.example.com/b/7/fixture")
+            .unwrap();
+    let deployment = crate::PublicDeployment::new(format!("https://{}", testing::TEST_HOST))
+        .unwrap()
+        .with_public_base(Some(base));
+    let hub = TestHub::new(
+        super::HostedServer::for_domain::<FixtureDomain>()
+            .deployment(&deployment, false)
+            .unwrap()
+            .with_verifier(testing::test_verifier::<FixtureDomain>())
+            .handler(|| Hosted::new(FixtureDomain::new()))
+            .build(),
+    );
+    let livez = |host: &str| {
+        Request::builder()
+            .uri("/livez")
+            .header("host", host)
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(hub.send(livez(testing::TEST_HOST)).await.0, StatusCode::OK);
+    assert_eq!(
+        hub.send(livez("instance-7.veoveo.example.com")).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        hub.send(livez("veoveo.example.com")).await.0,
+        StatusCode::MISDIRECTED_REQUEST
+    );
+}
+
+#[test]
+#[should_panic(expected = "an app origin serves only routes that declare one")]
+fn an_app_origin_needs_its_declaration_in_the_routes() {
+    let _ = testing::for_domain::<FixtureDomain>()
+        .handler(|| Hosted::new(FixtureDomain::new()))
+        .app_origin(Some(
+            crate::registration::AppOrigin::parse("https://fixture.apps.veoveo.test").unwrap(),
+        ))
+        .build();
+}

@@ -78,6 +78,9 @@ pub fn public_allowed_hosts(
     if let Some(origin) = deployment.origin() {
         hosts.push(origin.host_authority().to_string());
     }
+    if let Some(base) = deployment.public_base() {
+        hosts.push(base.host_authority());
+    }
     if allow_loopback_hosts {
         hosts.extend([
             "localhost".to_string(),
@@ -238,6 +241,20 @@ mod tests {
         assert_eq!(
             public_allowed_hosts(&deployment, false),
             vec!["media.internal:8802", "veoveo.example.com"]
+        );
+    }
+
+    #[test]
+    fn public_host_allowlist_admits_the_public_bases_host() {
+        let deployment = PublicDeployment::new("http://media.internal:8802")
+            .expect("valid URL")
+            .with_public_base(Some(
+                crate::registration::PublicBase::parse("https://instance-7.example.com:8443/media")
+                    .expect("a public base"),
+            ));
+        assert_eq!(
+            public_allowed_hosts(&deployment, false),
+            vec!["media.internal:8802", "instance-7.example.com:8443"]
         );
     }
 }

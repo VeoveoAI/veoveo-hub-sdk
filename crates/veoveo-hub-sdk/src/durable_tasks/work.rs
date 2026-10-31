@@ -42,19 +42,22 @@ use crate::{
     usage::{TaskUsageRecorder, UsageLedger, UsageRecordError},
 };
 
-/// Where a hosted server's operation callbacks are reachable: its public base URL. A
-/// provider calls `{base}/{slug}/operations/{operation_id}/{token}`, the route the
-/// hosted server serves for the operation.
+/// Where a hosted server's operation callbacks are reachable: under the installation's
+/// public origin, where a provider calls `{base}/{slug}/operations/{operation_id}/{token}`,
+/// or under the instance's public base, where it calls
+/// `{base}/operations/{operation_id}/{token}`. Both reach the route the hosted server
+/// serves for the operation.
 #[derive(Clone)]
 pub struct CallbackUrls {
-    base: url::Url,
+    /// The public URL of the server's mount.
+    mount: url::Url,
     server: ServerSlug,
 }
 
 impl fmt::Debug for CallbackUrls {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CallbackUrls")
-            .field("base", &self.base.as_str())
+            .field("mount", &self.mount.as_str())
             .field("server", &self.server)
             .finish()
     }
@@ -76,17 +79,31 @@ impl CallbackUrls {
         if !usable {
             return Err(CallbackUrlError);
         }
-        Ok(Self { base, server })
+        let mut mount = base;
+        mount
+            .path_segments_mut()
+            .expect("a callback base is a hierarchical URL")
+            .pop_if_empty()
+            .push(server.as_str());
+        Ok(Self { mount, server })
+    }
+
+    /// Callbacks under the public URL of this instance's mount, the
+    /// `veoveo_public_base` its registration response names: a provider calls
+    /// `{base}/operations/{operation_id}/{token}`.
+    pub fn at_public_base(base: &crate::registration::PublicBase, server: ServerSlug) -> Self {
+        Self {
+            mount: base.url().clone(),
+            server,
+        }
     }
 
     /// The URL a provider calls back for `operation_id` with `token`. The URL library
     /// encodes each path segment.
     pub fn operation(&self, operation_id: StepOperationId, token: &CallbackToken) -> url::Url {
-        let mut url = self.base.clone();
+        let mut url = self.mount.clone();
         url.path_segments_mut()
-            .expect("a callback base is a hierarchical URL")
-            .pop_if_empty()
-            .push(self.server.as_str())
+            .expect("a callback mount is a hierarchical URL")
             .push("operations")
             .push(&operation_id.to_string())
             .push(token.expose());
@@ -782,6 +799,17 @@ mod tests {
         ] {
             assert!(CallbackUrls::new(url::Url::parse(base).unwrap(), server.clone()).is_err());
         }
+        // Under a public base, which already names the instance's mount.
+        let base =
+            crate::registration::PublicBase::parse("https://veoveo.example/b/7/media").unwrap();
+        let url = CallbackUrls::at_public_base(&base, server.clone()).operation(operation, &token);
+        assert_eq!(
+            url.as_str(),
+            format!(
+                "https://veoveo.example/b/7/media/operations/{operation}/{}",
+                "A".repeat(43)
+            )
+        );
         let urls =
             CallbackUrls::new(url::Url::parse("https://m.example").unwrap(), server).unwrap();
         assert!(!format!("{urls:?}").contains("operations"));

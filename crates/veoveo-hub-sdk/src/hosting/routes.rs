@@ -359,6 +359,10 @@ impl<D: DomainServer> Routes<D> {
     pub fn surfaces(&self) -> Option<SurfacesDeclaration> {
         self.inner.surfaces()
     }
+    /// What admits a person to the app origin, when the routes declare one.
+    pub(crate) fn app_origin(&self) -> Option<&RoutePolicy> {
+        self.inner.app_origin.as_ref()
+    }
     /// The declared public route prefixes relative to the mount, such as `/hooks/`.
     pub(crate) fn public_prefixes(&self) -> Vec<String> {
         let slug = crate::server_contract::provider_slug::<D::Contract>();

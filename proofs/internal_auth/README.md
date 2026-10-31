@@ -261,7 +261,26 @@ UUID text and fallible JWT-ID parsing. See the compact
 lake build InternalAuthIdentityExamples InternalAuthIdentityProof
 ```
 
-Deadline source controls are pending as a separate qualification checkpoint.
+Two actual-source deadline controls now qualify this contract. Removing only the
+Direct/no-acting source minimum makes the unchanged generic theorem fail; a
+standalone witness derives a complete returned identity whose requested deadline
+is strictly later than the independent source cap. Repeating that source minimum
+for an acting server also rejects the unchanged theorem; a separate witness
+proves refusal of an independently admitted request with an inherited actor chain,
+matching originating Task, future inherited deadline and expired source token.
+These are deliberate test faults, not discovered product defects. The witnesses
+import independent fixtures and unchanged compiled helpers, never the failing
+identity theorem or its OLean. They assume only typed native observations.
+
+For each fault, same-tree source reversal reproduced all four canonical generated
+outputs, and a fresh build of the unchanged identity targets passed: Direct in
+21.186 s and acting in 19.729 s. The two wrong-result witnesses passed in 2.698 s
+and 2.972 s respectively; all passing witness and restored-target audits exclude
+`sorryAx` and retain only their recorded standard/native boundaries. The initial
+acting witness failed proof normalization before its corrected leaf passed; setup
+failures and that proof-authoring failure are recorded separately. See
+[deadline semantic controls](evidence/identity-deadline-controls.json).
+
 Complete claims/scope/actor-chain assembly, actual public issue permission guard
 and signer arguments, verification wrapper and Hub pinned-stack correspondence
 remain pending. No runtime/model/extraction/dependency change or new native test
@@ -314,6 +333,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. Complete public issuance/claims and deadline source
-controls are the next proof obligations. Context admission and identity
-construction do not close signer, verifier or Hub integration gaps.
+model-boundary audit. Complete public issuance/claims is the next proof obligation.
+Context admission and identity construction do not close signer, verifier or Hub
+integration gaps.

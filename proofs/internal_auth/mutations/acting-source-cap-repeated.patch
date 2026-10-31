@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/internal_auth.rs
++++ b/crates/veoveo-hub-sdk/src/internal_auth.rs
+@@ -411,7 +411,7 @@
+             // A delegated call lives as long as the exchanged token that carried it,
+             // which the Hub bounds by the subject token or the live Task.
+             if acting_server.is_some() {
+-                expires_at
++                expires_at.min(context.access_token.expires_at)
+             } else {
+                 expires_at.min(context.access_token.expires_at)
+             }

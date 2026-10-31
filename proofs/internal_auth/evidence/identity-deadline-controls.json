@@ -1,0 +1,123 @@
+{
+  "milestone": "Actual-source identity deadline semantic controls and exact restoration",
+  "date": "2026-10-31",
+  "status": "Both intentional faults reject the unchanged constructor theorem, independent wrong-result witnesses pass, and same-source reversal reproduces canonical raw4 with fresh restored identity targets passing.",
+  "source_parent": "95ecd75476f8973e71495cb016069ff3549109c9",
+  "agents": {"implementation": "GPT-6.1 Sol", "validation": "GPT-6 Luna", "review": "GPT-6 Astra"},
+  "unchanged_baseline": {
+    "identity_receipt": "identity-construction.json",
+    "identity_receipt_sha256": "849b9bd40940389c15d78090341dd4604f94ffb1b3cb87fa1f34cfd2ba807ada",
+    "model_receipt": "internal-auth-model.json",
+    "model_receipt_sha256": "4540ae4d9f59f180daad402a09bb06cf4c0f1603cc03fb60f74d8b4c52fbb453",
+    "IdentityProof_sha256": "3ed997065224d30ef7ed1fa403ee1d36b49221909084caf340e09317aa37d3cf",
+    "IdentityExamples_sha256": "934b72afc80224e34fc0aec8f4abbf6203de6a202ad09bdb96528e5cd9f0cc76",
+    "source_archive_sha256": "4d09be8af4e6402e6eb71d556956ce995930b9ff176367d1cc15e07c8258a87f",
+    "source_manifest_sha256": "ce31cfc7ee25eb3037ded497b2cf040ded851a9300e904e30bdd82bb4d552c4c",
+    "native_original_sha256": "00f82ab02a0a26a110a93427b5a75df6476a0cf870628dfedbd4684ae8ff6082",
+    "private_lakefile_sha256": "3201bc8c9e7137c8020056a5f32ad62db9f6671813a1b8c494c4c1ccae784393",
+    "private_manifest_sha256": "e5f0a8be448113fb2c89aab3b3d58bae67cd6739e381484be6fc45722b895df2",
+    "source_scope": "173-file e268 archive with adopted String/private-binder preparation, Core120306e; selectors unchanged2roots/34includes/7opaques. No whole-current dependency graph, deployed stack or Hub pin applicability is implied.",
+    "canonical_raw4_sha256": {"Funs.lean": "bec561cc7f7c8bff27ce4a7fc2c4434fd41a7d2de7bc495ed15e1e255808d24d", "FunsExternal_Template.lean": "320b4a08f466311d81cfe469c30ac1a2ab0d836d78c54bae9b7382f01da9f2fd", "Types.lean": "268d39c69a87dc9e0205faf19b356d3cac1d9ef5d6ee051eee88ecaf9b2ccd44", "TypesExternal_Template.lean": "9ad00707548b206166b1779518c8a82d442b23e66f4f66e4520a6d6ce457196e"}
+  },
+  "protocol": {
+    "mutation": "One expression in disposable internal_auth.rs; canonical runtime/generated/model/specification/theorem source untouched. Charon then Aeneas, exact raw diff reviewed before semantic checks.",
+    "separation": "Fresh per-variant build directories. Witnesses import only independent fixtures and unchanged actually compiled helpers, never expected-failing IdentityProof or its OLean. No own-code success premises.",
+    "commands": {"helpers": "LAKE_NO_UPDATE=1 lake build RequestCompositionSdk InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectness InternalAuthContextProof InternalAuthContextExamples InternalAuthIdentityExamples", "frozen_contract": "LAKE_NO_UPDATE=1 lake env lean InternalAuthIdentityProof.lean", "witness_A": "LAKE_NO_UPDATE=1 lake env lean mutations/DirectSourceCapWitness.lean", "witness_B": "LAKE_NO_UPDATE=1 lake env lean mutations/ActingSourceCapWitness.lean", "restored": "LAKE_NO_UPDATE=1 lake build InternalAuthIdentityExamples InternalAuthIdentityProof"},
+    "limits": "Charon/Aeneas600s; Lean300s wall,8MiB log cap. Full argv/time-v/maps remain with each hashed stage receipt.",
+    "restoration": "Reverse the exact patch in the same native source tree; check all173 original file hashes; re-extract and require all4 canonical raw hashes; fresh proof package/private build and unchanged named targets."
+  },
+  "controls": [
+    {
+      "case": "direct-source-cap-bypass",
+      "plan": {"path": "direct-source-cap-bypass/extraction-plan.json", "sha256": "268f0e82d18300c90ad8b64fc54c57543f367c74943dc3bf6a2f9f73ddfd4643"},
+      "patch": {"path": "mutations/direct-source-cap-bypass.patch", "sha256": "ceda81b2406981a630566867725f7b6189fe77af1eb326b88e647b5815b221e8"},
+      "witness": {"path": "mutations/DirectSourceCapWitness.lean", "sha256": "db5829dbf31593ea07e37302c8bf44a9de7edb5153f731a43098ec28ca9e8c66"},
+      "mutant_source_sha256": "a274342845f33e833938b06a39090ba74e2f2da27c7f7942b9bd6c731e0da7aa",
+      "mutation": "For direct identity creation, remove the request-context access-token expiry minimum by returning expires_at unchanged.",
+      "semantic_observation": "The unchanged generic contract rejects the no-acting success branch after source-expiry capping is removed. The independent witness derives the complete returned identity at requestedDeadline, strictly later than effectiveDeadline=seedExpiresAt.",
+      "charon": {"path": "direct-source-cap-bypass/extraction1/summary.json", "sha256": "f1e703c3da614bdcb318c4428c28aa2d198e1f73972f47609ce3c4aa63bb5b04", "exit": 0, "elapsed_s": 12.586, "log_sha256": "00e04df778f5b4dee102612ff4587496ad07d0adb1031b229ab911cb9d5154e1", "max_rss_kib": null, "llbc_sha256": "a91963af9d8d417383e1bbe766037b17a658eca14f5d6864c977bc5e6d7125e5", "source_map_final_verified": true},
+      "aeneas": {"path": "direct-source-cap-bypass/aeneas1/logs/summary.json", "sha256": "4ed52a8fa19a8c8f66d146a2a76898a3fef62a9970a1e69d94d312958a71ef12", "exit": 0, "elapsed_s": 3.273, "log_sha256": "f76ab76ce20cf8b3af21dc69f7d46cdf08c9e6b4082b8816a350aec28da3d798", "max_rss_kib": 772328, "Funs_sha256": "87967fd169ad371a134c077bda9a5fad1fc0aee897401e835d6270706842a535", "other_three_canonical": true},
+      "mutant_checks": {
+        "path": "direct-source-cap-bypass/mutant-package1-summary.json",
+        "sha256": "69c459de3220d0218d07da0afeeb395424f1d17fff536dada8783b7988cd40f1",
+        "source_count": 26,
+        "input_map_sha256": "e8346c19261ba86752dc9f26fe8197b63dd5700e234dee2cbef912b44cbe13c5",
+        "stages": [
+          {"name": "mutant-model-and-unaffected-helpers", "exit": 0, "elapsed_s": 19.959, "log_sha256": "35d83c726c71653024e0b79f44aaac0ffe18dfdacd4a5ecefe4702e09fff9011", "source_map_unchanged": true},
+          {"name": "frozen-identity-contract", "exit": 1, "elapsed_s": 5.067, "log_sha256": "77e3dd200ee21edcb6e908a986556476b826da9138e3aada18c5208f10ef938f", "source_map_unchanged": true},
+          {"name": "independent-direct-cap-witness", "exit": 0, "elapsed_s": 2.698, "log_sha256": "aefc28e81e056f3ba7384e9c4cc840b24ea39ffc423672871468e0630bfd3d21", "source_map_unchanged": true}
+        ],
+        "complete": true
+      },
+      "restored_charon": {"path": "direct-source-cap-bypass/restoration1/summary.json", "sha256": "17117cfcd9854cdf89eaa8577f613c7bfbcfa7b4cf40c4d8ec4324486356fdb1", "exit": 0, "elapsed_s": 13.288, "log_sha256": "0cc0b430d12aeba1537dbef47ff455d9d697874c9ff42c77103b2cd2cc0fc062", "max_rss_kib": null, "llbc_sha256": "3c8bfa58bad0bfb8ef497b1a5c4a3f19e4378bfeb2e779d24470a21ab132d12e", "source_map_final_verified": true},
+      "restored_aeneas": {"path": "direct-source-cap-bypass/restoration-aeneas1/summary.json", "sha256": "6c281d181f876d322ef184b04fbae346550d893f0147c52ae3dd57eeb7043a60", "exit": 0, "elapsed_s": 3.273, "log_sha256": "3f341b391193f3b4e2db754095bf709e49cac0a64af9f65dbdd0d6d5ecb5a307", "max_rss_kib": 707764, "all_four_canonical": true},
+      "fresh_restored_targets": {
+        "path": "direct-source-cap-bypass/restored-package1/summary.json",
+        "sha256": "7322e03db077dacc0968b64bfd26491aa5c27d2bc975cb127401c31438286eaa",
+        "source_count": 27,
+        "input_map_sha256": "f6b820dba2631a52175a44670f3821ee045e25e7cc1042c24d552a4a63238206",
+        "stages": [
+          {"name": "restored-identity-targets", "exit": 0, "elapsed_s": 21.186, "log_sha256": "0e19f19e05c85f7f54b331c08b63f32b18e2286f7804da54c038f897b255f5d3", "source_map_unchanged": true}
+        ],
+        "complete": true,
+        "artifacts": {"InternalAuthIdentityExamples.olean": "bea56b013af5c9928de7b9ef1c0ced9da61c5e7560b83ad5cff4dd81df934191", "InternalAuthIdentityProof.olean": "4deedd4130b8de6a3037cb478e052b03294849a56e3fa291a265792439eabca9"}
+      }
+    },
+    {
+      "case": "acting-source-cap-repeated",
+      "plan": {"path": "acting-source-cap-repeated/extraction-plan.json", "sha256": "3d0a441a921e96b3b08814cbfe3c836087697f7f5c8a54355b087bae7276cfc6"},
+      "patch": {"path": "mutations/acting-source-cap-repeated.patch", "sha256": "808acab02044b56491e1f4d028058d09d09063c9a2358205ef9b0efdbd925cd3"},
+      "witness": {"path": "mutations/ActingSourceCapWitness.lean", "sha256": "3c848b6baee748b8fe827011127bc6773cc3add52251f306f40821f409a6ef17"},
+      "mutant_source_sha256": "8973f403badf096aea0091fc0ffbb34128492a177160461eb6fb654ffbc31ad8",
+      "mutation": "Repeat the source access-token expiry minimum in the acting-server Some branch only.",
+      "semantic_observation": "The unchanged generic contract rejects the acting-server Some branch: actual expiry/fresh-ID continuation is gated by the source minimum, while the independent effective deadline remains the requested/inherited cap. The standalone witness separately proves refusal of an independently admitted acting request with future inherited expiry and expired source.",
+      "charon": {"path": "acting-source-cap-repeated/extraction1/summary.json", "sha256": "18d9c3fbafa69bdabf12396a4b1e7b4fded405115fbf94028062303874789e5d", "exit": 0, "elapsed_s": 12.941, "log_sha256": "d8801908af6f0d89e93d2c587091a23aee33cc2d8f9f8906e696ff7e174d3148", "max_rss_kib": null, "llbc_sha256": "986fb160c10d1c90485d630cd7f3e53f65a8ca7e622795bb929bdb47d423d4ee", "source_map_final_verified": true},
+      "aeneas": {"path": "acting-source-cap-repeated/aeneas1/summary.json", "sha256": "5053f92d3e407913c10c71cabb591c2a1015c0f80ce502bb7bbb3177b25bb19b", "exit": 0, "elapsed_s": 3.533, "log_sha256": "38ddd5205c8e8be4b7bf3caba5450d0d94be9c2ee82621c01f1fc457e172c298", "max_rss_kib": 688612, "Funs_sha256": "d9fdbef4baff577f705944d35ca14dbfffac0d216f302667f09c8b51e7c163f9", "other_three_canonical": true},
+      "mutant_checks": {
+        "path": "acting-source-cap-repeated/mutant-package1/summary.json",
+        "sha256": "c96d22426579e009579e1bfae28f319fb60e2d52861b7b134e7418782dddcbaa",
+        "source_count": 26,
+        "input_map_sha256": "66cad2d9bff93c8ec98f86bb4488469d3583604e79f015e89c58098d736f087c",
+        "stages": [
+          {"name": "mutant-model-and-unaffected-helpers", "exit": 0, "elapsed_s": 22.296, "log_sha256": "8342740d9e72e00e9911bb2fdda8002ed2df5284ebfb0e795a7dc34734436bac", "source_map_unchanged": true},
+          {"name": "frozen-identity-contract", "exit": 1, "elapsed_s": 5.649, "log_sha256": "9aaddc7dfb7a0b5a6dcdb9b69e50135771eb5309f7f881908308e70be1446268", "source_map_unchanged": true},
+          {"name": "independent-acting-cap-witness", "exit": 1, "elapsed_s": 3.082, "log_sha256": "ce2494a39467ff299e554ac904c331cfbaefcbfa239b002748d1f9e71d0a92ff", "source_map_unchanged": true}
+        ],
+        "complete": false
+      },
+      "restored_charon": {"path": "acting-source-cap-repeated/restoration1/summary.json", "sha256": "8118798d2b182c18fbaadc0f892a095e4d9fdaff5c051e483daca7a8d37514a3", "exit": 0, "elapsed_s": 13.338, "log_sha256": "1da5bd446fc9a442512a8e06ca421a93e98a86b686a15c4e8a275cd20e862d65", "max_rss_kib": null, "llbc_sha256": "9a93cc2027e4c2354457307d6d44e526b410e378c073a0d564e310cf7bc9f360", "source_map_final_verified": true},
+      "restored_aeneas": {"path": "acting-source-cap-repeated/restoration-aeneas1/summary.json", "sha256": "dc714a51e8ef507c75c9d4cffe16276397dfc6ae7436039b8ae815d3cd199ad7", "exit": 0, "elapsed_s": 3.326, "log_sha256": "c2124b1958ef5e8e59fe7a1e43e9d7190a2720ffd16804fe924fb088669c8c85", "max_rss_kib": 763032, "all_four_canonical": true},
+      "fresh_restored_targets": {
+        "path": "acting-source-cap-repeated/restored-package1/summary.json",
+        "sha256": "edfe4901cadd31a08c708a65e4c623fdccc642ce76933cc686e5b5a70334c924",
+        "source_count": 27,
+        "input_map_sha256": "f6b820dba2631a52175a44670f3821ee045e25e7cc1042c24d552a4a63238206",
+        "stages": [
+          {"name": "restored-identity-targets", "exit": 0, "elapsed_s": 19.729, "log_sha256": "470aa6064b07470348c30bc873752088ef3a69125b3317d82be17ee58b87819f", "source_map_unchanged": true}
+        ],
+        "complete": true,
+        "artifacts": {"InternalAuthIdentityExamples.olean": "bea56b013af5c9928de7b9ef1c0ced9da61c5e7560b83ad5cff4dd81df934191", "InternalAuthIdentityProof.olean": "aa00dd99eb3426ccc8c748287c3a83a997ecc2270bc2d45c9525fb603d66b880"}
+      },
+      "passing_witness_retry": {"path": "acting-source-cap-repeated/mutant-package1/witness-retry2/summary.json", "sha256": "1cf08dab9e9c51b0de382f7812e09bf47ab09ed63a8ddd7170ca7a9273176c27", "exit": 0, "elapsed_s": 2.972, "log_sha256": "a78fa221514c656263dc4e63c732b5835a416530b431220f07ad191610fa70e5", "source_count": 26, "source_map_unchanged": true}
+    }
+  ],
+  "audit": {
+    "standard_allowlist": ["propext", "Classical.choice", "Quot.sound"],
+    "native_identity_additions": ["internal_auth.ensure_jwt_crypto_provider", "chrono.offset.utc.Utc.now", "uuid.v7.Uuid.now_v7", "alloc.string.ToString.Blanket.to_string", "identity.JwtId.parse"],
+    "witnesses": "Each has three audited declarations: first independent constraint/admission is standard-only; actual wrong-result and mismatch/refusal declarations retain exactly the five identity observations plus standards. B needs only provider/clock premises; full constructor statement still contains all five primitive symbols. No sorryAx in passing witnesses.",
+    "restored_targets": "Both fresh restored builds emit the nine expected constructor/fixture audit closures, as specified in identity-construction.json; none has sorryAx."
+  },
+  "iteration_classification": [
+    "A semantic package actual corrected terminal12453: helpers pass, frozen contract rejects and witness passes. Earlier archive-path/config/hash/invocation/missing-new-leaf setup problems are not compiler or semantic results. Successful A restored package summary is authoritative.",
+    "B original mutant-package summary intentionally remains complete=false: the original witness failed scalar-add and inherited-expiry/dependent-instance normalization after model/helpers and frozen-contract checks completed. Only the witness proof was corrected; statements, specs, mutations, models and frozen constructor theorem were unchanged. The passing witness-retry2 receipt gates restoration; no repeat of completed model or contract stages.",
+    "B restoration scripts are adaptations of the successful A scripts, with exact retry2 receipt/log gates and early private-config/identity-leaf dependency preflight. Any failed setup is retained separately; no failed candidate supplies qualification."
+  ],
+  "boundaries": [
+    "These are intentional test faults, not canonical behavior changes or discovered production defects. Exact wrong-result witnesses establish semantic sensitivity beyond tactic failure.",
+    "Full timestamp cap/refusal only: no Hub60/900-second TTL, positive whole-second JWT lifetime, source authenticity, policy provenance, Task liveness or UUID uniqueness claim.",
+    "Native provider/clock/UUID/text/parse observations and existing scalar/collection/string/allocation correspondence remain explicit. No instrumented side-effect/call-count trace.",
+    "Full independent claims/scope/actor-chain assembly, public issue ownership including private Core namespace refinement, concrete signer arguments, verifier wrapper and Hub pinned-stack integration remain pending.",
+    "No canonical runtime/model/raw/dependency edits, native/full-stack suite, paid calls or deployment."
+  ],
+  "scratch_root": "/tmp/hub-request-composition-20261031/deadline-source-controls"
+}

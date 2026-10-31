@@ -6,8 +6,10 @@ replace the issuer with a function that returns a chosen identity. The model
 build and dependency audit pass. The initial bootstrap-identity,
 signing-continuation and recipient contracts also pass. Generic complete identity
 construction, delegation refusal priority and context-bearing Direct/acting-server
-successes and independent complete claims assembly now pass. Public issuance
-and the complete claims-to-signer composition remain pending.
+successes, independent complete claims assembly and generic public-issuer
+composition now pass in the recorded operational graph. Populated issuer examples
+and source controls remain pending; native-helper/signing/Hub refinement remains
+explicit.
 There is no runner or CI integration.
 
 The input is the recorded SDK `e268032` slice, Core `120306e`, with the reviewed
@@ -79,9 +81,9 @@ These modules are opt-in manual targets:
 lake build InternalAuthSpecification InternalAuthValueLaws InternalAuthCorrectness
 ```
 
-Public issuance with all-owned nonempty permission sets, independent complete
-signer claims and issuer semantic controls are still required before qualifying
-full issuance. The complete private constructor contract is described below.
+Populated all-owned nonempty-permission issuer constructions and source controls
+are still required. The generic public composition below remains model-relative;
+native helper and cryptographic correspondence is not inferred from it.
 
 ## Exact context admission
 
@@ -156,8 +158,9 @@ lake build InternalAuthContextExamples InternalAuthContextWitnesses
 
 This is model-relative admission of constructed inputs, not full issuance,
 authenticity, cryptography, current-policy provenance or complete issuance. The
-context controls below qualify wrong acceptance/refusal sensitivity; full public
-issuance and claims-to-signer composition remain pending.
+context controls below qualify wrong acceptance/refusal sensitivity. The generic
+issuer composition below reuses these contracts; native-helper/signing/Hub
+correspondence remains open.
 
 ## Actual-source context controls
 
@@ -282,9 +285,9 @@ acting witness failed proof normalization before its corrected leaf passed; setu
 failures and that proof-authoring failure are recorded separately. See
 [deadline semantic controls](evidence/identity-deadline-controls.json).
 
-The actual public issue permission guard and full identity/claims-to-signer
-composition, verification wrapper and Hub pinned-stack correspondence remain
-pending. No runtime/model/extraction/dependency change or new native test
+Generic public guard and identity/claims-to-signer composition is now described
+below. Native helper/signing correspondence, verification wrapper and Hub
+pinned-stack integration remain pending. No runtime/model/extraction/dependency change or new native test
 was required for this proof-only constructor checkpoint.
 
 ## Complete claims assembly
@@ -327,9 +330,9 @@ lake build InternalAuthClaimsComponents InternalAuthClaimsExamples InternalAuthC
 ```
 
 The actual-Rust permission-detail inversion control and exact restoration are
-qualified below. Full public issuance and concrete signer
-argument composition, Core namespace-helper refinement, verification wrapper and
-Hub pinned-stack integration remain open. No runtime, generated body, operational
+qualified below. Generic public composition is described next; Core namespace
+refinement, cryptographic signing, verification wrapper and Hub pinned-stack
+integration remain open. No runtime, generated body, operational
 model, dependency pin or native suite changed for this proof milestone.
 
 ## Actual-source permission-detail control
@@ -360,8 +363,55 @@ Neither correction changed raw/source bytes or required repeating extraction.
 See [permission-detail control evidence](evidence/claims-permission-control.json).
 Temporary extraction trees, runners and log streams are evidence assets rather
 than package source. Canonical runtime, models and theorem statements are unchanged;
-the public issuance, native namespace refinement and signer/Hub boundaries remain
+the native namespace refinement, cryptographic signing and Hub boundaries remain
 open.
+
+## Complete generic public issuer (model-relative)
+
+`InternalAuthIssueProof.issue_exact` proves the complete actual public `issue`
+body equals the independent `issueOutcome` for arbitrary complete typed requests
+in `IssueTextDomain`. This covers all permission sets, optional-context and
+acting/delegation combinations within physical representation bounds. It assumes
+no own-code validation/construction/claims success and no successful signer.
+
+The independent `firstForeign` preserves the exact first offending permission in
+the retained traversal. Its error precedes identity processing.
+`foreign_permission_refused` needs only physical permission/server bounds and the
+computed input relation; provider/time/ID/signing success is not a premise.
+Otherwise the theorem preserves every independent identity outcome, derives the
+created identity's claims-domain bounds from request-field preservation, and
+passes exactly the complete `claimsValue` to actual `sign_forwarded`. Signer Rust
+errors propagate; success returns the same complete identity and returned bearer.
+Aeneas primitive failures/divergence are retained. These are value/argument and
+dependency equations, not instrumented effect-order or call-count traces.
+
+Ownership is explicitly relative to the existing operational Core namespace
+model: first-ASCII-dot UTF-8 byte-prefix equality, including empty/no-dot modeled
+values. No unproved parsed-name invariant narrows the domain. The unchanged helper
+exposure probe reached a transparent Core body and opaque third-party
+`split_once`, but pinned Aeneas failed on `str::pattern` type signatures and emitted
+no Lean output. The source/native helper refinement gap remains; standard-only
+ownership/scan audits do not establish unconditional native ownership. Native
+sorted/unique traversal, UTF8/allocation/date/scalar correspondence and signing
+serialization/cryptography remain explicit boundaries.
+
+The independent specification typechecked in 2.56 s. The generic proof passed in
+2.76 s and final named targets in 5.33 s. Both ownership/scan audits use only standard
+axioms. Actual refusal and full issuer audits add exactly the existing six native
+symbols: provider check, clock, UUID v7, UUID text, fallible JWT-ID parser and
+concrete signer. No `sorryAx` is accepted. See the
+[public-issue receipt](evidence/public-issue.json).
+
+```sh
+lake build InternalAuthIssueSpecification InternalAuthIssueProof
+```
+
+Closed populated nonempty-permission issuer success/refusal examples and a
+meaningful actual-Rust issuer source control are the next qualification steps.
+They are not included in this generic checkpoint. Native Core-helper refinement,
+cryptographic verification, supplied authority/current-policy provenance and Hub
+pinned-stack composition remain open. No runtime/generated/model/dependency change
+or native/full-stack suite was needed for this proof-only checkpoint.
 
 ## Operational boundaries
 
@@ -410,6 +460,6 @@ Use Lean 4.35.0 and the existing pinned Aeneas dependency. Builder checks use
 an isolated private dependency/build tree with recorded effective configuration;
 shared caches and dependencies are not patched. The initial command is the model
 target `LAKE_NO_UPDATE=1 lake build RequestCompositionSdk`, followed by the named
-model-boundary audit. Complete public issuance/signer composition is the next
-proof obligation. Context admission, identity construction and claims assembly do
-not close signer, verifier or Hub integration gaps.
+model-boundary audit. Populated public-issuer examples and an actual-source guard
+control are the next qualification steps. Native helper/refinement, cryptographic
+signing, verifier and Hub integration gaps remain open.

@@ -1,0 +1,62 @@
+{
+  "milestone": "Generic complete SDK public-issuer composition in the current operational graph",
+  "date": "2026-10-31",
+  "status": "Generic full issue equation and first-foreign refusal passed direct and named-target checks; populated issuer constructions/source control remain pending. Core helper/native-library/cryptographic correspondence remains explicit.",
+  "source_parent": "859990caf0023e8bc19c93881e0efccaebed2734",
+  "agents": {"implementation": "GPT-6.1 Sol", "validation": "GPT-6 Luna", "review": "GPT-6 Astra"},
+  "unchanged_baseline": {"claims_receipt": "claims-assembly.json", "claims_receipt_sha256": "25c9527e5b24a451e4388387d6c5089ffd1300dd060d2825063d8ab2acca048c", "identity_receipt": "identity-construction.json", "identity_receipt_sha256": "849b9bd40940389c15d78090341dd4604f94ffb1b3cb87fa1f34cfd2ba807ada", "model_receipt": "internal-auth-model.json", "model_receipt_sha256": "4540ae4d9f59f180daad402a09bb06cf4c0f1603cc03fb60f74d8b4c52fbb453", "scope": "Same e268+adopted String/binder source archive, Core120 and raw Funsbec561/Types268d/operational models. No source refresh/runtime/model/SDK pin change. Narrow covered-source correspondence is as recorded; not whole-current/deployed/Hub applicability."},
+  "source_sha256": {"InternalAuthIssueSpecification.lean": "5b2f321098bc84a3ac39f3e6860868dfbc6d32ea4ddf4fbf6649e3d63a0a70a1", "InternalAuthIssueProof.lean": "0eb90d733f2f589742c850d42b889531e3a766404295c4a69da9a7d4482dbd97", "lakefile.lean": "38745d48d0c53dc6877ee09b981dfc0dbec6689f0856961f2a455e5aae324396"},
+  "contract": {
+    "declaration": "InternalAuthIssueProof.issue_exact",
+    "equation": "Actual HubInternalTokenIssuer.issue issuer request = independent issueOutcome issuer request, for arbitrary complete typed request in IssueTextDomain. No own validation/construction/claims/signing-success premise.",
+    "foreign_rule": "Independent Owned compares the first ASCII-dot UTF8 byte segment to server bytes, including empty/no-dot modeled names. firstForeign preserves exact retained traversal and first bad PermissionName; no unproved parsed-name restriction.",
+    "priority": "If a first foreign permission exists, exact PermissionOutsideAudience of that same permission precedes identity processing. foreign_permission_refused requires only PermissionTextDomain plus the independently computed firstForeign relation, not provider/clock/ID/signer observations or context admission.",
+    "continuation": "Otherwise reuse the proved independent identityOutcome with every delegation/context/client/deadline/ID outcome; derive successful identity ClaimsTextDomain from request-field preservation; use the complete claimsValue proved by actual from_identity; pass exactly that complete claims argument to actual sign_forwarded. Rust signer error is preserved; success returns same complete identity plus returned bearer. Aeneas failures/divergence stay visible.",
+    "domains": "PermissionTextDomain bounds only permission/server UTF8 representations. IssueTextDomain additionally has existing optional-context bounds and actor ID/audience/per-scope/rendered-scope bounds. These are physical correspondence conditions, not added authorization rules.",
+    "effect_boundary": "Result/argument and dependency ordering, not instrumented native side-effect traces/call counts. Signer remains an unconstrained precisely typed result boundary, never a successful signer assumption."
+  },
+  "helper_boundary": {"operational": "Current own Core free namespace body is the existing handwritten Native.namespacePrefix adapter. ownership_model_exact proves its value relation to independent byte Owned; standard-only audit does not prove native helper refinement.", "unchanged_source_probe": "2roots/35includes/7opaques;16critical bodies including unchanged Core helper transparent in Charon; explicit third-party split_once boundary. Aeneas exits2 at str/pattern.rs99 translate_fwd_ty, no Lean output; no retry/tool patch/runtime rewrite/adoption.", "evidence": "veoveo-docs/records/2026-10-31-permission-namespace-extraction-boundary.md", "probe_summary_sha256": "f819ad7b95a8466b45c72b7a3b21d0064e0c92aa4d76ea7111196470dcc2a021", "qualification": "No unconditional native ownership, parser invariant or cryptographic issuance claim."},
+  "audit": {
+    "standard_only": ["InternalAuthIssueProof.ownership_model_exact", "InternalAuthIssueProof.first_foreign_scan"],
+    "native_boundary_declarations": ["InternalAuthIssueProof.foreign_permission_refused", "InternalAuthIssueProof.issue_exact"],
+    "standard_allowlist": ["propext", "Classical.choice", "Quot.sound"],
+    "native_additions": ["internal_auth.ensure_jwt_crypto_provider", "chrono.offset.utc.Utc.now", "uuid.v7.Uuid.now_v7", "alloc.string.ToString.Blanket.to_string", "identity.JwtId.parse", "internal_auth.HubInternalTokenIssuer.sign_forwarded"],
+    "executable_guards_passed": true,
+    "sorryAx": false,
+    "dependency_note": "The refusal theorem type mentions the whole actual issue function, so its closure includes existing native symbols even though no successful observations are required to establish the early error."
+  },
+  "specification_typecheck": {"directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-issue-spec1/remote-run1", "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "status_sha256": "2f8f19b13e95f00e9edf9a8b081de4e0d190b5b64c8d34d3970c4056efc2898d", "command": "LAKE_NO_UPDATE=1 lake env lean -o .lake/build/lib/lean/InternalAuthIssueSpecification.olean InternalAuthIssueSpecification.lean", "exit": 0, "elapsed_s": 2.56, "max_rss_kib": 2696132, "source_count": 20, "import_count": 11, "source_import_prepost_passed": true, "olean_sha256": "4898e8c2e0a81437f06095e0925a23df5b9abf1e7dbf996baabf354366b626e8", "meaning": "Specification elaboration only, no issuer theorem credit."},
+  "generic_direct": {"directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-issue-direct4/remote-run1", "log_sha256": "aaf0ea9dd4b1148ce008a05156ef1d6cda29fcca580099c224a1476b8b2228d0", "status_sha256": "0cd463493111ad6927b3bb1829ce83c896191dae9acece055c920fbe3dc727f1", "command": "LAKE_NO_UPDATE=1 lake env lean InternalAuthIssueProof.lean", "exit": 0, "elapsed_s": 2.76, "max_rss_kib": 2723080, "source_count": 21, "import_count": 12, "source_import_prepost_passed": true, "time_v_sha256": "bcb92e25d72e4d59ce09ff51c7cb9f7ef0c04079d1d74e99937956a3f4cb3d6e"},
+  "named_target": {
+    "directory": "/tmp/hub-request-composition-20261031/sdk-internal-auth-issue-target1/remote-run1",
+    "log_sha256": "e018f257b7b46bbb6ba18d1de6c1c024da70b8d1bb64d27d904a409b9243b6d5",
+    "status_sha256": "4ed03d6dcc1a0b15fc424e816768746b62617907200d551b02d6cd01328471e8",
+    "command": "LAKE_NO_UPDATE=1 lake build InternalAuthIssueSpecification InternalAuthIssueProof",
+    "exit": 0,
+    "elapsed_s": 5.33,
+    "max_rss_kib": 2738028,
+    "source_count": 21,
+    "source_prepost_passed": true,
+    "imports_checked_before_only": 12,
+    "import_note": "Named build may regenerate artifacts. No import-post equality claim; final two OLeans captured separately.",
+    "private_lakefile_sha256": "4c6588cde9d515d329a1a4554824e7f40a99af9ed1a57c115bad68f3c44cc1ba",
+    "private_manifest_sha256": "e5f0a8be448113fb2c89aab3b3d58bae67cd6739e381484be6fc45722b895df2",
+    "config_delta": "Only two opt-in libraries, existing relative Aeneas dependency and manifest preserved.",
+    "source_map_sha256": "03e87e2658b0ebc0ee81de0b12463b79821015860281cbd952557e6c5f2338f8",
+    "import_map_sha256": "157760c1b76bf5f16f18c9a42ac3bd511ef72db889ede7620fc104bf3a2de33c",
+    "runner_sha256": "8d2af56d8d5e9297cc16760d87889a858164e513566851abc1f7391291929baf",
+    "time_v_sha256": "342bace0991fd8a9f6caec8894f6d9c2ee7e32691edc6e11d9eecaee569da962",
+    "output_map_sha256": "440f1d5d1a917e23c8299727c5787fc8439c8ae61ed4ea44c37550651b8659c0",
+    "artifacts": {"InternalAuthIssueSpecification.olean": "00535601984c8c0f183503ccebdae4de15ecd3f4bf458a3a179e0dd4cf056038", "InternalAuthIssueProof.olean": "6664dc7f4daffa7aaf06494bdeeef7884ee0b871f476c7a570050733dd8e2c78"}
+  },
+  "iteration_classification": [
+    "Early failed proofs were local Slice array/list conversion, native extensionality, equality-under-decide matching, derived ignored scan remainder and typeclass/native monad reassociation after revealed branches. Explicit public Slice laws and preserved-effect bind normalization resolved them; specification/domains/models/own-result premises never weakened.",
+    "No failed declaration/sorryAx or specification-only elaboration is qualification. No new extraction/native suite, higher proof budget or opaque own function was introduced for the generic theorem. Existing warnings were not churned."
+  ],
+  "pending": [
+    "Closed populated all-owned nonempty-permission public-issuer success and consequential refusal examples; actual-Rust issuer source control and exact restoration.",
+    "Native Core namespace helper refinement and native sorted/unique set traversal, UTF8/allocation/scalar/date/library/source/translator correspondence.",
+    "Cryptographic signer serialization/verification correspondence, verifier wrapper and Hub pinned-stack route/current-policy-to-SDK integration.",
+    "No authority authenticity, current-policy grant, Task liveness, UUID uniqueness, positive whole-second token lifetime or Hub60/900-second TTL is inferred."
+  ]
+}

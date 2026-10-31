@@ -93,7 +93,12 @@ impl HubRequestContext {
                 if actor.kind != PrincipalKind::Service {
                     return Err(InternalTokenError::InvalidRequestContext);
                 }
-                if actor.id.as_str() != format!("{}#{}", token.issuer, token.oauth_client_id) {
+                let actor_id = actor.id.as_str();
+                let mut expected_actor_id = String::new();
+                expected_actor_id.push_str(token.issuer.as_str());
+                expected_actor_id.push('#');
+                expected_actor_id.push_str(token.oauth_client_id.as_str());
+                if actor_id != expected_actor_id {
                     return Err(InternalTokenError::InvalidRequestContext);
                 }
                 if actor.issuer != token.issuer {

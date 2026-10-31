@@ -130,11 +130,15 @@ The registration member `veoveo_surfaces` spells the declaration in snake_case:
 ```
 
 MCP Discover advertises the same declaration as `surfaces` in `ai.veoveo/registration`,
-in camelCase. A prefix starts with the mount, ends with `/`, covers neither `{mount}/mcp`
-nor `{mount}/admin`, and overlaps no other prefix. A body limit is 1 byte to 16 MiB and
-a rate 1 to 6000 requests a minute. A server that declares `app_origin` declares the
-`app_origin` requirement, and a server that does not declares none. A server with
-neither public routes nor an app origin omits the member.
+in camelCase. A prefix is an absolute path of nonempty segments of RFC 3986 unreserved
+characters. It starts with the mount, has a segment below it, ends with `/`, covers
+neither `{mount}/mcp` nor `{mount}/admin` nor lies under them, and overlaps no other
+prefix. A body limit is 1 byte to 16 MiB and a rate 1 to 6000 requests a minute. A
+server that declares `app_origin` declares the `app_origin` requirement, and a server
+that does not declares none. A server with neither public routes nor an app origin omits
+the member, in both spellings. `SurfacesDeclaration` is the type, carried as
+`RegistrationDeclaration::surfaces`, and `SurfacesDeclaration::check` applies these
+rules for `ClientMetadata::check`.
 
 The registration response names where the Hub serves them: `veoveo_public_base` when the
 server declares a public route, and `veoveo_app_origin` when it declares an app origin.
@@ -171,7 +175,9 @@ requirements members are `resourceTemplates` and `appOrigin`.
 
 A server with an app origin adds `"app_origin": {"kind":"permission",
 "permission":"n8n.editor"}` to `requirements`. The Hub admits a person to the app origin
-only through that requirement, evaluated as a tool's is, on every request.
+only through that requirement, evaluated as a tool's is, on every request, and looks it
+up as `RequirementTarget::AppOrigin`. The requirement names a declared permission, or
+is `{"kind":"authenticated"}`.
 
 `access` is exactly one of `read` or `write`. `risks` holds any of `sensitive`,
 `destructive`, `billed`, `physical` and `administer`, and an empty set is omitted.
@@ -205,7 +211,9 @@ The Hub rejects a declaration when any of these hold:
   variable authorities, mixed segments, modifiers and fixed queries are refused;
 - a prompt requires a `write` permission;
 - a use names a permission in the server's own namespace, or names one permission
-  twice.
+  twice;
+- a public route prefix or limit breaks the [surfaces](#surfaces) rules, or the
+  `app_origin` requirement and the declared app origin disagree.
 
 A target the declaration omits is denied. An exact resource entry takes precedence
 over every matching template, even when the templates disagree. Without an exact
@@ -334,12 +342,17 @@ audience is the registered MCP endpoint. The keys are the server's initial set, 
 uses `https`, or `http` on a local host.
 
 `veoveo_public_base`, present when the server declares a public route, is the public URL
-of this instance's mount: an absolute URL with a path and no query or fragment. A public
-route `{mount}/x` is reachable at `{veoveo_public_base}/x`. The base names the instance,
-so two branches of one server have different bases. `veoveo_app_origin`, present when
-the server declares an app origin, is the server's app origin: a scheme and host with no
-path. Both are the Hub's to choose; a server treats them as opaque and changes nothing
-when they change on a later registration.
+of this instance's mount: an absolute URL with a path of nonempty segments, without a
+trailing `/`, query or fragment. A public route `{mount}/x` is reachable at
+`{veoveo_public_base}/x`. The base names the instance, so two branches of one server
+have different bases. `veoveo_app_origin`, present when the server declares an app
+origin, is the server's app origin in its RFC 6454 serialization: a scheme, a host and an
+optional port, with no path. Both use `https`, or `http` on a local host, in canonical
+form. Each is present exactly when its surface is declared, and the registration client
+refuses a response that names one otherwise. Both are the Hub's to choose; a server
+treats them as opaque and changes nothing when they change on a later registration.
+`Registration::public_base` and `Registration::app_origin` return them as `PublicBase`
+and `AppOrigin`.
 
 ### Software Statement
 
@@ -710,7 +723,9 @@ supplies `reqwest::Client` and installs a rustls crypto provider before HTTPS.
 ## Qualification
 
 `tests/wire.rs` fixes the wire form of every declaration, request, response, error and
-authorization detail, and validates the examples against the generated JSON Schemas.
+authorization detail, including the surfaces, the `app_origin` requirement and the
+response members that name where the Hub serves them, and validates the examples
+against the generated JSON Schemas.
 It checks the RFC 7638 thumbprint against RFC 8037 Appendix A. `tests/client.rs` runs
 the registration client against an in-process endpoint that applies the admission
 steps above: registration, read, update with token rotation, an update of a removed

@@ -116,6 +116,8 @@ fn information(
         }))
         .unwrap()
     };
+    let surfaces = metadata.registration.surfaces.as_ref();
+    let slug = metadata.slug();
     ClientInformation {
         client_id: OAuthClientId::parse(client_id).unwrap(),
         client_id_issued_at: Utc::now(),
@@ -123,6 +125,15 @@ fn information(
         registration_client_uri: url::Url::parse(&format!("{}/register/{client_id}", hub.base))
             .unwrap(),
         database: database.then(grant),
+        // The Hub chooses where it serves the declared surfaces.
+        public_base: surfaces
+            .is_some_and(|surfaces| !surfaces.public_routes.is_empty())
+            .then(|| {
+                PublicBase::parse(&format!("https://hub.example/b/{client_id}/{slug}")).unwrap()
+            }),
+        app_origin: surfaces
+            .is_some_and(|surfaces| surfaces.app_origin)
+            .then(|| AppOrigin::parse(&format!("https://{slug}.apps.hub.example")).unwrap()),
         access_tokens: AccessTokenTrust {
             deployment: metadata.registration.deployment,
             issuer: TokenIssuer::parse("https://hub.example").unwrap(),
@@ -260,6 +271,27 @@ fn http() -> reqwest::Client {
 }
 
 fn client(endpoint: &url::Url, key: ServerKeyPair, secret: &str) -> RegistrationClient {
+    client_declaring(
+        endpoint,
+        key,
+        secret,
+        None,
+        AuthorizationDeclaration {
+            permissions: Vec::new(),
+            requirements: Requirements::default(),
+            uses: Vec::new(),
+            calls_hub: false,
+        },
+    )
+}
+
+fn client_declaring(
+    endpoint: &url::Url,
+    key: ServerKeyPair,
+    secret: &str,
+    surfaces: Option<SurfacesDeclaration>,
+    authorization: AuthorizationDeclaration,
+) -> RegistrationClient {
     let metadata = ClientMetadata::new(
         *key.public_key(),
         RegistrationDeclaration {
@@ -269,13 +301,9 @@ fn client(endpoint: &url::Url, key: ServerKeyPair, secret: &str) -> Registration
             version: ServerVersion::new("0.1.0").unwrap(),
             endpoint: ServerEndpoint::new(url::Url::parse("https://clock.example/mcp").unwrap())
                 .unwrap(),
+            surfaces,
         },
-        AuthorizationDeclaration {
-            permissions: Vec::new(),
-            requirements: Requirements::default(),
-            uses: Vec::new(),
-            calls_hub: false,
-        },
+        authorization,
     )
     .unwrap();
     RegistrationClient::new(
@@ -592,4 +620,60 @@ async fn resumed_response_cannot_rebind_the_client_or_configuration_uri() {
         assert_eq!(std::fs::read(keys.registration_path()).unwrap(), before);
         std::fs::remove_dir_all(directory).unwrap();
     }
+}
+
+#[tokio::test]
+async fn the_registration_names_where_the_hub_serves_the_declared_surfaces() {
+    let (_, endpoint) = hub().await;
+    let plain = client(&endpoint, ServerKeyPair::generate().unwrap(), SECRET)
+        .register()
+        .await
+        .unwrap();
+    assert!(plain.public_base().is_none() && plain.app_origin().is_none());
+
+    let surfaces = SurfacesDeclaration {
+        public_routes: vec![PublicRouteDeclaration {
+            prefix: PublicRoutePrefix::new("/clock/hooks/").unwrap(),
+            max_body_bytes: BodyLimit::new(1024).unwrap(),
+            requests_per_minute: RequestRate::per_minute(60).unwrap(),
+        }],
+        app_origin: true,
+    };
+    let editor = PermissionDeclaration {
+        permission: veoveo_types::PermissionName::parse("clock.editor").unwrap(),
+        resource: veoveo_types::ResourceTypeName::parse("clock.workflow").unwrap(),
+        access: Access::Write,
+        risks: Default::default(),
+    };
+    let authorization = AuthorizationDeclaration {
+        requirements: Requirements {
+            app_origin: Some(RouteAccess::Permission(editor.permission.clone())),
+            ..Requirements::default()
+        },
+        permissions: vec![editor],
+        uses: Vec::new(),
+        calls_hub: false,
+    };
+    // Another installation, since the first key pinned the namespace on this one.
+    let (_, endpoint) = hub().await;
+    let surfaced = client_declaring(
+        &endpoint,
+        ServerKeyPair::generate().unwrap(),
+        SECRET,
+        Some(surfaces),
+        authorization,
+    );
+    let registration = surfaced.register().await.unwrap();
+    let base = registration.public_base().unwrap();
+    assert!(
+        base.as_str().starts_with("https://hub.example/b/clock-"),
+        "{base}"
+    );
+    assert_eq!(
+        registration.app_origin().unwrap().as_str(),
+        "https://clock.apps.hub.example"
+    );
+    // A read returns the same declaration and the Hub's current choice.
+    let read = surfaced.read(&registration).await.unwrap();
+    assert!(read.public_base().is_some() && read.app_origin().is_some());
 }

@@ -219,6 +219,7 @@ mod tests {
                 version: ServerVersion::new("0.1.0").unwrap(),
                 endpoint: ServerEndpoint::new(url::Url::parse("https://time.example/mcp").unwrap())
                     .unwrap(),
+                surfaces: None,
             },
             AuthorizationDeclaration {
                 permissions: Vec::new(),

@@ -15,7 +15,7 @@ use veoveo_types::{DeploymentId, OAuthClientId, ResourceScheme, ServerSlug, Toke
 use crate::registration::{
     AuthorizationDeclaration, DeclarationError, Ed25519JwkSet, RegistrationDeclaration,
     ResourceIndicator, ServerEndpoint, ServerKeySet, ServerPublicKey, ServerVersion,
-    authorization::AuthorizationDocument, declaration::http_url,
+    authorization::AuthorizationDocument, declaration::http_url, surfaces::SurfacesDocument,
 };
 
 /// RFC 7591 `token_endpoint_auth_method`. A server authenticates with RFC 7523 JWTs
@@ -79,6 +79,8 @@ struct ClientMetadataWire {
     veoveo_uri_scheme: ResourceScheme,
     veoveo_mcp_endpoint: ServerEndpoint,
     veoveo_authorization: AuthorizationDocument,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    veoveo_surfaces: Option<SurfacesDocument>,
 }
 
 impl From<ClientMetadataWire> for ClientMetadata {
@@ -94,6 +96,7 @@ impl From<ClientMetadataWire> for ClientMetadata {
                 uri_scheme: wire.veoveo_uri_scheme,
                 version: wire.software_version,
                 endpoint: wire.veoveo_mcp_endpoint,
+                surfaces: wire.veoveo_surfaces.map(Into::into),
             },
             authorization: wire.veoveo_authorization.into(),
         }
@@ -112,6 +115,7 @@ impl From<ClientMetadata> for ClientMetadataWire {
             veoveo_uri_scheme: metadata.registration.uri_scheme,
             veoveo_mcp_endpoint: metadata.registration.endpoint,
             veoveo_authorization: metadata.authorization.into(),
+            veoveo_surfaces: metadata.registration.surfaces.map(Into::into),
         }
     }
 }
@@ -169,7 +173,16 @@ impl ClientMetadata {
             ));
         }
         self.authorization
-            .check(slug, &self.registration.uri_scheme)
+            .check(slug, &self.registration.uri_scheme)?;
+        let app_origin_requirement = self.authorization.requirements.app_origin.is_some();
+        match &self.registration.surfaces {
+            Some(surfaces) => surfaces.check(slug, app_origin_requirement),
+            None if app_origin_requirement => Err(DeclarationError::invalid(
+                "app_origin",
+                "a server declares the app_origin requirement exactly when it declares an app origin",
+            )),
+            None => Ok(()),
+        }
     }
 
     pub fn slug(&self) -> &ServerSlug {
@@ -269,6 +282,21 @@ pub struct ClientInformation {
         skip_serializing_if = "Option::is_none"
     )]
     pub database: Option<DatabaseGrant>,
+    /// The public URL of this instance's mount, present exactly when the server declares
+    /// a public route.
+    #[serde(
+        rename = "veoveo_public_base",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub public_base: Option<PublicBase>,
+    /// The server's app origin, present exactly when the server declares one.
+    #[serde(
+        rename = "veoveo_app_origin",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub app_origin: Option<AppOrigin>,
 }
 
 impl ClientInformation {
@@ -299,6 +327,21 @@ impl ClientInformation {
                     "the admitted shared storage binding must name the registered server",
                 ));
             }
+        }
+        let surfaces = self.metadata.registration.surfaces.as_ref();
+        if self.public_base.is_some()
+            != surfaces.is_some_and(|surfaces| !surfaces.public_routes.is_empty())
+        {
+            return Err(DeclarationError::invalid(
+                "veoveo_public_base",
+                "present exactly when the server declares a public route",
+            ));
+        }
+        if self.app_origin.is_some() != surfaces.is_some_and(|surfaces| surfaces.app_origin) {
+            return Err(DeclarationError::invalid(
+                "veoveo_app_origin",
+                "present exactly when the server declares an app origin",
+            ));
         }
         self.metadata.check()
     }
@@ -450,6 +493,126 @@ impl TryFrom<String> for DatabaseUrl {
 impl From<DatabaseUrl> for String {
     fn from(value: DatabaseUrl) -> Self {
         value.0.into()
+    }
+}
+
+/// `veoveo_public_base`: the public URL of one server instance's mount, which the Hub
+/// chooses. A public route `{mount}/x` is reachable at `{base}/x`. It is an HTTPS URL, or
+/// an HTTP URL on a local host, in canonical form, with a path of nonempty segments and
+/// no credentials, query or fragment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(try_from = "String", into = "String")]
+#[schemars(with = "url::Url")]
+pub struct PublicBase(url::Url);
+
+impl PublicBase {
+    pub fn parse(value: &str) -> Result<Self, DeclarationError> {
+        let url = url::Url::parse(value)
+            .map_err(|_| DeclarationError::invalid("veoveo_public_base", "must be a URL"))?;
+        http_url(&url, "veoveo_public_base")?;
+        let segments = url.path().strip_prefix('/').unwrap_or_default();
+        if url.as_str() != value || segments.is_empty() || segments.split('/').any(str::is_empty) {
+            return Err(DeclarationError::invalid(
+                "veoveo_public_base",
+                "a canonical URL with a path of nonempty segments",
+            ));
+        }
+        Ok(Self(url))
+    }
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+    pub fn url(&self) -> &url::Url {
+        &self.0
+    }
+    /// The host and port requests for the base name, such as `veoveo.example.com`.
+    pub fn host_authority(&self) -> String {
+        host_authority(&self.0)
+    }
+    /// The URL of `segments` under the base, each segment percent-encoded.
+    pub fn join<'a>(&self, segments: impl IntoIterator<Item = &'a str>) -> url::Url {
+        let mut url = self.0.clone();
+        url.path_segments_mut()
+            .expect("a public base is a hierarchical URL")
+            .extend(segments);
+        url
+    }
+}
+impl TryFrom<String> for PublicBase {
+    type Error = DeclarationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(&value)
+    }
+}
+impl From<PublicBase> for String {
+    fn from(value: PublicBase) -> Self {
+        value.0.into()
+    }
+}
+impl fmt::Display for PublicBase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0.as_str())
+    }
+}
+
+/// `veoveo_app_origin`: a server's own origin for a full web application, which the Hub
+/// chooses, such as `https://n8n.apps.veoveo.example.com`. It is an HTTPS origin, or an
+/// HTTP origin on a local host, in its RFC 6454 serialization: a scheme, a host and an
+/// optional port, with no path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(try_from = "String", into = "String")]
+#[schemars(with = "url::Url")]
+pub struct AppOrigin(url::Url);
+
+impl AppOrigin {
+    pub fn parse(value: &str) -> Result<Self, DeclarationError> {
+        let url = url::Url::parse(value)
+            .map_err(|_| DeclarationError::invalid("veoveo_app_origin", "must be a URL"))?;
+        http_url(&url, "veoveo_app_origin")?;
+        if url.origin().ascii_serialization() != value {
+            return Err(DeclarationError::invalid(
+                "veoveo_app_origin",
+                "an origin: a scheme, a host and an optional port, without a path",
+            ));
+        }
+        Ok(Self(url))
+    }
+    /// The serialized origin, such as `https://n8n.apps.veoveo.example.com`.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str().trim_end_matches('/')
+    }
+    /// The origin as a URL with the root path.
+    pub fn url(&self) -> &url::Url {
+        &self.0
+    }
+    /// The host and port requests for the origin name.
+    pub fn host_authority(&self) -> String {
+        host_authority(&self.0)
+    }
+}
+impl TryFrom<String> for AppOrigin {
+    type Error = DeclarationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(&value)
+    }
+}
+impl From<AppOrigin> for String {
+    fn from(value: AppOrigin) -> Self {
+        value.as_str().to_owned()
+    }
+}
+impl fmt::Display for AppOrigin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The host and, when the URL names one, the port of `url`.
+fn host_authority(url: &url::Url) -> String {
+    let host = url.host_str().unwrap_or_default();
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_owned(),
     }
 }
 

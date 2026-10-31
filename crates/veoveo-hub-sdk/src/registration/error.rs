@@ -25,6 +25,12 @@ pub enum DeclarationError {
     UseInsideNamespace { permission: PermissionName },
     #[error("use of {permission} is declared more than once")]
     DuplicateUse { permission: PermissionName },
+    #[error("public route {prefix} does not lie under the server's mount")]
+    PublicRouteOutsideMount { prefix: String },
+    #[error("public route {prefix} covers the server's MCP or administrative routes")]
+    PublicRouteReserved { prefix: String },
+    #[error("public route {prefix} overlaps public route {other}")]
+    PublicRouteOverlap { prefix: String, other: String },
     #[error("invalid {field}: {reason}")]
     Invalid {
         field: &'static str,

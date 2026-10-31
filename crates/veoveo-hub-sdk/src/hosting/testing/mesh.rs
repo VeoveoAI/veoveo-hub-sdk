@@ -150,6 +150,7 @@ impl TestMesh {
                     url::Url::parse(super::TEST_RESOURCE).expect("the test resource"),
                 )
                 .expect("an endpoint"),
+                surfaces: None,
             },
             declaration.clone(),
         )

@@ -1,6 +1,6 @@
 //! `ai.veoveo/authorization`: the permissions a server declares, the permission each of
-//! its tools, resources, resource templates and prompts requires, and the permissions it
-//! uses on other servers.
+//! its tools, resources, resource templates and prompts and its app origin requires, and
+//! the permissions it uses on other servers.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::identity::{LocalToolName, PromptName};
@@ -59,6 +59,10 @@ pub struct Requirements {
     pub resource_templates: BTreeMap<ResourceTemplateUri, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub prompts: BTreeMap<PromptName, RouteAccess>,
+    /// What admits a person to the server's app origin, present exactly when the server
+    /// declares one. The Hub evaluates it as a tool's requirement, on every request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_origin: Option<RouteAccess>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -103,6 +107,8 @@ struct RequirementsDocument {
     resource_templates: BTreeMap<ResourceTemplateUri, RouteAccess>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     prompts: BTreeMap<PromptName, RouteAccess>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    app_origin: Option<RouteAccess>,
 }
 
 impl From<AuthorizationDocument> for AuthorizationDeclaration {
@@ -115,6 +121,7 @@ impl From<AuthorizationDocument> for AuthorizationDeclaration {
                 resources: requirements.resources,
                 resource_templates: requirements.resource_templates,
                 prompts: requirements.prompts,
+                app_origin: requirements.app_origin,
             },
             uses: document.uses,
             calls_hub: document.calls_hub,
@@ -131,6 +138,7 @@ impl From<AuthorizationDeclaration> for AuthorizationDocument {
                 resources: requirements.resources,
                 resource_templates: requirements.resource_templates,
                 prompts: requirements.prompts,
+                app_origin: requirements.app_origin,
             },
             uses: declaration.uses,
             calls_hub: declaration.calls_hub,
@@ -145,6 +153,8 @@ pub enum RequirementTarget<'a> {
     Resource(&'a ResourceUri),
     ResourceTemplate(&'a ResourceTemplateUri),
     Prompt(&'a PromptName),
+    /// A request on the server's app origin.
+    AppOrigin,
 }
 
 impl AuthorizationDeclaration {
@@ -179,6 +189,7 @@ impl AuthorizationDeclaration {
             .chain(requirements.resources.values())
             .chain(requirements.resource_templates.values())
             .chain(requirements.prompts.values())
+            .chain(requirements.app_origin.iter())
             .filter_map(RouteAccess::permission)
         {
             if !declared.contains(required) {
@@ -256,6 +267,7 @@ impl AuthorizationDeclaration {
         let name = match target {
             RequirementTarget::Tool(tool) => requirements.tools.get(tool),
             RequirementTarget::Prompt(prompt) => requirements.prompts.get(prompt),
+            RequirementTarget::AppOrigin => requirements.app_origin.as_ref(),
             RequirementTarget::ResourceTemplate(template) => {
                 requirements.resource_templates.get(template)
             }

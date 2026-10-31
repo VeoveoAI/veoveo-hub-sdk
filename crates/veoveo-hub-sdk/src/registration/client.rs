@@ -21,9 +21,10 @@ use secrecy::{ExposeSecret, SecretString};
 use veoveo_types::OAuthClientId;
 
 use crate::registration::{
-    AccessTokenTrust, AuthorizationDeclaration, AuthorizationServerMetadata, ClientInformation,
-    ClientMetadata, ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant,
-    DeclarationError, RegistrationDeclaration, RegistrationErrorResponse,
+    AccessTokenTrust, AppOrigin, AuthorizationDeclaration, AuthorizationServerMetadata,
+    ClientInformation, ClientMetadata, ClientRegistrationRequest, ClientUpdateRequest,
+    DatabaseGrant, DeclarationError, PublicBase, RegistrationDeclaration,
+    RegistrationErrorResponse,
     statement::{ServerKeyPair, StatementError},
 };
 
@@ -229,6 +230,15 @@ impl Registration {
     /// The server's database user, kept from the response that last carried it.
     pub fn database(&self) -> Option<&DatabaseGrant> {
         self.information.database.as_ref()
+    }
+    /// The public URL of this instance's mount, under which the server builds every
+    /// public URL it hands out, when it declares a public route.
+    pub fn public_base(&self) -> Option<&PublicBase> {
+        self.information.public_base.as_ref()
+    }
+    /// The server's app origin, when it declares one.
+    pub fn app_origin(&self) -> Option<&AppOrigin> {
+        self.information.app_origin.as_ref()
     }
     pub fn information(&self) -> &ClientInformation {
         &self.information

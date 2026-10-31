@@ -91,6 +91,7 @@ fn authorization() -> AuthorizationDeclaration {
                 policy(ClockPermission::Read),
             )]
             .into(),
+            app_origin: None,
         },
         uses: Vec::new(),
         calls_hub: false,
@@ -437,6 +438,7 @@ fn registration() -> RegistrationDeclaration {
         version: ServerVersion::new("0.1.0").unwrap(),
         endpoint: ServerEndpoint::new(url::Url::parse("https://clock.example/clock/mcp").unwrap())
             .unwrap(),
+        surfaces: None,
     }
 }
 
@@ -1084,5 +1086,426 @@ fn native_template_matching_preserves_empty_scalar_zero_tail_and_trailing_slash(
                 .is_none(),
             "{wire}"
         );
+    }
+}
+
+/// A server with a webhook route, the SDK's operation callbacks and an app origin that
+/// `clock.admin` admits a person to.
+fn surfaces() -> SurfacesDeclaration {
+    let route = |prefix: &str, bytes, rate| PublicRouteDeclaration {
+        prefix: PublicRoutePrefix::new(prefix).unwrap(),
+        max_body_bytes: BodyLimit::new(bytes).unwrap(),
+        requests_per_minute: RequestRate::per_minute(rate).unwrap(),
+    };
+    SurfacesDeclaration {
+        public_routes: vec![
+            route("/clock/hooks/", 1_048_576, 600),
+            route("/clock/operations/", 1_048_576, 600),
+        ],
+        app_origin: true,
+    }
+}
+fn surfaced_registration() -> RegistrationDeclaration {
+    RegistrationDeclaration {
+        surfaces: Some(surfaces()),
+        ..registration()
+    }
+}
+fn surfaced_authorization() -> AuthorizationDeclaration {
+    let mut declaration = authorization();
+    declaration.requirements.app_origin = Some(policy(ClockPermission::Admin));
+    declaration
+}
+fn surfaced_metadata() -> ClientMetadata {
+    ClientMetadata::new(
+        rfc8037_key(),
+        surfaced_registration(),
+        surfaced_authorization(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn surfaces_wire_format_in_discover_and_registration() {
+    let discover = json!({
+        "publicRoutes": [
+            {"prefix": "/clock/hooks/", "maxBodyBytes": 1_048_576, "requestsPerMinute": 600},
+            {"prefix": "/clock/operations/", "maxBodyBytes": 1_048_576, "requestsPerMinute": 600}
+        ],
+        "appOrigin": true
+    });
+    let advertised = serde_json::to_value(surfaced_registration()).unwrap();
+    assert_eq!(advertised["surfaces"], discover);
+    assert_eq!(
+        serde_json::from_value::<RegistrationDeclaration>(advertised).unwrap(),
+        surfaced_registration()
+    );
+    let wire = serde_json::to_value(surfaced_metadata()).unwrap();
+    assert_eq!(
+        wire["veoveo_surfaces"],
+        json!({
+            "public_routes": [
+                {"prefix": "/clock/hooks/", "max_body_bytes": 1_048_576, "requests_per_minute": 600},
+                {"prefix": "/clock/operations/", "max_body_bytes": 1_048_576, "requests_per_minute": 600}
+            ],
+            "app_origin": true
+        })
+    );
+    assert_eq!(
+        wire["veoveo_authorization"]["requirements"]["app_origin"],
+        json!({"kind": "permission", "permission": "clock.admin"})
+    );
+    assert_eq!(
+        serde_json::to_value(surfaced_authorization()).unwrap()["requirements"]["appOrigin"],
+        json!({"kind": "permission", "permission": "clock.admin"})
+    );
+    let decoded: ClientMetadata = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(decoded, surfaced_metadata());
+    decoded.check().unwrap();
+
+    // Only an app origin, or only public routes, omits the other member.
+    let origin_only = SurfacesDeclaration {
+        public_routes: Vec::new(),
+        app_origin: true,
+    };
+    assert_eq!(
+        serde_json::to_value(&origin_only).unwrap(),
+        json!({"appOrigin": true})
+    );
+    let routes_only = SurfacesDeclaration {
+        app_origin: false,
+        ..surfaces()
+    };
+    assert!(
+        serde_json::to_value(&routes_only)
+            .unwrap()
+            .get("appOrigin")
+            .is_none()
+    );
+    // A server serving neither omits the member in both spellings.
+    assert!(
+        serde_json::to_value(registration())
+            .unwrap()
+            .get("surfaces")
+            .is_none()
+    );
+    assert!(
+        serde_json::to_value(metadata())
+            .unwrap()
+            .get("veoveo_surfaces")
+            .is_none()
+    );
+    // The member admits only its own fields.
+    for (pointer, member) in [
+        ("/veoveo_surfaces", "owner"),
+        ("/veoveo_surfaces/public_routes/0", "methods"),
+    ] {
+        let mut extended = wire.clone();
+        extended.pointer_mut(pointer).unwrap()[member] = json!("x");
+        assert!(
+            serde_json::from_value::<ClientMetadata>(extended).is_err(),
+            "{pointer}/{member}"
+        );
+    }
+}
+
+#[test]
+fn surfaces_are_checked_against_the_mount_limits_and_requirement() {
+    let check = |surfaces: SurfacesDeclaration, authorization: AuthorizationDeclaration| {
+        ClientMetadata::new(
+            rfc8037_key(),
+            RegistrationDeclaration {
+                surfaces: Some(surfaces),
+                ..registration()
+            },
+            authorization,
+        )
+    };
+    check(surfaces(), surfaced_authorization()).unwrap();
+    let with_prefixes = |prefixes: &[&str]| SurfacesDeclaration {
+        public_routes: prefixes
+            .iter()
+            .map(|prefix| PublicRouteDeclaration {
+                prefix: PublicRoutePrefix::new(*prefix).unwrap(),
+                ..surfaces().public_routes[0].clone()
+            })
+            .collect(),
+        app_origin: false,
+    };
+    for (prefixes, expected) in [
+        (
+            &["/time/hooks/"][..],
+            "does not lie under the server's mount",
+        ),
+        (
+            &["/clockwork/hooks/"][..],
+            "does not lie under the server's mount",
+        ),
+        (&["/clock/"][..], "does not lie under the server's mount"),
+        (
+            &["/clock/mcp/"][..],
+            "covers the server's MCP or administrative routes",
+        ),
+        (
+            &["/clock/mcp/hooks/"][..],
+            "covers the server's MCP or administrative routes",
+        ),
+        (
+            &["/clock/admin/"][..],
+            "covers the server's MCP or administrative routes",
+        ),
+        (&["/clock/hooks/", "/clock/hooks/github/"][..], "overlaps"),
+        (&["/clock/hooks/github/", "/clock/hooks/"][..], "overlaps"),
+        (&["/clock/hooks/", "/clock/hooks/"][..], "overlaps"),
+    ] {
+        let error = check(with_prefixes(prefixes), authorization()).unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "{prefixes:?}: {error}"
+        );
+    }
+    // Neighbouring prefixes and names that merely start like a reserved route pass.
+    check(
+        with_prefixes(&[
+            "/clock/hooks/",
+            "/clock/hooksmith/",
+            "/clock/mcpx/",
+            "/clock/administer/",
+        ]),
+        authorization(),
+    )
+    .unwrap();
+    // An app origin is declared exactly with its requirement.
+    assert!(check(surfaces(), authorization()).is_err());
+    let routes_only = SurfacesDeclaration {
+        app_origin: false,
+        ..surfaces()
+    };
+    assert!(check(routes_only, surfaced_authorization()).is_err());
+    assert!(ClientMetadata::new(rfc8037_key(), registration(), surfaced_authorization()).is_err());
+    // An empty declaration is omitted, never sent.
+    assert!(check(SurfacesDeclaration::default(), authorization()).is_err());
+    // The app origin's requirement names a declared permission.
+    let mut undeclared = surfaced_authorization();
+    undeclared.requirements.app_origin = Some(RouteAccess::Permission(
+        PermissionName::parse("clock.editor").unwrap(),
+    ));
+    assert!(matches!(
+        check(surfaces(), undeclared),
+        Err(DeclarationError::UndeclaredPermission { .. })
+    ));
+    let mut authenticated = surfaced_authorization();
+    authenticated.requirements.app_origin = Some(RouteAccess::Authenticated);
+    check(surfaces(), authenticated).unwrap();
+}
+
+#[test]
+fn public_route_values_are_admitted_once() {
+    for prefix in ["/clock/hooks/", "/clock/hooks/v1.0/", "/clock/a-b_c~d/"] {
+        assert!(PublicRoutePrefix::new(prefix).is_ok(), "{prefix}");
+    }
+    for prefix in [
+        "/clock/hooks",
+        "clock/hooks/",
+        "/",
+        "//",
+        "/clock//hooks/",
+        "/clock/../hooks/",
+        "/clock/./hooks/",
+        "/clock/hooks%20/",
+        "/clock/hooks?x/",
+        "/clock/{hook}/",
+    ] {
+        assert!(PublicRoutePrefix::new(prefix).is_err(), "{prefix}");
+    }
+    assert_eq!(
+        PublicRoutePrefix::under(&slug(), "hooks/")
+            .unwrap()
+            .as_str(),
+        "/clock/hooks/"
+    );
+    for bytes in [1, MAX_PUBLIC_BODY_BYTES] {
+        assert!(BodyLimit::new(bytes).is_ok(), "{bytes}");
+    }
+    for bytes in [0, MAX_PUBLIC_BODY_BYTES + 1] {
+        assert!(BodyLimit::new(bytes).is_err(), "{bytes}");
+    }
+    for rate in [1, MAX_PUBLIC_REQUESTS_PER_MINUTE] {
+        assert!(RequestRate::per_minute(rate).is_ok(), "{rate}");
+    }
+    for rate in [0, MAX_PUBLIC_REQUESTS_PER_MINUTE + 1] {
+        assert!(RequestRate::per_minute(rate).is_err(), "{rate}");
+    }
+    let mut wire = serde_json::to_value(surfaced_metadata()).unwrap();
+    for (member, value) in [
+        ("max_body_bytes", json!(0)),
+        ("max_body_bytes", json!(16_777_217)),
+        ("requests_per_minute", json!(0)),
+        ("requests_per_minute", json!(6001)),
+        ("prefix", json!("/clock/hooks")),
+    ] {
+        let original = wire["veoveo_surfaces"]["public_routes"][0][member].clone();
+        wire["veoveo_surfaces"]["public_routes"][0][member] = value;
+        assert!(
+            serde_json::from_value::<ClientMetadata>(wire.clone()).is_err(),
+            "{member}"
+        );
+        wire["veoveo_surfaces"]["public_routes"][0][member] = original;
+    }
+}
+
+#[test]
+fn app_origin_access_is_looked_up_like_a_tools() {
+    let declaration = surfaced_authorization();
+    assert_eq!(
+        declaration
+            .access(RequirementTarget::AppOrigin)
+            .and_then(RouteAccess::permission)
+            .map(PermissionName::as_str),
+        Some("clock.admin")
+    );
+    assert_eq!(authorization().access(RequirementTarget::AppOrigin), None);
+}
+
+/// The Hub's answer to a server that declared its surfaces.
+fn surfaced_information() -> serde_json::Value {
+    let mut wire = information();
+    let registered = serde_json::to_value(surfaced_metadata()).unwrap();
+    for member in ["veoveo_surfaces", "veoveo_authorization"] {
+        wire[member] = registered[member].clone();
+    }
+    wire["veoveo_public_base"] = json!("https://veoveo.example.com/b/0199d4a1/clock");
+    wire["veoveo_app_origin"] = json!("https://clock.apps.veoveo.example.com");
+    wire
+}
+
+#[test]
+fn the_response_names_where_the_hub_serves_the_surfaces() {
+    let received: ClientInformation = serde_json::from_value(surfaced_information()).unwrap();
+    received.check().unwrap();
+    let base = received.public_base.as_ref().unwrap();
+    assert_eq!(base.as_str(), "https://veoveo.example.com/b/0199d4a1/clock");
+    assert_eq!(base.host_authority(), "veoveo.example.com");
+    assert_eq!(
+        base.join(["hooks", "a b"]).as_str(),
+        "https://veoveo.example.com/b/0199d4a1/clock/hooks/a%20b"
+    );
+    let origin = received.app_origin.as_ref().unwrap();
+    assert_eq!(origin.as_str(), "https://clock.apps.veoveo.example.com");
+    assert_eq!(origin.host_authority(), "clock.apps.veoveo.example.com");
+    assert_eq!(
+        serde_json::to_value(&received).unwrap(),
+        surfaced_information(),
+        "the response round-trips"
+    );
+    // Each member is present exactly when its surface is declared.
+    for member in ["veoveo_public_base", "veoveo_app_origin"] {
+        let mut missing = surfaced_information();
+        missing.as_object_mut().unwrap().remove(member);
+        let received: ClientInformation = serde_json::from_value(missing).unwrap();
+        assert!(received.check().is_err(), "without {member}");
+        let mut undeclared = information();
+        undeclared[member] = surfaced_information()[member].clone();
+        let received: ClientInformation = serde_json::from_value(undeclared).unwrap();
+        assert!(received.check().is_err(), "{member} without its surface");
+    }
+    // A server without surfaces gets neither.
+    let received: ClientInformation = serde_json::from_value(information()).unwrap();
+    assert!(received.public_base.is_none() && received.app_origin.is_none());
+}
+
+#[test]
+fn public_bases_and_app_origins_are_admitted_once() {
+    for base in [
+        "https://veoveo.example.com/clock",
+        "https://veoveo.example.com:8443/b/1/clock",
+        "http://localhost:8080/clock",
+        "http://vv-hub.internal:8080/clock",
+    ] {
+        assert!(PublicBase::parse(base).is_ok(), "{base}");
+    }
+    for base in [
+        "https://veoveo.example.com",
+        "https://veoveo.example.com/",
+        "https://veoveo.example.com/clock/",
+        "https://veoveo.example.com//clock",
+        "https://veoveo.example.com/clock?x=1",
+        "https://veoveo.example.com/clock#top",
+        "https://user@veoveo.example.com/clock",
+        "https://Veoveo.example.com/clock",
+        "http://veoveo.example.com/clock",
+        "veoveo.example.com/clock",
+    ] {
+        assert!(PublicBase::parse(base).is_err(), "{base}");
+    }
+    for origin in [
+        "https://clock.apps.veoveo.example.com",
+        "https://clock.apps.veoveo.example.com:8443",
+        "http://clock.apps.localhost:8080",
+    ] {
+        let parsed = AppOrigin::parse(origin).unwrap();
+        assert_eq!(parsed.to_string(), origin);
+    }
+    for origin in [
+        "https://clock.apps.veoveo.example.com/",
+        "https://clock.apps.veoveo.example.com/app",
+        "https://clock.apps.veoveo.example.com:443",
+        "https://clock.apps.veoveo.example.com?x=1",
+        "https://user@clock.apps.veoveo.example.com",
+        "http://clock.apps.veoveo.example.com",
+        "clock.apps.veoveo.example.com",
+    ] {
+        assert!(AppOrigin::parse(origin).is_err(), "{origin}");
+    }
+    let mut wire = surfaced_information();
+    wire["veoveo_public_base"] = json!("https://veoveo.example.com/clock?x=1");
+    assert!(serde_json::from_value::<ClientInformation>(wire).is_err());
+}
+
+#[test]
+fn published_schemas_admit_the_surfaces_examples() {
+    for (schema, example) in [
+        (
+            serde_json::to_value(schemars::schema_for!(RegistrationDeclaration)).unwrap(),
+            serde_json::to_value(surfaced_registration()).unwrap(),
+        ),
+        (
+            serde_json::to_value(schemars::schema_for!(ClientRegistrationRequest)).unwrap(),
+            serde_json::to_value(ClientRegistrationRequest {
+                metadata: surfaced_metadata(),
+                software_statement: SoftwareStatement::new(STATEMENT).unwrap(),
+            })
+            .unwrap(),
+        ),
+        (
+            serde_json::to_value(schemars::schema_for!(ClientInformation)).unwrap(),
+            surfaced_information(),
+        ),
+    ] {
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&example), "{example}");
+    }
+    let validator = jsonschema::validator_for(
+        &serde_json::to_value(schemars::schema_for!(ClientRegistrationRequest)).unwrap(),
+    )
+    .unwrap();
+    for (pointer, value) in [
+        ("/veoveo_surfaces/public_routes/0/max_body_bytes", json!(0)),
+        (
+            "/veoveo_surfaces/public_routes/0/requests_per_minute",
+            json!(6001),
+        ),
+        (
+            "/veoveo_surfaces/public_routes/0/prefix",
+            json!("/clock/hooks"),
+        ),
+    ] {
+        let mut invalid = serde_json::to_value(ClientRegistrationRequest {
+            metadata: surfaced_metadata(),
+            software_statement: SoftwareStatement::new(STATEMENT).unwrap(),
+        })
+        .unwrap();
+        *invalid.pointer_mut(pointer).unwrap() = value;
+        assert!(!validator.is_valid(&invalid), "{pointer}");
     }
 }

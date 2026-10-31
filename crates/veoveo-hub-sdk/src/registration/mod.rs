@@ -17,6 +17,7 @@ mod error;
 pub mod grants;
 pub mod jwk;
 pub mod oauth;
+pub mod surfaces;
 
 #[cfg(feature = "server")]
 pub mod assertion;
@@ -37,10 +38,15 @@ pub use error::DeclarationError;
 pub use grants::{PERMISSIONS_DETAIL_TYPE, PermissionsDetail, PermissionsDetailType};
 pub use jwk::{Ed25519Jwk, Ed25519JwkSet, JwkKeyId, ServerKeySet, ServerPublicKey};
 pub use oauth::{
-    AccessTokenTrust, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
+    AccessTokenTrust, AppOrigin, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
     ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DatabaseIdentifier, DatabaseUrl,
-    GrantType, RegistrationAccessToken, RegistrationErrorCode, RegistrationErrorResponse,
-    ResponseType, SoftwareStatement, StorageBinding, TokenEndpointAuthMethod, issuer_url,
+    GrantType, PublicBase, RegistrationAccessToken, RegistrationErrorCode,
+    RegistrationErrorResponse, ResponseType, SoftwareStatement, StorageBinding,
+    TokenEndpointAuthMethod, issuer_url,
+};
+pub use surfaces::{
+    BodyLimit, MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_REQUESTS_PER_MINUTE, PublicRouteDeclaration,
+    PublicRoutePrefix, RequestRate, SurfacesDeclaration,
 };
 
 /// MCP extension advertising [`RegistrationDeclaration`].

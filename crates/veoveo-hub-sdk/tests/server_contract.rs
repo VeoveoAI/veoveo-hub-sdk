@@ -181,6 +181,7 @@ macro_rules! fixture {
                                 "https://independent.example/mcp".parse().unwrap(),
                             )
                             .unwrap(),
+                            surfaces: None,
                         };
                         mcp::advertise(
                             &mut config.capabilities,

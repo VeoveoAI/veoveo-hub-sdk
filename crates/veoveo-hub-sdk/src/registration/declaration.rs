@@ -16,6 +16,10 @@ pub struct RegistrationDeclaration {
     pub uri_scheme: ResourceScheme,
     pub version: ServerVersion,
     pub endpoint: ServerEndpoint,
+    /// The HTTP the server serves besides MCP, which the Hub routes; omitted when the
+    /// server serves none. A hosted server takes it from its typed routes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<crate::registration::SurfacesDeclaration>,
 }
 
 /// A server build's version label, such as `0.1.0` or a Git revision.

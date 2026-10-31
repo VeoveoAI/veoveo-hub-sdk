@@ -142,7 +142,11 @@ any host does.
 - **App origins.** A server's app origin, `{slug}.apps.{host}`, carries only that server's
   `authenticated_routes`, behind the permission the server declares for it. The origin is
   the server's alone: it is never the host page's origin, the proxy's origin or another
-  server's.
+  server's. The host signs the person in and keeps the session in a host-only cookie of
+  the origin; it answers the origin's `/_veoveo/` paths itself, so a server's
+  authenticated routes use none there, and it keeps its own cookies, those named
+  `__Host-veoveo-app` and `__Host-veoveo-app-state`, from the server in both directions.
+  The server's own cookies on its origin pass both ways.
 
 ## View Obligations
 

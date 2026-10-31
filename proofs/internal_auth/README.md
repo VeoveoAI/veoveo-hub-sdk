@@ -20,14 +20,21 @@ check and strict library Clippy pass against both the `e268032` fixture and a
 private current-main `154a473` compilation context. The exact runtime expression
 is adopted and recorded in SDK `19a1e651`; these are focused native/source checks,
 not issuer proof results.
-Current SDK main has additional unrelated work. The inspected local Hub source
-pins SDK `239622d`; the observed newer Hub remote-tracking source pins `154a473`
-and includes additional App-origin cases. Neither whole-current-main applicability,
-pinned-Hub integration nor deployed applicability is claimed.
+Source applicability now includes SDK merge `dbfd2a0`, tree `066d726`, with Core
+`4ebcf89`: 35 focused native tests, formatting and strict library Clippy pass.
+Fresh Linux extraction retains the same generated declarations, function bodies,
+types and external interfaces. Its four raw files differ only in 95 generated
+source-location comment lines; all other bytes match this committed model. The
+[merge receipt](evidence/merged-source-20261031.json) records the exact comparison,
+inputs, outputs and setup failures. The canonical model and proofs remain unchanged;
+no new Lean theorem or full-SDK guarantee follows from this source correspondence.
+The inspected local Hub source still pins SDK `239622d`; the observed newer Hub
+remote-tracking source pins `154a473` and includes additional App-origin cases.
+Pinned-Hub integration and deployed applicability remain separate.
 Generated `Types.lean` and `Funs.lean` are copied byte-for-byte from those reviewed
 outputs. Untouched external templates are retained under `extraction/` and are
-never compiled or used as model axioms. Dependency pins and other proof packages
-are unchanged. Native issuer refinement and Hub integration remain pending.
+never compiled or used as model axioms. Other proof packages are unchanged.
+Native issuer refinement and Hub integration remain pending.
 
 The string expression remedy preserves the existing delegated comparison at the
 same guard position. Pinned Aeneas erases `fmt::Arguments` to Unit, so its old

@@ -30,53 +30,102 @@ impl HubRequestContext {
             && source.tenant.as_ref() == Some(&authority.tenant)
             && actor.tenant == source.tenant
             && token.invocation_mode == authority.provenance.mode();
-        let provenance = match &authority.provenance {
+        match &authority.provenance {
             InvocationProvenance::Direct { initiator } => {
-                actor == source
-                    && initiator == &source.id
-                    && match &token.initiator {
-                        Some(actual) => actual == initiator,
-                        None => false,
-                    }
-                    && token.delegation_id.is_none()
+                if actor != source {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if initiator != &source.id {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if !(match &token.initiator {
+                    Some(actual) => actual == initiator,
+                    None => false,
+                }) {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if token.delegation_id.is_some() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
             }
             InvocationProvenance::Automated => {
-                actor == source
-                    && source.kind == PrincipalKind::Service
-                    && source.subject.as_str() == token.oauth_client_id.as_str()
-                    && token.initiator.is_none()
-                    && token.delegation_id.is_none()
-                    && token.session_family.is_none()
+                if actor != source {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if source.kind != PrincipalKind::Service {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if source.subject.as_str() != token.oauth_client_id.as_str() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if token.initiator.is_some() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if token.delegation_id.is_some() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if token.session_family.is_some() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
             }
             InvocationProvenance::Delegated {
                 initiator,
                 delegation_id,
             } => {
-                source.kind == PrincipalKind::User
-                    && initiator == &source.id
-                    && match &token.initiator {
-                        Some(actual) => actual == initiator,
-                        None => false,
-                    }
-                    && match &token.delegation_id {
-                        Some(actual) => actual == delegation_id,
-                        None => false,
-                    }
-                    && actor.kind == PrincipalKind::Service
-                    && actor.id.as_str() == format!("{}#{}", token.issuer, token.oauth_client_id)
-                    && actor.issuer == token.issuer
-                    && actor.subject.as_str() == token.oauth_client_id.as_str()
-                    && actor.scopes == source.scopes
-                    && actor.data_labels == source.data_labels
-                    && actor.assurances == source.assurances
-                    && actor.groups.is_empty()
-                    && actor.group_roles.is_empty()
-                    && actor.roles.is_empty()
-                    && token.session_family.is_none()
+                if source.kind != PrincipalKind::User {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if initiator != &source.id {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if !(match &token.initiator {
+                    Some(actual) => actual == initiator,
+                    None => false,
+                }) {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if !(match &token.delegation_id {
+                    Some(actual) => actual == delegation_id,
+                    None => false,
+                }) {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if actor.kind != PrincipalKind::Service {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if actor.id.as_str() != format!("{}#{}", token.issuer, token.oauth_client_id) {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if actor.issuer != token.issuer {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if actor.subject.as_str() != token.oauth_client_id.as_str() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if actor.scopes != source.scopes {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if actor.data_labels != source.data_labels {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if actor.assurances != source.assurances {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if !actor.groups.is_empty() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if !actor.group_roles.is_empty() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if !actor.roles.is_empty() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
+                if token.session_family.is_some() {
+                    return Err(InternalTokenError::InvalidRequestContext);
+                }
             }
-        };
+        }
         if !common
-            || !provenance
             || (token.session_family.is_some()
                 && (source.kind != PrincipalKind::User
                     || token.invocation_mode != InvocationMode::Direct))

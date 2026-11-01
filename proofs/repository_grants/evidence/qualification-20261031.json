@@ -1,0 +1,695 @@
+{
+  "date": "2026-10-31",
+  "status": "qualified: scoped detail model/proofs and actual-source semantic control with exact source/raw restoration",
+  "qualified": true,
+  "scope": "Actual SDK PermissionsDetail.new, RepositoryDetail.new/grant only; not assignment producer, full issuer/verifier or native Lore authorization",
+  "source": {
+    "sdk_revision": "7360c0f96cb616c519d27256df214ff4f2e6e831",
+    "sdk_tree": "12fc6d9fd0d7a4c915a9a37be98b543e85f1749d",
+    "core_revision": "422dcf268d690fcbc3fee435cf9b81e7f36ffeac",
+    "file_count": 178,
+    "archive_sha256": "f60c20c32d8a80d78a3ffb3d0066d9228012e7a5c8bdae19e45cd80cdeb93877",
+    "manifest_sha256": "88f673efc8c7c7397cab96d76797583065ba8e1303b43f0960a92eb8fec09f5d",
+    "source_map_note": "Each named source-map digest retains its producing runner serialization; full per-file verification, not cross-format digest equality, establishes restoration.",
+    "baseline_extraction_receipt": "extraction-20261031.json",
+    "native_map_sha256": "8962487890fb65338c506573825b129e8cc4ab3b2f61109a8d73f6c592d82b47"
+  },
+  "execution_roles": {
+    "implementation": "coder / GPT-6.1 Sol",
+    "validation": "builder / GPT-6 Luna",
+    "review": "root / GPT-6 Astra"
+  },
+  "contracts": [
+    "PermissionsDetail.new fixes Permissions kind and preserves complete supplied actions",
+    "RepositoryDetail.new fixes Repository kind and preserves complete supplied repository/actions",
+    "grant projects exact complete identifier/actions",
+    "grant(new(g)) equals full g, including legitimate empty-action read grant",
+    "Generated RepositoryId/RepositoryAction clone laws derived, not assumed",
+    "Constructor injectivity preserves complete grant distinction"
+  ],
+  "audit": {
+    "actual_function_guards": 3,
+    "theorem_guards": 10,
+    "allowed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "witness_guards": 3,
+    "sorryAx_accepted": false
+  },
+  "tooling": {
+    "lean": "4.35.0",
+    "aeneas_revision": "fdebf20d78e8007bb92fc17068f17fc2e6cfbbbf",
+    "charon_sha256": "813d8ce502b7fe1b4bbb5e149ce7b403a031ce17c2cfd6fab831342ed397dc74",
+    "aeneas_binary_sha256": "d968af5e01e50cef84add48a75cf2af8f80751458cab931066d05f42098d934c",
+    "extraction_rust": "nightly-2026-09-17-x86_64-unknown-linux-gnu",
+    "lean_dependency": "Existing qualified Aeneas tree with historical 2-line discriminant instance-name patch; no new backend patch; clean upstream reproduction and necessity of historical patch for this graph unmeasured",
+    "ops_sha256": "c2f45dde6c27c1dec53c067a4f6fdcd2981ae8e3a6c4e3a40e6e4f102df368c5"
+  },
+  "setup_history": [
+    {
+      "case": "check1",
+      "classification": "proof syntax error, not semantic counterexample",
+      "model_ms": 22816,
+      "proof_ms": 10060,
+      "proof_exit": 1,
+      "diagnostic": "permissions_new_exact record-layout parser error at46:74; cascading sorryAx rejected; no proof OLean",
+      "log": {
+        "path": "/tmp/sdk-repository-grants-20261031/check1-mirror/proof.log",
+        "sha256": "1469cf068229db9cb66a2febe97e7764d9b3ed2a1fa707a9afa3f5b50d324fee",
+        "bytes": 1929
+      }
+    },
+    {
+      "case": "check2",
+      "classification": "syntax-only correction passed against previous implicit-unused empty-constructor interface",
+      "proof_ms": 6087,
+      "proof_exit": 0,
+      "proof_sha256": "94003104000a76ae565dd5026a68d632707b7b4cba30b8179c5bbdca124eb1df",
+      "proof_olean": {
+        "sha256": "bcdeccbc2671c1952f5068d93b6247e0e8bf0019cee1c58ce308a285d713a18e",
+        "bytes": 99288
+      },
+      "guards_passed": 13,
+      "log": {
+        "path": "/tmp/sdk-repository-grants-20261031/check2-mirror/proof.log",
+        "sha256": "b576e0e3e8f7df8836a6004c4e0154cda86c24295bd2e88bd07aaeea962abca9",
+        "bytes": 1713
+      }
+    },
+    {
+      "case": "emitted standard interface adoption",
+      "classification": "pre-validation setup correction; not a native bug or semantic control result",
+      "change": "BTreeSetTGlobal.new type parameter implicit {T} to explicit (T), matching actual mutant template; body unchanged",
+      "external_model_sha256": "aae8e658b28e547f1486f4e4437f0ced4a9356ec3ffb6e91c6280dd2e74649ae",
+      "proof_and_witness_unchanged": true
+    }
+  ],
+  "native": {
+    "summary": {
+      "path": "/tmp/sdk-repository-grants-20261031/native-baseline1/evidence/summary.json",
+      "sha256": "117cc93195123f427552f00d1c4ec7f2406c09480acf1d848a414d594b171f77",
+      "bytes": 2498
+    },
+    "control_summary": {
+      "path": "/tmp/sdk-repository-grants-20261031/native-baseline1/control1/summary.json",
+      "sha256": "a74acfcab341227c4d12feb92165687e48ed705d9577a6613b4d0c2872885549",
+      "bytes": 4963
+    },
+    "command": [
+      "/Users/rozgo/.cargo/bin/rustup",
+      "run",
+      "1.99.0-aarch64-apple-darwin",
+      "cargo",
+      "test",
+      "--locked",
+      "-p",
+      "veoveo-hub-sdk",
+      "--manifest-path",
+      "/tmp/sdk-repository-grants-20261031/native-baseline1/source/veoveo-hub-sdk/Cargo.toml",
+      "--lib",
+      "internal_auth::tests::a_runners_token_carries_the_callers_grant_on_its_linked_repository",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "test_name": "internal_auth::tests::a_runners_token_carries_the_callers_grant_on_its_linked_repository",
+    "test_source_sha256": "f2e77f6dfad76e4ddca673743bcae9534a15708d1f3ddd47825e655a19035c8d",
+    "toolchain": "1.99.0-aarch64-apple-darwin",
+    "baseline": {
+      "command_exit": 0,
+      "elapsed_ms": 51382,
+      "test_result_lines": [
+        [
+          "ok",
+          "1",
+          "0",
+          "0",
+          "0",
+          "171",
+          "0.02"
+        ]
+      ],
+      "named_tests": [
+        [
+          "internal_auth::tests::a_runners_token_carries_the_callers_grant_on_its_linked_repository",
+          "ok"
+        ]
+      ],
+      "executed_binary": {
+        "path": "/Users/rozgo/VeoveoAI/veoveo-hub-sdk/target/debug/deps/veoveo_hub_sdk-2fbdd84d6049e9f3",
+        "sha256": "d127a31e2ddf0ecbdea228d45b820cd81d845ade934211b70999763fe92c8df2",
+        "bytes": 94142880
+      },
+      "log_sha256": "15553cdb33ac1633cda173ffe19a53fddda12ba88cf61f605d491937f554fb3a",
+      "source_unchanged": true,
+      "test_passed_exactly_once": true
+    },
+    "control_stages": [
+      {
+        "stage": "mutant",
+        "command": [
+          "/Users/rozgo/.cargo/bin/rustup",
+          "run",
+          "1.99.0-aarch64-apple-darwin",
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "veoveo-hub-sdk",
+          "--manifest-path",
+          "/tmp/sdk-repository-grants-20261031/native-baseline1/source/veoveo-hub-sdk/Cargo.toml",
+          "--lib",
+          "internal_auth::tests::a_runners_token_carries_the_callers_grant_on_its_linked_repository",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "timed_out": false,
+        "elapsed_ms": 5671,
+        "test_result_lines": [
+          [
+            "FAILED",
+            "0",
+            "1",
+            "0",
+            "0",
+            "171",
+            "0.01"
+          ]
+        ],
+        "named_tests": [
+          [
+            "internal_auth::tests::a_runners_token_carries_the_callers_grant_on_its_linked_repository",
+            "FAILED"
+          ]
+        ],
+        "test_binary": {
+          "path": "/Users/rozgo/VeoveoAI/veoveo-hub-sdk/target/debug/deps/veoveo_hub_sdk-2fbdd84d6049e9f3",
+          "sha256": "506148878329082e5fc6740b89bab83d3ab79f302ccbd9de9814afd63727342e",
+          "bytes": 94142896
+        },
+        "log": "/tmp/sdk-repository-grants-20261031/native-baseline1/control1/evidence-mutant/native.log",
+        "log_bytes": 1290,
+        "log_sha256": "9e3b0cf58e6e52dbfcf82217f19d5bd6e532868addf97c531b4c28a0e00162a4"
+      },
+      {
+        "stage": "restored",
+        "command": [
+          "/Users/rozgo/.cargo/bin/rustup",
+          "run",
+          "1.99.0-aarch64-apple-darwin",
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "veoveo-hub-sdk",
+          "--manifest-path",
+          "/tmp/sdk-repository-grants-20261031/native-baseline1/source/veoveo-hub-sdk/Cargo.toml",
+          "--lib",
+          "internal_auth::tests::a_runners_token_carries_the_callers_grant_on_its_linked_repository",
+          "--",
+          "--exact",
+          "--nocapture"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "elapsed_ms": 5823,
+        "test_result_lines": [
+          [
+            "ok",
+            "1",
+            "0",
+            "0",
+            "0",
+            "171",
+            "0.02"
+          ]
+        ],
+        "named_tests": [
+          [
+            "internal_auth::tests::a_runners_token_carries_the_callers_grant_on_its_linked_repository",
+            "ok"
+          ]
+        ],
+        "test_binary": {
+          "path": "/Users/rozgo/VeoveoAI/veoveo-hub-sdk/target/debug/deps/veoveo_hub_sdk-2fbdd84d6049e9f3",
+          "sha256": "e2aac4532cd619d00305a1869ce5a2020e7b404c8f4239837a7eb951c43a65dc",
+          "bytes": 94142880
+        },
+        "log": "/tmp/sdk-repository-grants-20261031/native-baseline1/control1/evidence-restored/native.log",
+        "log_bytes": 545,
+        "log_sha256": "ff1871b7077aff3ce6f8ca24882dfdfd36470ec6c9d9bc225653446fc1e221b7"
+      }
+    ],
+    "assertion": "Mutant compiled and exact named test failed at first nonempty grant assertion: actions {} versus {push-protected,write}; no compiler/setup failure. Later empty-read assertions were not reached in mutant execution.",
+    "restored_exact178_map": true,
+    "restored_source_map_sha256": "8962487890fb65338c506573825b129e8cc4ab3b2f61109a8d73f6c592d82b47",
+    "timing_note": "Native timings are entire Cargo command durations including compilation, not grant operation latency. Harness times baseline/restored0.02s, mutant0.01s.",
+    "binary_note": "Restored native binary bytes/hash differ from initial baseline despite exact source restoration; no cause inferred."
+  },
+  "control": {
+    "patch_sha256": "afde2e5c03896256059c04713966c936bc7590f75c71958a211dd7241e3a8fa5",
+    "witness_sha256": "cf1274b5574ece1bcaf7dd3ecef820044b66ffe29b2b37716b1b466e8f31166e",
+    "fault": "Actual RepositoryDetail.grant projects clone(new empty set), retaining reachable clone interfaces",
+    "own_interface_gate": "exact three roots; all seven baseline own functions and full native fields retained; zero own opaque bodies",
+    "mutant_formal": {
+      "status": "root reviewed and accepted intended semantic rejection",
+      "model_ms": 9043,
+      "model_exit": 0,
+      "unchanged_proof_ms": 3696,
+      "unchanged_proof_exit": 1,
+      "proof_source_sha256": "94003104000a76ae565dd5026a68d632707b7b4cba30b8179c5bbdca124eb1df",
+      "residual": "projection_exact: Result.ok {repository := detail.identifier, actions := empty} = Result.ok {repository := detail.identifier, actions := detail.actions}",
+      "classification": "Actual wrong complete action value, not missing-name/signature/type error. Cascading sorryAx in failed theorem and dependents explicitly rejected by executable guard.",
+      "failed_correctness_olean_absent": true,
+      "witness_ms": 2754,
+      "witness_exit": 0,
+      "witness_guard_count": 3,
+      "witness_axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "witness_contracts": [
+        "actual projection returns empty actions for nonempty supplied grant",
+        "actual output differs from complete supplied grant",
+        "legitimate empty read preserved"
+      ],
+      "witness_imports_failed_correctness_module": false,
+      "witness_olean": {
+        "RepositoryGrantDropActionsWitness.olean": "0fb9fac31207f563eaf4e53cf68d1e42886e4d1372b9c0da9960a521527b290d"
+      },
+      "fresh_model_oleans": {
+        "Funs.olean": "6b5a17cb302857719f7926b755f28ef4fbc27219ddd5fd2cb89fc80c530a2b9c",
+        "FunsExternal.olean": "679de33364ac17b4240ef2c2f8035062fa850211c34c380fda3b51051fb8345d",
+        "Types.olean": "0d5a903b182ce029aaa368560a9fcb96bda3d742b95b1e34063c2f7363c38503",
+        "TypesExternal.olean": "d231cb1be794b9426633ce87d107d69279e15244c42d58af94fe066146faa80a"
+      },
+      "model_log": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/model-build.log",
+        "sha256": "106ac6a69e095083dd7430b48ad0ed359483cbfd91682957c29bf0cc5da681a1",
+        "bytes": 978
+      },
+      "proof_log": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/proof.log",
+        "sha256": "8aa352470b4517236111ffa2b09fb9f75bda7bbd53aa58ec4bb73fc57e6bc15d",
+        "bytes": 2039
+      },
+      "witness_log": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/witness.log",
+        "sha256": "a728153ef81c1c7fae8abdddaa3093103c46e0c725325e5229ce5d0958fef933",
+        "bytes": 588
+      },
+      "status_record": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/status.txt",
+        "sha256": "a45ff2fabd8d3d32e50d10a78edd58e720c518742ca549ec895e334997607d30",
+        "bytes": 1113
+      },
+      "all_source_postchecks": 0,
+      "input_maps": {
+        "input-before.sha256": {
+          "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/input-before.sha256",
+          "sha256": "3b70f8e10ececd431a62c97608dc963cb9a5d8653c72783c2241da464245752a",
+          "bytes": 2057
+        },
+        "input-after-model.sha256": {
+          "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/input-after-model.sha256",
+          "sha256": "3b70f8e10ececd431a62c97608dc963cb9a5d8653c72783c2241da464245752a",
+          "bytes": 2057
+        },
+        "input-after-proof.sha256": {
+          "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/input-after-proof.sha256",
+          "sha256": "3b70f8e10ececd431a62c97608dc963cb9a5d8653c72783c2241da464245752a",
+          "bytes": 2057
+        },
+        "input-after-witness.sha256": {
+          "path": "/tmp/sdk-repository-grants-20261031/interface-check3/mutant-mirror/evidence/input-after-witness.sha256",
+          "sha256": "3b70f8e10ececd431a62c97608dc963cb9a5d8653c72783c2241da464245752a",
+          "bytes": 2057
+        }
+      },
+      "warning": "Nonblocking unnecessary simpa warning in witness; no source cleanup during control."
+    },
+    "restored_formal": {
+      "status": "root reviewed and accepted fresh restored model/proof",
+      "model_ms": 8486,
+      "proof_ms": 3184,
+      "model_exit": 0,
+      "proof_exit": 0,
+      "source_postchecks": 0,
+      "guards_passed": 13,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "prepared_record": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/final-restored1/prepared.json",
+        "sha256": "fbcca1b1983103be72d920b99114bef42ff462a046ce7e11b387389f1fb48923",
+        "bytes": 1740
+      },
+      "raw4_restoration_verified": true,
+      "fresh_own_artifacts": true,
+      "same_corrected_primitive_as_baseline": true,
+      "model_log": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/final-restored1-mirror/evidence/model-build.log",
+        "sha256": "8deae4049b9294d66f8256e0bd28a1e88f9eee981d2603be927619982e930079",
+        "bytes": 978
+      },
+      "proof_log": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/final-restored1-mirror/evidence/proof.log",
+        "sha256": "b576e0e3e8f7df8836a6004c4e0154cda86c24295bd2e88bd07aaeea962abca9",
+        "bytes": 1713
+      },
+      "status_record": {
+        "path": "/tmp/sdk-repository-grants-20261031/interface-check3/final-restored1-mirror/evidence/status.txt",
+        "sha256": "0771a07b3e36da5052b2186a3b4750edfe7cdda860c48c37581fbdc1820192a9",
+        "bytes": 642
+      },
+      "input_maps": {
+        "input-before.sha256": {
+          "path": "/tmp/sdk-repository-grants-20261031/interface-check3/final-restored1-mirror/evidence/input-before.sha256",
+          "sha256": "cbbf52686579ca3c24b6a241cb4a7974fbfb52d387adec5e701f6a01c3a3968f",
+          "bytes": 1945
+        },
+        "input-after-model.sha256": {
+          "path": "/tmp/sdk-repository-grants-20261031/interface-check3/final-restored1-mirror/evidence/input-after-model.sha256",
+          "sha256": "cbbf52686579ca3c24b6a241cb4a7974fbfb52d387adec5e701f6a01c3a3968f",
+          "bytes": 1945
+        },
+        "input-after-proof.sha256": {
+          "path": "/tmp/sdk-repository-grants-20261031/interface-check3/final-restored1-mirror/evidence/input-after-proof.sha256",
+          "sha256": "cbbf52686579ca3c24b6a241cb4a7974fbfb52d387adec5e701f6a01c3a3968f",
+          "bytes": 1945
+        }
+      },
+      "model_oleans": {
+        "Funs.olean": "0110b17df2cf18eac4f72fd438e64152c264972a83e4e70075c150ff42fbb54b",
+        "FunsExternal.olean": "5edefb5a2766c52700e2097afab896ed286ca8d7b23045ea14e516366425af75",
+        "Types.olean": "da2952511bb2ee80c4b1e3aa29c6205660ff7b4968dc4b5364dc3105a4574031",
+        "TypesExternal.olean": "3a6a071f36a9cedea202a8a32a5af4d1aba7bad435dc06e0d2593504463fd7e9"
+      },
+      "proof_olean": {
+        "sha256": "7aebcc207eaf2154be1a34843cbe7da97094493aba459f6ef5e3b05aac4c0431",
+        "bytes": 99288
+      },
+      "proof_olean_matches_corrected_baseline": true,
+      "model_oleans_match_corrected_baseline": false,
+      "binary_note": "All four raw Lean source outputs and checked own proof/model sources restored exactly; fresh model OLean hashes differ from corrected baseline. No cause or binary reproducibility claim."
+    },
+    "mutant_extraction": {
+      "summary": {
+        "path": "/tmp/sdk-repository-grants-20261031/actions-control1-mirror/mutant-extraction/summary.json",
+        "sha256": "e0a736b82f6897597aaa6363bdd08d9467ba9c5a17cd7578dec9b06557d428b6",
+        "bytes": 13958
+      },
+      "complete": true,
+      "selector_counts": {
+        "expected_root_functions": 3,
+        "explicit_opaques": 0,
+        "includes": 3,
+        "starts": 2
+      },
+      "inventory": {
+        "core_type_count": 1,
+        "counts": {
+          "fun_decls": 48,
+          "global_decls": 0,
+          "trait_decls": 6,
+          "trait_impls": 32,
+          "type_decls": 22
+        },
+        "gate_failures": [],
+        "own_function_count": 7,
+        "passed": true,
+        "path": "/home/rozgo/.cache/lean-pilot/sdk-repository-grants-20261031/actions-control1/mutant-extraction/llbc-inventory.json",
+        "sha256": "b1b8109df305f1232fde313c1d25e9044fe4c13cbf57b8668d757ed7582ee571"
+      },
+      "llbc": {
+        "bytes": 323093,
+        "exists": true,
+        "path": "/home/rozgo/.cache/lean-pilot/sdk-repository-grants-20261031/actions-control1/mutant-extraction/outputs/sdk_grant_details.llbc",
+        "sha256": "9acac4a99a5c7c9f4186053083b7602ae0074245cff7a583d985eeffd022fc4c"
+      },
+      "stages": [
+        {
+          "stage": "apply-frozen-fault",
+          "exit": 0,
+          "elapsed_s": 0.008,
+          "log_sha256": "57f14b9d3ddbc645e894c3ccd184a9bd545f75c8c7bc183afc1e70a371114a1f"
+        },
+        {
+          "stage": "source-metadata",
+          "exit": 0,
+          "elapsed_s": 0.365,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "clean-sdk-package-only",
+          "exit": 0,
+          "elapsed_s": 0.114,
+          "log_sha256": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28"
+        },
+        {
+          "stage": "charon-sdk-grant-details",
+          "exit": 0,
+          "elapsed_s": 16.099,
+          "log_sha256": "ff82776cb8ff67afeb0bbe7a74d411e1cb7ff21dace5e22e01831e5b9cc0d746"
+        },
+        {
+          "stage": "aeneas-sdk-grant-details",
+          "exit": 0,
+          "elapsed_s": 0.565,
+          "log_sha256": "d239e88dc81a71036be4622141d5b19c588ed841eac6987d0eabbff8320597ee"
+        }
+      ],
+      "raw4": {
+        "Funs.lean": {
+          "sha256": "63111ddf09f2a94b3bf687e9c4fbf8649de525a755afad1fb12dcf7d4f18b67c",
+          "bytes": 4681
+        },
+        "FunsExternal_Template.lean": {
+          "sha256": "35fa9a19614d884ef0b680bf771ac648eafab91f1fc130a42b75499a49f11bd3",
+          "bytes": 2672
+        },
+        "Types.lean": {
+          "sha256": "dcbc7b67427da67d9e5a14ca054e49c8a0a061e5f88eddd9f3f3e875bcdf4e0d",
+          "bytes": 3858
+        },
+        "TypesExternal_Template.lean": {
+          "sha256": "a825ae292e353a8c0f02ee398ebfbd7077b085334c2f58767d9498af6a601a81",
+          "bytes": 1121
+        }
+      },
+      "source_map_verified": true,
+      "source_control": {
+        "effective_source_sha256": "673c12d198dabd8745b69d7ce0bc635fb32f8d7023199e6ada82175c14b8355f",
+        "full178_map_verified": true,
+        "phase": "mutant",
+        "pristine_source_sha256": "b25b0429d63da264da143ae19c45d051997749cfe06133a27012ae0c940fbb15",
+        "source_file": "crates/veoveo-hub-sdk/src/registration/grants.rs"
+      }
+    },
+    "restored_extraction": {
+      "summary": {
+        "path": "/tmp/sdk-repository-grants-20261031/actions-control1-mirror/restored-extraction/summary.json",
+        "sha256": "a5681cb06a94a2fd96a230fb9a2a09b1003b7d5cd42214be752e69ba1b342112",
+        "bytes": 14047
+      },
+      "complete": true,
+      "selector_counts": {
+        "expected_root_functions": 3,
+        "explicit_opaques": 0,
+        "includes": 3,
+        "starts": 2
+      },
+      "inventory": {
+        "core_type_count": 1,
+        "counts": {
+          "fun_decls": 47,
+          "global_decls": 0,
+          "trait_decls": 6,
+          "trait_impls": 32,
+          "type_decls": 22
+        },
+        "gate_failures": [],
+        "own_function_count": 7,
+        "passed": true,
+        "path": "/home/rozgo/.cache/lean-pilot/sdk-repository-grants-20261031/actions-control1/restored-extraction/llbc-inventory.json",
+        "sha256": "3b0435402924691b577d578622c96472bb8f734c55c5db6ae31b6332fbccb64e"
+      },
+      "llbc": {
+        "bytes": 317101,
+        "exists": true,
+        "path": "/home/rozgo/.cache/lean-pilot/sdk-repository-grants-20261031/actions-control1/restored-extraction/outputs/sdk_grant_details.llbc",
+        "sha256": "d672b98ae0541b16f330363daf9a3e25844ff21724d1b4303f09b64b3ca1f13e"
+      },
+      "stages": [
+        {
+          "stage": "reverse-same-fault",
+          "exit": 0,
+          "elapsed_s": 0.005,
+          "log_sha256": "57f14b9d3ddbc645e894c3ccd184a9bd545f75c8c7bc183afc1e70a371114a1f"
+        },
+        {
+          "stage": "source-metadata",
+          "exit": 0,
+          "elapsed_s": 0.214,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "stage": "clean-sdk-package-only",
+          "exit": 0,
+          "elapsed_s": 0.114,
+          "log_sha256": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28"
+        },
+        {
+          "stage": "charon-sdk-grant-details",
+          "exit": 0,
+          "elapsed_s": 13.289,
+          "log_sha256": "3d3041074f533006ef23f07d346c67701847109694776f849c8516282642f0ef"
+        },
+        {
+          "stage": "aeneas-sdk-grant-details",
+          "exit": 0,
+          "elapsed_s": 0.565,
+          "log_sha256": "0c8156fc8cf7d5a8361a39bfa8254b0eb212288c81087ef4f235fa6ac1d8cc87"
+        }
+      ],
+      "raw4": {
+        "Funs.lean": {
+          "sha256": "40c0e1be9dbe30221421189fb02b4a21afc458343bf6bff18fc9335e83dbdf45",
+          "bytes": 4581
+        },
+        "FunsExternal_Template.lean": {
+          "sha256": "2300e46b90c248bc25b0c42a9fe18fddbb7880a27230b993f6ca4c0c1c1bf1b1",
+          "bytes": 2061
+        },
+        "Types.lean": {
+          "sha256": "dcbc7b67427da67d9e5a14ca054e49c8a0a061e5f88eddd9f3f3e875bcdf4e0d",
+          "bytes": 3858
+        },
+        "TypesExternal_Template.lean": {
+          "sha256": "a825ae292e353a8c0f02ee398ebfbd7077b085334c2f58767d9498af6a601a81",
+          "bytes": 1121
+        }
+      },
+      "source_map_verified": true,
+      "source_control": {
+        "effective_source_sha256": "b25b0429d63da264da143ae19c45d051997749cfe06133a27012ae0c940fbb15",
+        "full178_map_verified": true,
+        "phase": "restored",
+        "pristine_source_sha256": "b25b0429d63da264da143ae19c45d051997749cfe06133a27012ae0c940fbb15",
+        "source_file": "crates/veoveo-hub-sdk/src/registration/grants.rs"
+      },
+      "restored_raw4_exact": true
+    }
+  },
+  "boundaries": [
+    "Finset value representation and modeled traversal/allocator/String clone are explicit standard refinement assumptions; native allocation failure/panic/alias/traversal effects not verified",
+    "Full String payloads retained; parsers/domain validity not proved",
+    "No serde/wire/crypto/issuer-verifier/Hub group-assignment/native Lore contribution claim",
+    "Synthetic source fault tests proof sensitivity; no new production defect or runtime behavior change"
+  ],
+  "restoration_note": "Original178 source files and all4 raw Lean outputs restored exactly. Restored LLBC317101bytes differs from original317098bytes; identities recorded, no normalized or inferred byte-equivalence claim.",
+  "corrected_interface_baseline": {
+    "model_ms": 10773,
+    "proof_ms": 3927,
+    "model_exit": 0,
+    "proof_exit": 0,
+    "source_postchecks": 0,
+    "guards_passed": 13,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "model_log": {
+      "path": "/tmp/sdk-repository-grants-20261031/interface-check3/baseline-mirror/model-build.log",
+      "sha256": "a6605dc1023775787912dda7cae8ebbde006c0049730abb2969d269f3e2d0f0f",
+      "bytes": 978
+    },
+    "proof_log": {
+      "path": "/tmp/sdk-repository-grants-20261031/interface-check3/baseline-mirror/proof.log",
+      "sha256": "b576e0e3e8f7df8836a6004c4e0154cda86c24295bd2e88bd07aaeea962abca9",
+      "bytes": 1713
+    },
+    "status": {
+      "path": "/tmp/sdk-repository-grants-20261031/interface-check3/baseline-mirror/status.txt",
+      "sha256": "beb81a9ee86f9b98ec7dc0bb4eb95f7175009d1ffafda56dc2f4ab848eb990e5",
+      "bytes": 629
+    },
+    "input_before": {
+      "path": "/tmp/sdk-repository-grants-20261031/interface-check3/baseline-mirror/input-before.sha256",
+      "sha256": "cbbf52686579ca3c24b6a241cb4a7974fbfb52d387adec5e701f6a01c3a3968f",
+      "bytes": 1945
+    },
+    "input_after_model": {
+      "path": "/tmp/sdk-repository-grants-20261031/interface-check3/baseline-mirror/input-after-model.sha256",
+      "sha256": "cbbf52686579ca3c24b6a241cb4a7974fbfb52d387adec5e701f6a01c3a3968f",
+      "bytes": 1945
+    },
+    "input_after_proof": {
+      "path": "/tmp/sdk-repository-grants-20261031/interface-check3/baseline-mirror/input-after-proof.sha256",
+      "sha256": "cbbf52686579ca3c24b6a241cb4a7974fbfb52d387adec5e701f6a01c3a3968f",
+      "bytes": 1945
+    },
+    "model_oleans": {
+      "Funs.olean": "ff8461449427fc8ce92069bbcd24562925957177ebe5a2ec95e7025024d00bcf",
+      "FunsExternal.olean": "bd860c31abedb04bf7fd622ff7fc4abbd44e70f26d7c07040f754c5140ef6d26",
+      "Types.olean": "daf192f18b530e58c02c15dcb815ceaa99c52ad87fc6e5cdf7c1da61940a1e31",
+      "TypesExternal.olean": "686d80d674a291a85b641f5beef32eab2b6052dd1636aa09875b072cf1be9055"
+    },
+    "proof_olean": {
+      "RepositoryGrantProof.olean": "7aebcc207eaf2154be1a34843cbe7da97094493aba459f6ef5e3b05aac4c0431"
+    },
+    "fresh_own_artifacts": true,
+    "same_repaired_primitive_for_baseline_and_mutant": true
+  },
+  "qualified_scope": "Model-relative exact actual PermissionsDetail.new, RepositoryDetail.new/grant and full roundtrip including empty read; synthetic actual-source action-loss sensitivity established independently in existing native test and Funs-only witness; no broader producer/issuer/verifier/Lore qualification.",
+  "published_proof_sources": {
+    "RepositoryGrantProof.lean": {
+      "sha256": "94003104000a76ae565dd5026a68d632707b7b4cba30b8179c5bbdca124eb1df",
+      "bytes": 5819
+    },
+    "SdkGrantDetailModel/Funs.lean": {
+      "sha256": "40c0e1be9dbe30221421189fb02b4a21afc458343bf6bff18fc9335e83dbdf45",
+      "bytes": 4581
+    },
+    "SdkGrantDetailModel/FunsExternal.lean": {
+      "sha256": "aae8e658b28e547f1486f4e4437f0ced4a9356ec3ffb6e91c6280dd2e74649ae",
+      "bytes": 1913
+    },
+    "SdkGrantDetailModel/Types.lean": {
+      "sha256": "dcbc7b67427da67d9e5a14ca054e49c8a0a061e5f88eddd9f3f3e875bcdf4e0d",
+      "bytes": 3858
+    },
+    "SdkGrantDetailModel/TypesExternal.lean": {
+      "sha256": "277ee9fa1c8dceb5357783fc66b65e25019f7767eb1726cf8f4e28a0172747f2",
+      "bytes": 494
+    },
+    "SdkGrantDetailModel.lean": {
+      "sha256": "db21c74ef06bfcd095ee9387215b095127ec2a8c1a7958dd4a6a52a5d05c1f3d",
+      "bytes": 32
+    },
+    "extraction/SdkGrantDetailModel/FunsExternal_Template.lean": {
+      "sha256": "2300e46b90c248bc25b0c42a9fe18fddbb7880a27230b993f6ca4c0c1c1bf1b1",
+      "bytes": 2061
+    },
+    "extraction/SdkGrantDetailModel/TypesExternal_Template.lean": {
+      "sha256": "a825ae292e353a8c0f02ee398ebfbd7077b085334c2f58767d9498af6a601a81",
+      "bytes": 1121
+    },
+    "lakefile.lean": {
+      "sha256": "80a23f436179499a4713a21721af56f95b7d9643370cdfc7e9eea41f556b57a5",
+      "bytes": 404
+    },
+    "mutations/RepositoryGrantDropActionsWitness.lean": {
+      "sha256": "cf1274b5574ece1bcaf7dd3ecef820044b66ffe29b2b37716b1b466e8f31166e",
+      "bytes": 2945
+    }
+  }
+}

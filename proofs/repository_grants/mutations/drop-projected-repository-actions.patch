@@ -1,0 +1,11 @@
+--- a/crates/veoveo-hub-sdk/src/registration/grants.rs
++++ b/crates/veoveo-hub-sdk/src/registration/grants.rs
+@@ -156,7 +156,7 @@
+     pub fn grant(&self) -> RepositoryGrant {
+         RepositoryGrant {
+             repository: self.identifier.clone(),
+-            actions: self.actions.clone(),
++            actions: BTreeSet::<RepositoryAction>::new().clone(),
+         }
+     }
+ }

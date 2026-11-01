@@ -1,0 +1,118 @@
+{
+  "case": "sdk736-local-grant-detail-construction-feasibility1",
+  "command": "timeout --signal=TERM --kill-after=15s 1600s python3 /home/rozgo/.cache/lean-pilot/hub-linked-request-current-20261031/sdk-grant-detail-probe1/run-extraction.py",
+  "runner_exit": 0,
+  "complete": true,
+  "source": {
+    "sdk_revision": "7360c0f96cb616c519d27256df214ff4f2e6e831",
+    "tree": "12fc6d9fd0d7a4c915a9a37be98b543e85f1749d",
+    "file_count": 178,
+    "source_map_sha256": "5358717ca6677785072c1c91b18aa8566f34e9e8fe946eecbb7be3ad5147af51",
+    "sdk_archive_sha256": "f60c20c32d8a80d78a3ffb3d0066d9228012e7a5c8bdae19e45cd80cdeb93877",
+    "manifest_sha256": "88f673efc8c7c7397cab96d76797583065ba8e1303b43f0960a92eb8fec09f5d",
+    "core_pin": "422dcf268d690fcbc3fee435cf9b81e7f36ffeac",
+    "core_sources_verified": true
+  },
+  "selectors": {
+    "patterns": 2,
+    "includes": 3,
+    "explicit_opaques": 0,
+    "expected_actual_root_functions": 3
+  },
+  "roots": [
+    {
+      "name": "PermissionsDetail::new",
+      "source": "crates/veoveo-hub-sdk/src/registration/grants.rs:32-37",
+      "opacity": "Transparent",
+      "errors": false
+    },
+    {
+      "name": "RepositoryDetail::new",
+      "source": "crates/veoveo-hub-sdk/src/registration/grants.rs:147-153",
+      "opacity": "Transparent",
+      "errors": false
+    },
+    {
+      "name": "RepositoryDetail::grant",
+      "source": "crates/veoveo-hub-sdk/src/registration/grants.rs:156-161",
+      "opacity": "Transparent",
+      "errors": false
+    }
+  ],
+  "inventory": {
+    "passed": true,
+    "own_functions": 7,
+    "own_functions_transparent": 7,
+    "own_function_errors": 0,
+    "own_types": 8,
+    "own_types_transparent": 8,
+    "own_type_errors": 0,
+    "core_types": 1,
+    "core_type_transparent": [
+      "veoveo_types::permission_names::PermissionName"
+    ],
+    "field_sets": {
+      "RepositoryGrant": [
+        "repository",
+        "actions"
+      ],
+      "RepositoryDetail": [
+        "kind",
+        "identifier",
+        "actions"
+      ],
+      "PermissionsDetail": [
+        "kind",
+        "actions"
+      ]
+    },
+    "typed_fields_checked": true,
+    "native_string_payload_types": [
+      "RepositoryId",
+      "RepositoryAction",
+      "PermissionName"
+    ],
+    "detail_kind_variants_checked": true,
+    "charon_version": "0.1.293"
+  },
+  "timings_time_v": {
+    "source_metadata_wall_seconds": 0.23,
+    "sdk_package_clean_wall_seconds": 0.09,
+    "charon_wall_seconds": 16.19,
+    "aeneas_wall_seconds": 0.62
+  },
+  "artifacts": {
+    "llbc": {
+      "bytes": 317098,
+      "sha256": "a584e81f0f3ddf4f7fb99cd10af209e39823e00aceda92eae24b18093062e0ab"
+    },
+    "Funs.lean": {
+      "bytes": 4581,
+      "sha256": "40c0e1be9dbe30221421189fb02b4a21afc458343bf6bff18fc9335e83dbdf45"
+    },
+    "FunsExternal_Template.lean": {
+      "bytes": 2061,
+      "sha256": "2300e46b90c248bc25b0c42a9fe18fddbb7880a27230b993f6ca4c0c1c1bf1b1"
+    },
+    "Types.lean": {
+      "bytes": 3858,
+      "sha256": "dcbc7b67427da67d9e5a14ca054e49c8a0a061e5f88eddd9f3f3e875bcdf4e0d"
+    },
+    "TypesExternal_Template.lean": {
+      "bytes": 1121,
+      "sha256": "a825ae292e353a8c0f02ee398ebfbd7077b085334c2f58767d9498af6a601a81"
+    }
+  },
+  "log_hashes": {
+    "runner.log": "c555dcd2805066c327cd33fc9eed73d157956f3c26d270f7b18c8a01dcb79908",
+    "source-metadata.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clean-sdk-package-only.log": "0bdaeb2aa6a92a0fdfec2d2cc4d0ab71946de5d0654e08c526e4629130ae0f28",
+    "charon.log": "861034c5b1fd0388570a1151e61906b1e24529c5fc0485ac5083d8afd22db6e5",
+    "aeneas.log": "1dfe004d391462b9cf1c777a2036c7bdbe3cf8d26c31395aa42d0ff4f86e0f3a",
+    "inventory.json": "3b0435402924691b577d578622c96472bb8f734c55c5db6ae31b6332fbccb64e",
+    "summary.json": "52a016f46368123cbc4d44cb5ad037c7ebf350a2beb195cb679acaedd1f0b089"
+  },
+  "qualification_boundary": "Actual3root raw translation only, not yet Lean elaboration or correctness, no JSON/crypto/native Lore/full issuer/verifier qualification.",
+  "status": "Extraction/body inventory completed; Lean model/proof and semantic control validation pending.",
+  "compact_execution_summary_sha256": "2a986bf22ef6d4a5c8953de1b9021b6ea76bdc30eec28dd55e6a37e4093f759c"
+}

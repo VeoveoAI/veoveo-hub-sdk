@@ -1,5 +1,37 @@
 # Internal-token assembly (manual, in progress)
 
+## Current source and historical proof scope
+
+The historical proof commits through SDK `e82ceb89` are retained in main's merge
+history. Their checked generated model, theorem sources and receipts remain tied
+to the recorded SDK/Core revisions below, including the prepared `e268032` slice
+and the `dbfd2a0`/`e82ceb89` merged-source correspondence checkpoint. They are not a
+qualification of every subsequent SDK revision.
+
+The integration with upstream SDK `db64f9ee` preserves upstream runtime bytes,
+including its linked-repository implementation. The older private claims-binder
+rename and delegated-ID String-construction preparation are not reapplied to that
+runtime. The historical models and evidence remain unchanged; reproducing those
+proofs uses their recorded source, rather than extracting current source and
+assuming the same result.
+
+Current linked repository grants, authorization-detail assembly and the decoded-
+claims verifier identity path are not yet qualified by this package. A fresh,
+unmodified SDK `7360c0f`/Core `422dcf2` extraction feasibility probe is in progress;
+it includes `issue_with_repository` and `identity_from_claims`, and retains the
+known formatter, binder and identifier boundaries for measured diagnosis. No
+current-source theorem or cryptographic/JSON-decoding guarantee follows from that
+pending probe. Upstream `db64f9ee` differs from `7360c0f` only in the Apps design
+document; their runtime source and Cargo inputs are identical.
+
+The merge's frozen input tree `ce54d406` passed `docker build --target check .` on
+Mac Docker Desktop and Linux: 328 tests passed and three were skipped on each.
+These are native component checks, not fresh Lean proofs. The
+[integration receipt](evidence/published-history-integration-20261031.json)
+records source correspondence, measured checks and retained proof scope.
+
+## Recorded assembly qualification
+
 This SDK-owned package models the actual `issue`, `create_identity`, request-context,
 claims, actor-chain and recipient functions. It does not import Hub proof code or
 replace the issuer with a function that returns a chosen identity. The model
@@ -20,7 +52,7 @@ check and strict library Clippy pass against both the `e268032` fixture and a
 private current-main `154a473` compilation context. The exact runtime expression
 is adopted and recorded in SDK `19a1e651`; these are focused native/source checks,
 not issuer proof results.
-Source applicability now includes SDK merge `dbfd2a0`, tree `066d726`, with Core
+Recorded source applicability includes SDK merge `dbfd2a0`, tree `066d726`, with Core
 `4ebcf89`: 35 focused native tests, formatting and strict library Clippy pass.
 Fresh Linux extraction retains the same generated declarations, function bodies,
 types and external interfaces. Its four raw files differ only in 95 generated

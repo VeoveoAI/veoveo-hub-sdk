@@ -94,7 +94,7 @@ impl SurfacesDeclaration {
 }
 
 /// A public route prefix: an absolute path of nonempty segments of RFC 3986 unreserved
-/// characters, ending with `/`, such as `/n8n/hooks/`. Its first segment is the
+/// characters, ending with `/`, such as `/ledger/hooks/`. Its first segment is the
 /// server's mount.
 #[derive(
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,

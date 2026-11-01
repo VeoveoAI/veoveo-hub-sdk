@@ -985,10 +985,13 @@ impl IntoFuture for CallByName {
             timeout,
         } = self;
         let call = async move {
-            let (provider, _) = name.parts().map_err(|error| CallError::ToolName {
-                name: name.clone(),
-                error,
-            })?;
+            let provider = name
+                .projection()
+                .map_err(|error| CallError::ToolName {
+                    name: name.clone(),
+                    error,
+                })?
+                .server;
             let params = CallToolRequestParams::new(name.to_string()).with_arguments(arguments);
             let answer = client
                 .request(&Route::Provider(provider), |connection| {

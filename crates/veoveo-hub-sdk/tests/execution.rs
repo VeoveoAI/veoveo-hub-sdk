@@ -131,3 +131,52 @@ fn an_execution_context_carries_only_its_composition() {
         "a context that names an environment is refused"
     );
 }
+
+#[test]
+fn a_linked_component_names_one_runner_per_link() {
+    let other = "019a05cb-6c00-7000-8712-3456789abcdf";
+    let link = |name: &str| veoveo_hub_sdk::hub::LinkName::parse(name).unwrap();
+    let runners = ResolvedComponent::Runners {
+        runners: [
+            (link("team-b"), DeploymentId::parse(other).unwrap()),
+            (link("team-a"), DeploymentId::parse(DEPLOYMENT).unwrap()),
+        ]
+        .into_iter()
+        .collect(),
+    };
+    let composition = selected(&[("ledger", runners.clone())]);
+    // Fixed vector independently calculated over the exact format URI + NUL + JSON bytes.
+    assert_eq!(
+        String::from_utf8(composition.canonical_bytes()).unwrap(),
+        format!(
+            "{{\"format\":\"https://veoveo.ai/formats/resolved-composition\",\"formatVersion\":2,\"components\":{{\"ledger\":{{\"kind\":\"runners\",\"runners\":{{\"team-a\":\"{DEPLOYMENT}\",\"team-b\":\"{other}\"}}}}}}}}"
+        )
+    );
+    assert_eq!(
+        composition.revision().digest().as_str(),
+        "sha256:51dfd289f1a98f7a22809855a81fd4d7466a8fa6b5557ac2bc5266ff0113debd"
+    );
+    assert_eq!(
+        ResolvedComposition::from_canonical_bytes(&composition.canonical_bytes()).unwrap(),
+        composition
+    );
+    // Each link routes to its own runner, and neither no link nor an unknown one routes.
+    assert_eq!(
+        runners.deployment(Some(&link("team-b"))),
+        Some(DeploymentId::parse(other).unwrap())
+    );
+    assert_eq!(runners.deployment(None), None);
+    assert_eq!(runners.deployment(Some(&link("team-c"))), None);
+    assert_eq!(deployment().deployment(Some(&link("team-a"))), None);
+    assert_eq!(runners.deployments().len(), 2);
+    let canonical = String::from_utf8(composition.canonical_bytes()).unwrap();
+    for invalid in [
+        canonical.replace("team-a", "Team_A"),
+        canonical.replace(
+            "\"runners\":{",
+            "\"runners\":{\"\":\"019a05cb-6c00-7000-8712-3456789abcd0\",",
+        ),
+    ] {
+        assert!(ResolvedComposition::from_canonical_bytes(invalid.as_bytes()).is_err());
+    }
+}

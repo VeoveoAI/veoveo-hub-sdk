@@ -128,6 +128,7 @@ impl AuditDetailType for Read {
 /// | Target | URI |
 /// |---|---|
 /// | A server's tool | `veoveo://servers/{server}/tools/{tool}` |
+/// | A runner's tool, of one link of a linked server | `veoveo://servers/{server}/links/{link}/tools/{tool}` |
 /// | A server's resource template | `veoveo://servers/{server}/resource-templates/{template}` |
 /// | A server's prompt | `veoveo://servers/{server}/prompts/{prompt}` |
 /// | A server's catalog | `veoveo://servers/{server}/catalog/{collection}` |
@@ -137,6 +138,12 @@ impl AuditDetailType for Read {
 pub enum McpTarget {
     Tool {
         server: ServerSlug,
+        tool: LocalToolName,
+    },
+    /// A tool of the runner of `link`, which the caller names `{server}__{link}__{tool}`.
+    LinkedTool {
+        server: ServerSlug,
+        link: crate::hub::LinkName,
         tool: LocalToolName,
     },
     ResourceTemplate {
@@ -173,6 +180,11 @@ impl McpTarget {
         let segment = |value: &str| UriSegment::new(value);
         let uri = match self {
             Self::Tool { server, tool } => server_root(server)?
+                .segment(segment("tools")?)
+                .segment(segment(tool.as_str())?),
+            Self::LinkedTool { server, link, tool } => server_root(server)?
+                .segment(segment("links")?)
+                .segment(segment(link.as_str())?)
                 .segment(segment("tools")?)
                 .segment(segment(tool.as_str())?),
             Self::ResourceTemplate { server, uri } => server_root(server)?
@@ -269,6 +281,14 @@ mod tests {
                 tool: LocalToolName::parse("create_event").unwrap(),
             }),
             "veoveo://servers/time/tools/create_event"
+        );
+        assert_eq!(
+            target(McpTarget::LinkedTool {
+                server: server(),
+                link: crate::hub::LinkName::parse("team-a").unwrap(),
+                tool: LocalToolName::parse("create_event").unwrap(),
+            }),
+            "veoveo://servers/time/links/team-a/tools/create_event"
         );
         assert_eq!(
             target(McpTarget::Discovery {

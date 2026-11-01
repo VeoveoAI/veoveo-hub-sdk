@@ -35,7 +35,10 @@ pub use authorization::{
 };
 pub use declaration::{RegistrationDeclaration, ResourceIndicator, ServerEndpoint, ServerVersion};
 pub use error::DeclarationError;
-pub use grants::{PERMISSIONS_DETAIL_TYPE, PermissionsDetail, PermissionsDetailType};
+pub use grants::{
+    PERMISSIONS_DETAIL_TYPE, PermissionsDetail, PermissionsDetailType, REPOSITORY_DETAIL_TYPE,
+    RepositoryAction, RepositoryDetail, RepositoryDetailType, RepositoryGrant, RepositoryId,
+};
 pub use jwk::{Ed25519Jwk, Ed25519JwkSet, JwkKeyId, ServerKeySet, ServerPublicKey};
 pub use oauth::{
     AccessTokenTrust, AppOrigin, AuthorizationServerMetadata, ClientInformation, ClientMetadata,

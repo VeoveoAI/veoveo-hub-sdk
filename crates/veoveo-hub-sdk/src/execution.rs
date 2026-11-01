@@ -39,8 +39,36 @@ pub struct ExecutionContext {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResolvedComponent {
-    Deployment { deployment: DeploymentId },
+    Deployment {
+        deployment: DeploymentId,
+    },
+    /// A server whose selected branch is linked: the deployment of each link's runner, by
+    /// link name. A request names the link, so each link routes to its own runner.
+    Runners {
+        runners: BTreeMap<crate::hub::LinkName, DeploymentId>,
+    },
     Unavailable {},
+}
+
+impl ResolvedComponent {
+    /// The deployment this component routes `link` to: a deployment for no link, a runner
+    /// for its own link, and nothing otherwise.
+    pub fn deployment(&self, link: Option<&crate::hub::LinkName>) -> Option<DeploymentId> {
+        match (self, link) {
+            (Self::Deployment { deployment }, None) => Some(*deployment),
+            (Self::Runners { runners }, Some(link)) => runners.get(link).copied(),
+            _ => None,
+        }
+    }
+
+    /// Every deployment the component selects.
+    pub fn deployments(&self) -> Vec<DeploymentId> {
+        match self {
+            Self::Deployment { deployment } => vec![*deployment],
+            Self::Runners { runners } => runners.values().copied().collect(),
+            Self::Unavailable {} => Vec::new(),
+        }
+    }
 }
 
 /// Complete resolved routing of one request, from logical slug to deployment. No labels,

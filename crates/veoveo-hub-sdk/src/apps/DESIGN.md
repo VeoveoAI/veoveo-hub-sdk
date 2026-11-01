@@ -11,7 +11,7 @@ rules.
 |---|---|
 | [Model Context Protocol](https://modelcontextprotocol.io/specification/) | App discovery and invocation remain ordinary MCP resource, tool and Task traffic, version `2026-07-28`, through the Hub. |
 | MCP Apps SEP-1865 / `ext-apps` | Version `2026-01-26`: `ui://` resources, `text/html;profile=mcp-app`, tool-to-app metadata, host context and display modes, lifecycle notifications, the `postMessage` bridge, and for a web host the sandbox proxy on an origin different from the host's. Where the specification provides a mechanism, the contract uses it and adds no metadata. |
-| Forwarded MCP methods | MCP Apps `2026-01-26` lists `tools/call`, `resources/read`, `notifications/message` and `ping` for a view, and lets a host forward any other message whose method does not start with `ui/`. This host forwards the Tasks methods and `subscriptions/listen` of MCP `2026-07-28`, and passes the server's own `notifications/subscriptions/acknowledged` and `notifications/resources/updated` back to the view unchanged. Nothing is added to the `ui/` namespace. |
+| Forwarded MCP methods | MCP Apps `2026-01-26` lists `tools/call`, `resources/read`, `notifications/message` and `ping` for a view, and lets a host forward any other message whose method does not start with `ui/`. This host forwards the Tasks methods and `subscriptions/listen` of MCP `2026-07-28` and answers `resources/list`, and passes the server's own `notifications/subscriptions/acknowledged` and `notifications/resources/updated` back to the view unchanged. Nothing is added to the `ui/` namespace. |
 | Veoveo internal App navigation adapter | Repository-owned `ui/open-link` profile: a URL of the App's own server's app origin opens top-level; an exact `ui://` target navigates only when it is in the caller-visible App catalog. Other targets fail closed. |
 | MCP Tasks extension `io.modelcontextprotocol/tasks` | Version `2026-07-28`. App-started durable work keeps the lifecycle and ownership rules of an ordinary MCP client. |
 | Owned Apps metadata | The host and server serialize the same `AppExtensionCapability` MIME declaration. `ToolUiMeta`, `ResourceUiMeta` and their nested types expose owner-generated schemas for the adopted upstream profile. |
@@ -120,8 +120,13 @@ any host does.
   `tools/call` only to app-visible tools linked to that exact view on that view's server,
   through the shared admission below. A view names a tool by its server's own name, such
   as `resolve_time`, and the host maps it to the catalog name `{slug}__{tool}`. A view
-  reads its own server's resources, at their own addresses including query forms, and no
-  other server's. Every call runs through the Hub's ordinary authorization as the
+  of a server served by the runners of linked repositories names a tool with its link,
+  as `{link}__{tool}`, mapped to `{slug}__{link}__{tool}`, and reads each link's
+  resources at `{slug}://{link}/…`. A view reads its own server's resources, at their own
+  addresses including query forms, and no other server's. A view's `resources/list` is
+  answered with the resources of its own server the person may read, after the link
+  projection, so a view of a linked server finds the links whose repositories grant
+  the person from `{slug}://{link}/…`; it names no cursor, tools or templates. Every call runs through the Hub's ordinary authorization as the
   signed-in person; browser code holds no bearer token. The host passes structured
   results through without changing their numbers.
 - **Tasks.** Task-based tools stay task-based inside Apps. A view may send `tools/call`

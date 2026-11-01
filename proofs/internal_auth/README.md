@@ -16,13 +16,22 @@ proofs uses their recorded source, rather than extracting current source and
 assuming the same result.
 
 Current linked repository grants, authorization-detail assembly and the decoded-
-claims verifier identity path are not yet qualified by this package. A fresh,
-unmodified SDK `7360c0f`/Core `422dcf2` extraction feasibility probe is in progress;
-it includes `issue_with_repository` and `identity_from_claims`, and retains the
-known formatter, binder and identifier boundaries for measured diagnosis. No
-current-source theorem or cryptographic/JSON-decoding guarantee follows from that
-pending probe. Upstream `db64f9ee` differs from `7360c0f` only in the Apps design
-document; their runtime source and Cargo inputs are identical.
+claims verifier identity path are not yet qualified by this package. The fresh,
+unmodified SDK `7360c0f`/Core `422dcf2`
+[extraction investigation](evidence/current-linked-translation-20261031.json)
+includes `issue`, `issue_with_repository`, `recipient::bind` and
+`identity_from_claims`. The final own-graph inventory passes: 205 transparent
+functions, four explicit opaque function boundaries and 60 transparent Core types.
+Aeneas cannot translate the verifier's early returns inside loops, identifier-profile
+function-pointer types and related signatures; it also reports an unsupported
+standard-library string-pattern signature. No Lean files or proof results were
+produced. The first three attempts stopped at dependency-inventory checks, not at
+a semantic failure. Production, generated and backend source remain unchanged;
+no extra validation rule or opaque own helper was added to make translation pass.
+Cryptographic/JSON decoding is outside these roots. Upstream `db64f9ee` differs
+from `7360c0f` only in the Apps design document; their runtime source and Cargo
+inputs are identical. Supported translation options are being investigated; any
+separate issuance/grant proof remains partial coverage of the complete flow.
 
 The merge's frozen input tree `ce54d406` passed `docker build --target check .` on
 Mac Docker Desktop and Linux: 328 tests passed and three were skipped on each.

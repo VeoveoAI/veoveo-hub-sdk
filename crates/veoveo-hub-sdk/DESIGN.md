@@ -19,7 +19,7 @@ crate documents and in its contract resource.
 | MCP Tasks, SEP-2663 | official `tasks/get`, `tasks/update`, and `tasks/cancel`, task status notifications through `subscriptions/listen`, opaque task IDs, and typed terminal payloads |
 | MCP multi-round requests, SEP-2322 | `input_required`, protected opaque `requestState`, and retry `inputResponses`; server-initiated elicitation is excluded |
 | MCP subscriptions | request-scoped `subscriptions/listen` with an authorized accepted filter; resource subscribe and unsubscribe are excluded |
-| rmcp 3.5.0 | the official Rust SDK, pinned to the `VeoveoAI/rust-sdk` fork at `faa4e9d` for Task status subscriptions, typed HTTP rejections and quiet expected transport ends, with default features off so each SDK feature enables only the rmcp features it uses; the pin's comment states the removal condition |
+| rmcp 3.8.0 | the official Rust SDK, pinned to the `VeoveoAI/rust-sdk` fork's `veoveo/main` at `d45f7f5`, upstream `main` after 3.8.0 with the Skills extension, for Task status subscriptions, typed HTTP rejections, quiet expected transport ends and upstream's pending skill manifest checks (#1412), as the fork's `VEOVEO_FORK.md` lists them, with default features off so each SDK feature enables only the rmcp features it uses; the pin's comment states the removal condition |
 | Requirement catalog `https://veoveo.ai/formats/hosted-mcp-requirements` | C01–C31 and C33 document architectural requirements; the catalog is generated from native types. No owner compliance status or runtime certification is recorded. |
 | JSON Schema 2020-12 | ordinary rmcp and Schemars generation with bounded references and composition; each published tool argument declares one `type`, an optional argument admits no `null`, and every subschema declares `type` wherever references, composition, `const` or `enum` restrict it; `Hosted` explains a refused call's arguments against the published schema with jsonschema 0.58.6 |
 | RFC 6570 URI Templates | checked MCP setup uses the foundational ASCII-template profile and the iri-string 0.7.14 parser; domain tests qualify expansion against typed resource addresses |
@@ -694,7 +694,10 @@ started a Task, waits for that Task. `HubClient::start` resolves with a
 from the Task status subscription of the rmcp fork, which first delivers the Task's
 current status. `TaskHandle::state` reads it once, `cancel` requests cancellation, and
 `HubClient::task` restores a handle from a recorded Task identifier. `Call::timeout`
-and `TaskHandle::timeout` bound the wait.
+and `TaskHandle::timeout` bound the wait. A call that times out, or is dropped, before
+its `tools/call` is answered is abandoned: rmcp sends `notifications/cancelled` for it,
+so the provider stops working on a result no one reads. A Task the call already started
+keeps running, and `TaskHandle::cancel` ends it.
 
 `HubClient::read` resolves with the resource's content. `Read::until` subscribes to
 the resource through `subscriptions/listen` before it reads, reads again on each

@@ -234,7 +234,8 @@ where
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Wire<F, L, N> {
-            filters: F,
+            #[serde(default = "Option::default")]
+            filters: Option<F>,
             limit: Option<L>,
             cursor: Option<N>,
         }
@@ -243,9 +244,20 @@ where
             <T::Collection as Collection>::Limit,
             CursorToken<T::Collection>,
         >::deserialize(deserializer)?;
+        // Omitted filters are the empty selection: the filters of an empty object, which
+        // a filters type with a required field refuses.
+        let filters = match wire.filters {
+            Some(filters) => filters,
+            None => <T::Collection as Collection>::Filters::deserialize(
+                serde::de::value::MapDeserializer::<_, serde::de::value::Error>::new(
+                    std::iter::empty::<(&str, &str)>(),
+                ),
+            )
+            .map_err(serde::de::Error::custom)?,
+        };
         Ok(Self {
             selection: CollectionRequest {
-                filters: wire.filters,
+                filters,
                 limit: wire.limit.unwrap_or_else(T::default_limit),
                 cursor: wire.cursor,
             },
@@ -290,6 +302,20 @@ where
             {
                 limit.insert("default".into(), T::default_limit().get().into());
             }
+        }
+        // Filters without a required field may be omitted, as deserialization admits.
+        let filters = SchemaGenerator::default()
+            .into_root_schema_for::<<T::Collection as Collection>::Filters>();
+        let filters_required = filters
+            .get("required")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|required| !required.is_empty());
+        if !filters_required
+            && let Some(required) = schema
+                .get_mut("required")
+                .and_then(serde_json::Value::as_array_mut)
+        {
+            required.retain(|name| name != "filters");
         }
         schema
     }
@@ -453,6 +479,104 @@ impl<T: SingleOutput> Product<T> {
 impl<T: SingleOutput> SingleOutput for Product<T> {
     fn product_uri(&self) -> Option<&ResourceUri> {
         Some(self.result_uri())
+    }
+}
+
+#[cfg(test)]
+mod optional_filters_tests {
+    use super::*;
+    use veoveo_types::{LiveKeyset, PageSize, ServerSlug};
+
+    struct Provider;
+    impl ProviderContract for Provider {
+        fn slug() -> ServerSlug {
+            ServerSlug::parse("fixture").unwrap()
+        }
+    }
+
+    #[derive(Serialize, Deserialize, JsonSchema, Debug, PartialEq)]
+    #[serde(deny_unknown_fields)]
+    struct OptionalFilters {
+        #[serde(default)]
+        query: Option<String>,
+    }
+    #[derive(Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct RequiredFilters {
+        owner: String,
+    }
+    struct Optional;
+    impl Collection for Optional {
+        type Item = String;
+        type Filters = OptionalFilters;
+        type Key = String;
+        type Limit = PageSize<10>;
+        type Policy = LiveKeyset;
+        const NAME: &'static str = "optional";
+        fn key(item: &String) -> String {
+            item.clone()
+        }
+    }
+    struct Required;
+    impl Collection for Required {
+        type Item = String;
+        type Filters = RequiredFilters;
+        type Key = String;
+        type Limit = PageSize<10>;
+        type Policy = LiveKeyset;
+        const NAME: &'static str = "required";
+        fn key(item: &String) -> String {
+            item.clone()
+        }
+    }
+    struct OptionalTool;
+    impl CollectionTool for OptionalTool {
+        type Provider = Provider;
+        type Collection = Optional;
+        const TOOL: &'static str = "optional";
+    }
+    struct RequiredTool;
+    impl CollectionTool for RequiredTool {
+        type Provider = Provider;
+        type Collection = Required;
+        const TOOL: &'static str = "required";
+    }
+
+    fn required(schema: &Schema) -> Vec<String> {
+        schema
+            .get("required")
+            .and_then(serde_json::Value::as_array)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(|n| n.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn omitted_filters_are_the_empty_selection_when_no_field_is_required() {
+        let listed: List<OptionalTool> = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(listed.selection.filters, OptionalFilters { query: None });
+        let mut generator = SchemaGenerator::default();
+        assert!(
+            !required(&List::<OptionalTool>::json_schema(&mut generator))
+                .contains(&"filters".into())
+        );
+
+        // Filters with a required field stay required, in the schema and on the wire.
+        assert!(serde_json::from_value::<List<RequiredTool>>(serde_json::json!({})).is_err());
+        assert!(
+            required(&List::<RequiredTool>::json_schema(&mut generator))
+                .contains(&"filters".into())
+        );
+        assert!(
+            serde_json::from_value::<List<RequiredTool>>(
+                serde_json::json!({"filters": {"owner": "a"}})
+            )
+            .is_ok()
+        );
     }
 }
 

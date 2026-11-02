@@ -165,6 +165,9 @@ tool results. Each owner MUST document and test these observable guarantees:
   continuation uses RFC 6570 query expansion; a documented root may accept cursor
   queries without advertising such a template. Tools pass continuation in their
   declared input. Clients do not decode, normalize or infer token contents.
+  A collection tool's `filters` is optional when none of its fields is required:
+  omitted, it is the empty selection, so `{}` lists the first page; the input schema
+  then does not require it.
   Opacity is a client obligation, not a requirement for encryption or a globally
   unique token spelling.
 - Cursors have a documented finite byte cap and are bound to the listing and its

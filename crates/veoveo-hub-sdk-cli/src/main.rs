@@ -9,6 +9,7 @@ use veoveo_hub_sdk::{
     HubProfileId,
     client::{CatalogListing, HubClient},
     hub::HubToolName,
+    skills::SkillUri,
 };
 use veoveo_hub_sdk_cli::{
     agent::{self, Limits, Step, Stop},
@@ -101,6 +102,10 @@ enum HubCommand {
     Resources,
     /// List the prompts the caller sees.
     Prompts,
+    /// List the skills the caller sees, by the address of each skill's SKILL.md.
+    Skills,
+    /// Show one skill: its frontmatter and the manifest of its files, each read with `read`.
+    Skill { uri: String },
     /// Read one resource.
     Read { uri: String },
     /// Call one tool and print its result; a Task-backed tool runs to its end.
@@ -401,6 +406,17 @@ async fn run(client: &HubClient, command: HubCommand, json: bool) -> Result<()> 
             }
             Ok(())
         }
+        HubCommand::Skills => {
+            let skills = client.skills().await?;
+            if json {
+                return print_json(&skills);
+            }
+            for skill in skills {
+                println!("{} — {}", skill.uri, skill.frontmatter.description);
+            }
+            Ok(())
+        }
+        HubCommand::Skill { uri } => print_json(&client.skill(&SkillUri::parse(&uri)?).await?),
         HubCommand::Read { uri } => {
             print_json(&client.read_resource(&ResourceUri::new(uri)?).await?)
         }
@@ -586,6 +602,8 @@ mod tests {
             &["tools"][..],
             &["call", "console__computer"],
             &["read", "x://y"],
+            &["skills"],
+            &["skill", "skill://console/watch/SKILL.md"],
         ] {
             let cli = Cli::try_parse_from(
                 [

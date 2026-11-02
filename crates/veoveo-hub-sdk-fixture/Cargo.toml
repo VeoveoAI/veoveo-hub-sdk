@@ -30,6 +30,7 @@ server = [
     "dep:tracing",
     "dep:url",
     "dep:uuid",
+    "dep:veoveo-skills",
     "dep:veoveo-task",
     "veoveo-hub-sdk/server",
 ]
@@ -56,6 +57,11 @@ tracing = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 veoveo-task = { workspace = true, optional = true }
+# The types of the skills table the build script embeds.
+veoveo-skills = { workspace = true, optional = true }
+
+[build-dependencies]
+veoveo-skills = { workspace = true, features = ["build"] }
 
 [dev-dependencies]
 rustls.workspace = true
@@ -70,6 +76,10 @@ required-features = ["contract"]
 
 [[test]]
 name = "calls"
+required-features = ["server"]
+
+[[test]]
+name = "skills"
 required-features = ["server"]
 
 [[test]]

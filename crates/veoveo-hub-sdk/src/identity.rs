@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use veoveo_types::{
     AccessLevel, DataLabelId, DelegationId, GroupId, OAuthClientId, PrincipalId, RoleId, ScopeName,
-    TenantId, TokenIssuer, TokenSubject, WorkContextId,
+    TenantId, TokenIssuer, TokenSubject,
     identifier_syntax::{ClaimTextProfile, PathIdProfile, TokenTextProfile},
 };
 
@@ -134,7 +134,6 @@ pub struct AccessTokenSubject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_family: Option<HubRefreshFamilyId>,
     pub audience: ProtectedResourceId,
-    pub work_context: WorkContextId,
     pub invocation_mode: veoveo_types::InvocationMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initiator: Option<PrincipalId>,

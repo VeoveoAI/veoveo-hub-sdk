@@ -54,10 +54,10 @@ use rmcp::{
     ClientLifecycleMode, ClientServiceExt, RoleClient,
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams,
-        ClientCapabilities, ClientConfig, ClientJsonRpcMessage, DetailedTask, GetTaskParams,
-        Implementation, JsonObject, Prompt, ProtocolVersion, ReadResourceRequestParams,
-        ReadResourceResult, Resource, ResourceContents, ResourceTemplate, ServerNotification,
-        SubscriptionFilter, TaskPayload, Tool,
+        ClientCapabilities, ClientConfig, ClientJsonRpcMessage, DetailedTask,
+        GetSkillRequestParams, GetTaskParams, Implementation, JsonObject, Prompt, ProtocolVersion,
+        ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
+        ResourceTemplate, ServerNotification, Skill, SubscriptionFilter, TaskPayload, Tool,
     },
     service::{RunningService, ServiceError, Subscription},
     transport::{
@@ -77,6 +77,7 @@ use crate::{
         CallContractError, ProviderContract, ResourceRead, TaskToolCall, TokenErrorCode, ToolCall,
     },
     hub::{HubToolName, HubToolNamespaceError},
+    skills::SkillUri,
 };
 
 pub mod catalog;
@@ -417,6 +418,30 @@ impl HubClient {
     /// Every prompt the caller sees, across every page.
     pub async fn prompts(&self) -> Result<CatalogListing<Prompt>, CallError> {
         self.list(catalog::prompts).await
+    }
+
+    /// Every skill the caller sees (MCP Skills, SEP-2640), across every page: each entry
+    /// with its frontmatter and the manifest of its files. Read a file with
+    /// [`Self::read_resource`].
+    pub async fn skills(&self) -> Result<Vec<Skill>, CallError> {
+        let (_, skills) = self
+            .request(&Route::Caller, |connection| async move {
+                connection.service.list_all_skills().await
+            })
+            .await?;
+        Ok(skills)
+    }
+
+    /// The skill whose `SKILL.md` is at `uri`.
+    pub async fn skill(&self, uri: &SkillUri) -> Result<Skill, CallError> {
+        let params = GetSkillRequestParams::new(uri.as_str());
+        let (_, result) = self
+            .request(&Route::Caller, |connection| {
+                let params = params.clone();
+                async move { connection.service.get_skill(params).await }
+            })
+            .await?;
+        Ok(result.skill)
     }
 
     /// One complete listing through the caller's connection. A bearer the Hub

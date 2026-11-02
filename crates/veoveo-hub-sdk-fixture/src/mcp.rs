@@ -21,6 +21,8 @@ use veoveo_types::{LiveKeyset, Page, Pager, ResourceScheme, TenantId};
 pub struct ObservatoryContract;
 static DOCUMENTS: LazyLock<veoveo_hub_sdk::docs::ServerDocs> =
     LazyLock::new(|| veoveo_hub_sdk::server_docs!("observatory"));
+static SKILLS: LazyLock<veoveo_hub_sdk::skills::ServerSkills> =
+    LazyLock::new(|| veoveo_hub_sdk::server_skills!("observatory"));
 pub static SETUP: LazyLock<McpServerSetup<ObservatoryContract>> =
     LazyLock::new(|| McpServerSetup::new().expect("typed Observatory setup"));
 impl McpServerContract for ObservatoryContract {
@@ -35,6 +37,9 @@ impl McpServerContract for ObservatoryContract {
     }
     fn documents() -> &'static veoveo_hub_sdk::docs::ServerDocs {
         &DOCUMENTS
+    }
+    fn skills() -> &'static veoveo_hub_sdk::skills::ServerSkills {
+        &SKILLS
     }
     fn server_config() -> ServerConfig {
         let mut config = ServerConfig::default();

@@ -26,7 +26,6 @@ impl HubRequestContext {
         let common = token.issuer == source.issuer
             && token.subject == source.subject
             && token.scopes == source.scopes
-            && token.work_context == authority.work_context
             && source.tenant.as_ref() == Some(&authority.tenant)
             && actor.tenant == source.tenant
             && token.invocation_mode == authority.provenance.mode();
@@ -156,7 +155,6 @@ impl HubRequestContext {
                     PrincipalKind::Service => AuditPrincipalKind::Service,
                 },
                 tenant: actor.tenant.clone(),
-                work_context: Some(authority.work_context.clone()),
             },
             via,
             request: self.audit.clone(),

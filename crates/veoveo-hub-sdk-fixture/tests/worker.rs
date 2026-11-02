@@ -26,9 +26,8 @@ use veoveo_task::{
     TaskFailure, TaskOwner, TaskRuntime, TaskSnapshot, TaskStatus, TaskTransition,
 };
 use veoveo_types::{
-    AccessSubject, InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId,
-    ServerSlug, TaskId, TaskTypeName, TenantId, WorkContextId, WorkContextMembershipLevel,
-    WorkContextOutputPolicy,
+    InvocationAuthority, InvocationProvenance, PolicyVersion, PrincipalId, ServerSlug, TaskId,
+    TaskTypeName, TenantId,
 };
 
 const STRIKE: TaskTypeName = TaskTypeName::from_static("anvil.strike");
@@ -56,16 +55,8 @@ fn owner() -> TaskOwner {
         tenant_key: Some("anvil-tenant".parse().unwrap()),
         data_labels: BTreeSet::new(),
         authority: InvocationAuthority {
-            work_context: WorkContextId::parse("anvil-mission").unwrap(),
             tenant: TenantId::parse("anvil-tenant").unwrap(),
-            membership: WorkContextMembershipLevel::Owner,
             policy_revision: PolicyVersion::parse("r1").unwrap(),
-            output_policy: WorkContextOutputPolicy {
-                owner: AccessSubject::Principal(principal.clone()),
-                initial_grants: Vec::new(),
-                classification: None,
-                data_labels: BTreeSet::new(),
-            },
             provenance: InvocationProvenance::Direct {
                 initiator: principal,
             },

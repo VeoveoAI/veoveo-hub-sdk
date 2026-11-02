@@ -240,9 +240,7 @@ fn admitted_task_delegation_outlives_source_expiry_without_renewing_its_deadline
 #[test]
 fn signed_context_rejects_mismatched_actor_tenant_scope_and_provenance() {
     for fixture in fixtures() {
-        for mismatch in [
-            "subject", "issuer", "tenant", "context", "scope", "mode", "actor",
-        ] {
+        for mismatch in ["subject", "issuer", "tenant", "scope", "mode", "actor"] {
             let mut context = fixture.request_context.clone();
             let mut actor = fixture.actor.clone();
             match mismatch {
@@ -256,10 +254,6 @@ fn signed_context_rejects_mismatched_actor_tenant_scope_and_provenance() {
                 "tenant" => {
                     context.principal.tenant =
                         Some(veoveo_types::TenantId::parse("foreign").unwrap())
-                }
-                "context" => {
-                    context.access_token.work_context =
-                        veoveo_types::WorkContextId::parse("foreign").unwrap()
                 }
                 "scope" => {
                     context
@@ -414,10 +408,6 @@ fn audit_attribution_names_the_actor_the_acting_server_and_the_invocation_facts(
     let context = direct.audit_context().unwrap();
     assert_eq!(context.actor.principal, fixture.actor.id);
     assert_eq!(context.actor.tenant, fixture.actor.tenant);
-    assert_eq!(
-        context.actor.work_context.as_ref(),
-        Some(&fixture.authority.work_context)
-    );
     assert_eq!(context.via, None);
     assert_eq!(context.request, fixture.request_context.audit);
     let invocation = direct.audit_invocation().unwrap();

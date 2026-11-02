@@ -90,7 +90,6 @@ mod ledger {
                 actor: UsageActor {
                     tenant: authority.tenant.clone(),
                     principal: task.owner.principal_key.clone(),
-                    work_context: authority.work_context.clone(),
                 },
                 task: task.task_id,
                 created_at: task.created_at,

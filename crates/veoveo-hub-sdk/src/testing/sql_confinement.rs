@@ -1106,8 +1106,7 @@ mod tests {
 -- An artifact of another tenant, one being deleted, one past its retention, and one
 -- carrying a label outside the caller's labels give 0 whatever the grants say.
 -- Otherwise the level is the highest of ownership, the caller's unexpired principal
--- grants, its unexpired group grants each capped by its role in the group, and its
--- membership in the artifact's Work Context while that is the caller's selected one.
+-- grants and its unexpired group grants each capped by its role in the group.
 -- `groups` and `group_levels` pair each of the caller's groups with its role there.
 CREATE FUNCTION artifact.effective_level(
     target artifact.artifact,
@@ -1116,8 +1115,6 @@ CREATE FUNCTION artifact.effective_level(
     caller_key text,
     groups text[],
     group_levels text[],
-    work_context text,
-    membership text,
     labels text[],
     as_of timestamptz
 ) RETURNS smallint
@@ -1131,8 +1128,6 @@ RETURN CASE
         THEN 0::smallint
     ELSE greatest(
         CASE WHEN target.owner = caller THEN 3 ELSE 0 END,
-        CASE WHEN target.work_context = effective_level.work_context
-            THEN coalesce(artifact.membership_rank(membership), 0) ELSE 0 END,
         coalesce((
             SELECT max(artifact.level_rank(g.level))
             FROM artifact.grant AS g
@@ -1464,7 +1459,7 @@ DROP POLICY prediction_owner ON media.prediction;
         let fixture = Fixture::new(&[("migrations/0003_reaching.sql", reaching.as_str())]);
         assert_eq!(
             foreign(&fixture.findings_in("artifact")),
-            [("migrations/0003_reaching.sql".into(), 57, "tasks".into())]
+            [("migrations/0003_reaching.sql".into(), 52, "tasks".into())]
         );
     }
 

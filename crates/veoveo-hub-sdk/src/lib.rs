@@ -24,6 +24,7 @@ pub mod hub;
 pub mod identity;
 pub mod jsonrpc_codes;
 pub mod registration;
+pub mod skills;
 pub mod usage;
 
 extern crate self as veoveo_hub_sdk;

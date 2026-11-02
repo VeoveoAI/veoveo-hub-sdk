@@ -37,9 +37,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{TimeDelta, Utc};
 use tower::ServiceExt;
 use veoveo_types::{
-    AccessSubject, GroupId, InvocationAuthority, InvocationProvenance, PermissionName,
-    PolicyVersion, PrincipalId, RoleId, ScopeName, TenantId, WorkContextId,
-    WorkContextMembershipLevel, WorkContextOutputPolicy,
+    GroupId, InvocationAuthority, InvocationProvenance, PermissionName, PolicyVersion, PrincipalId,
+    RoleId, ScopeName, TenantId,
 };
 
 use super::{
@@ -118,19 +117,11 @@ pub fn principal() -> Principal {
     }
 }
 
-/// The test user's direct invocation authority as owner of work context `mission`.
+/// The test user's direct invocation authority in its tenant.
 pub fn authority() -> InvocationAuthority {
     InvocationAuthority {
-        work_context: WorkContextId::parse("mission").unwrap(),
         tenant: TenantId::parse("tenant-a").unwrap(),
-        membership: WorkContextMembershipLevel::Owner,
         policy_revision: PolicyVersion::parse("r1").unwrap(),
-        output_policy: WorkContextOutputPolicy {
-            owner: AccessSubject::Principal(principal().id),
-            initial_grants: Vec::new(),
-            classification: None,
-            data_labels: BTreeSet::new(),
-        },
         provenance: InvocationProvenance::Direct {
             initiator: principal().id,
         },

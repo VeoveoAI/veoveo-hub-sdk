@@ -281,14 +281,16 @@ impl AuthorizationDeclaration {
     }
 }
 
-/// A server's resources use its own scheme, or `ui://{slug}/` for its Apps.
+/// A server's resources use its own scheme, `ui://{slug}/` for its Apps or
+/// `skill://{slug}/` for its skills, never the Hub's `skill://veoveo/`.
 fn owns_uri(server: &ServerSlug, scheme: &ResourceScheme, uri: &str) -> bool {
     uri.split_once("://").is_some_and(|(found, rest)| {
-        found == scheme.as_str()
+        (found == scheme.as_str() && found != crate::skills::SCHEME)
             || (found == "ui"
                 && rest
                     .strip_prefix(server.as_str())
                     .is_some_and(|tail| tail.starts_with('/')))
+            || (found == crate::skills::SCHEME && crate::skills::owned_by(uri, server))
     })
 }
 
@@ -316,5 +318,37 @@ struct NativeMatcher<'a>(&'a ResourceUri);
 impl super::authorization_decision::Matcher<&ResourceTemplateUri> for NativeMatcher<'_> {
     fn matches(&self, template: &ResourceTemplateUri) -> bool {
         AuthorizationTemplate::parse(template).is_some_and(|template| template.matches(self.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::owns_uri;
+    use veoveo_types::{ResourceScheme, ServerSlug};
+
+    #[test]
+    fn a_server_owns_its_scheme_its_apps_and_its_skills_only() {
+        let console = ServerSlug::parse("console").unwrap();
+        let scheme = ResourceScheme::parse("console").unwrap();
+        for owned in [
+            "console://docs/agents",
+            "ui://console/watch",
+            "skill://console/watch/SKILL.md",
+            "skill://console/watch/references/logs.md",
+        ] {
+            assert!(owns_uri(&console, &scheme, owned), "{owned}");
+        }
+        for foreign in [
+            "time://now",
+            "ui://time/watch",
+            "skill://time/watch/SKILL.md",
+            "skill://veoveo/home/SKILL.md",
+            "skill://console/Watch/SKILL.md",
+        ] {
+            assert!(!owns_uri(&console, &scheme, foreign), "{foreign}");
+        }
+        // A scheme named skill owns no skill.
+        let skill = ResourceScheme::parse("skill").unwrap();
+        assert!(!owns_uri(&console, &skill, "skill://time/watch/SKILL.md"));
     }
 }

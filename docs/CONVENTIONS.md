@@ -23,6 +23,15 @@ features are typed members of its payload, never names of their own. A contract 
 server declares compliance with is identified by `https://veoveo.ai/contracts/<kebab-name>`,
 such as `https://veoveo.ai/contracts/hosted-mcp`.
 
+## Skill Addresses
+
+A server's skill files are `skill://{slug}/{name}/{path}`: the scheme `skill`, the
+server's slug, the skill's name, which is its directory's, and the file's path in the
+skill, `/`-separated; the skill itself is the address of its `SKILL.md`. `skill://veoveo/`
+is the Hub's own skills'. Skill text names a tool as its callers see it through the Hub,
+`{slug}__{tool}`, and a linked server's tool with its link, such as
+`n8n__{link}__run`.
+
 ## Domain Names
 
 A concept has one noun across every surface, and each surface spells it in its own form:
@@ -60,7 +69,7 @@ routing: there are no named environments and no selector header.
 `ExecutionContext` retains the `CompositionRevision` in the signed Hub request context.
 The per-hop target `deployment` is separate and must match the recipient's admitted
 token trust. Downstream calls and Tasks retain the captured composition while their
-target can change. Business WorkContext and data authorization remain separate.
+target can change. Data authorization remains separate.
 
 `https://veoveo.ai/formats/resolved-composition` identifies canonical compact UTF-8
 JSON with fixed field order `format`, `formatVersion` (2), `components`. Version 1

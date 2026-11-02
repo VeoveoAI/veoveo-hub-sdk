@@ -819,6 +819,14 @@ impl<D: DomainServer> RoutesBuilder<D> {
             crate::docs::docs_member_template(&scheme),
             self.documents.access(),
         );
+        // Skills are guidance on using the server, read as its documents are; each file
+        // has its requirement, so the Hub offers a skill only to a caller who reads all.
+        for uri in <D::Contract as McpServerContract>::skills().file_uris() {
+            requirements.resources.insert(
+                veoveo_types::ResourceUri::new(uri).expect("a skill file's address"),
+                self.documents.access(),
+            );
+        }
         requirements.app_origin = self.app_origin.as_ref().map(RoutePolicy::access);
         crate::registration::AuthorizationDeclaration {
             permissions: permissions.into_values().collect(),

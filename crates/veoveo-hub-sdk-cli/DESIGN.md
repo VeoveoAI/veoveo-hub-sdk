@@ -1,8 +1,8 @@
 # Hub Client Design
 
 `veoveo-hub-sdk-cli` is a command-line MCP client for one installation's Hub,
-built on the SDK's `HubClient`. It acts as one of the installation's OAuth clients: it lists the tools, resources and
-prompts that caller sees, reads a resource, calls a tool and waits for a Task-backed
+built on the SDK's `HubClient`. It acts as one of the installation's OAuth clients: it lists the tools, resources,
+prompts and skills that caller sees, shows a skill, reads a resource, calls a tool and waits for a Task-backed
 tool to end. Its `ask` command lets a chat model work on a request with the caller's
 tools, and every call the model makes reaches the Hub as an ordinary call from that
 caller. A person signs in with `login` through their browser, and the other commands then
@@ -13,7 +13,7 @@ tests drive the same modules against a running installation.
 
 | Standard or protocol | Supported profile |
 |---|---|
-| Model Context Protocol | version `2026-07-28` with the Discover lifecycle, through the SDK's `HubClient`; `tools/list`, `resources/list`, `resources/templates/list` and `prompts/list` read every page within the SDK catalog's bounds; `resources/read` and `tools/call`; a Task-backed call waits for the Task's status through `subscriptions/listen`; the client answers no `input_required`, elicitation or sampling request |
+| Model Context Protocol | version `2026-07-28` with the Discover lifecycle, through the SDK's `HubClient`; `tools/list`, `resources/list`, `resources/templates/list` and `prompts/list` read every page within the SDK catalog's bounds; `skills/list` and `skills/get` of the MCP Skills extension; `resources/read` and `tools/call`; a Task-backed call waits for the Task's status through `subscriptions/listen`; the client answers no `input_required`, elicitation or sampling request |
 | MCP Streamable HTTP | the rmcp 3.8.0 client transport, from the `VeoveoAI/rust-sdk` fork the workspace pins, with the caller's access token as a Bearer credential |
 | OAuth 2.0 client credentials, RFC 6749 section 4.4 | the SDK's `ClientCredentialsBearer`: the caller's token for the profile's MCP endpoint, requested with `resource`, RFC 8707, set to that endpoint and the configured scope |
 | Protected resource metadata, RFC 9728, and authorization server metadata, RFC 8414 | the bearer finds the authorization server in the profile endpoint's metadata and the token endpoint in that server's metadata; `login` also reads the authorization and revocation endpoints and requires `S256` in `code_challenge_methods_supported` |
@@ -36,6 +36,8 @@ tests drive the same modules against a running installation.
 | `tools` | Lists the caller's tools with their annotations and input schemas |
 | `resources` | Lists the caller's resources and resource templates |
 | `prompts` | Lists the caller's prompts |
+| `skills` | Lists the caller's skills (MCP Skills, SEP-2640) by the address of each skill's `SKILL.md`, with its description |
+| `skill <uri>` | Prints one skill's entry: its frontmatter and the manifest of its files with their digests and sizes; `read` reads each file |
 | `read <uri>` | Reads one resource and prints the result |
 | `call <tool> [arguments]` | Calls one tool with a JSON object of arguments and prints its result; a Task-backed tool runs to its end within `--timeout-seconds`; an error result exits with a failure status |
 | `ask <request>` | Lets a chat model work on the request with the caller's tools and prints each step and the answer |
@@ -91,7 +93,7 @@ Every Computer mounts the CLI and runs it as its owner, exactly as OpenCode reac
 Hub. The installation's Computer template sets `VEOVEO_CLI_HUB` to the Hub's public
 origin, `VEOVEO_CLI_PROFILE=computer` and
 `VEOVEO_CLI_BEARER_ENV=COMPUTER_HUB_REFERENCE`, so `tools`, `resources`, `prompts`,
-`read` and `call` need no flag: each request goes to `{hub}/mcp/computer` with the
+`skills`, `skill`, `read` and `call` need no flag: each request goes to `{hub}/mcp/computer` with the
 `COMPUTER_HUB_REFERENCE` placeholder as its bearer, which the sandbox's proxy replaces
 with the owner's Hub token. The Computer's policy admits that endpoint, with that
 credential, for the CLI's mounted binary as it does for OpenCode, and never the model

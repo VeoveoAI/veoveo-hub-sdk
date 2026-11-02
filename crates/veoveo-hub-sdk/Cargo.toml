@@ -70,6 +70,7 @@ veoveo-hub-sdk-macros = { path = "../veoveo-hub-sdk-macros" }
 veoveo-audit-contract.workspace = true
 veoveo-oauth = { workspace = true, optional = true }
 veoveo-types.workspace = true
+veoveo-skills.workspace = true
 veoveo-usage-contract.workspace = true
 base64.workspace = true
 chrono.workspace = true

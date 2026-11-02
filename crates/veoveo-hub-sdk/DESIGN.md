@@ -31,6 +31,7 @@ crate documents and in its contract resource.
 | Veoveo access-token `session_family` | signed UUIDv7 refresh-family binding for browser tokens; the Hub enforces current family revocation, and absence supplies no renewable session authority |
 | Veoveo `request_context` | signed source principal, verified access-token metadata and required audit request correlation, including the OAuth client and optional session family; it contains no bearer value and grants no independent renewal permission |
 | MCP Apps, SEP-1865 | `ui://` App resources and tool links, specified in [MCP Apps](src/apps/DESIGN.md) |
+| MCP Skills extension `io.modelcontextprotocol/skills`, SEP-2640, and the Agent Skills format | `skills/list` and `skills/get` answer each skill's verbatim frontmatter and its complete manifest, every file with `sha256:{hex}` and size, and the files read through `resources/read` at `skill://{slug}/{name}/{path}`; `resources/directory/read` and `"dynamic"` skills are excluded; see [Skills](#skills) |
 | [Veoveo audit envelope](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/audit/contract/DESIGN.md), after NIST SP 800-53 Rev. 5 AU-3 and mapped to OCSF 1.9 | the classes `mcp.discovery` and `mcp.read` (OCSF API Activity Read) and `mcp.tool_admission` and `mcp.tool_completion` (API Activity Other), which an MCP producer declares under the owner `mcp`; targets are `veoveo://` URIs built by the shared resource URI builder; the acting server and Task travel in the envelope's `via`, and the OAuth client, delegating principal, policy revision, scopes and data labels in each detail's `invocation` |
 | [Veoveo durable Task runtime](https://github.com/VeoveoAI/veoveo-core/blob/9a6b3ff95469ff19f9ccb513421a57ba6751aa9e/platform/task/DESIGN.md) | durable steps, and operations whose outcome arrives through provider events or a bounded check schedule, run through `TaskWorker` and `TaskContext` |
 | Provider webhooks over HTTP | `POST {mount}/operations/{operation_id}/{token}` and `POST {mount}/providers/{provider}/events` on a server's public routes; the server's parser checks the provider's signature, and the route answers 204 only after the Task runtime stored the event |
@@ -250,8 +251,8 @@ acknowledges its result. The adapter refuses unknown members, and Task metadata 
 the request context that differs from the params'. A `tasks/get` answer carries the
 Task's cost under `ai.veoveo/usage`.
 
-Durable Task ownership binds the actual actor, tenant, Work Context, profile and
-invocation provenance. Current access checks apply on every read, update, cancel
+Durable Task ownership binds the actual actor, tenant, profile and invocation
+provenance: a Task belongs to the person who started it. Current access checks apply on every read, update, cancel
 and subscription. Signing in again or changing unrelated scopes does not create a
 different owner. Retained data labels and current domain permissions still constrain
 results and actions. The hub's persisted transition is specified in
@@ -299,10 +300,10 @@ Authenticated MCP and HTTP proxy requests include typed `request_context` in the
 token's `https://veoveo.ai/claims/invocation` claim, which refuses unknown fields. Access-token
 metadata carries checked `AuditManagedExecution` attribution rather than an owner
 public claim.
-Attributed requests must match automated service identity, client, tenant and Work
-Context and cannot carry a browser session family. It preserves the JWT-verified principal before delegated actor
+Attributed requests must match automated service identity, client and tenant and
+cannot carry a browser session family. It preserves the JWT-verified principal before delegated actor
 derivation and its access-token metadata. Rust and Python verify the context against
-the actor, tenant, Work Context, scopes and invocation provenance. The token's
+the actor, tenant, scopes and invocation provenance. The token's
 expiration follows the direct or delegated lifetime rules above. Every supplied context
 also carries the platform audit contract's checked request, trace and span IDs and
 optional source IP address. Reusing a transport
@@ -429,8 +430,8 @@ path segment or a query parameter can be a secret, such as a share link's token.
 
 A hosted server owns its domain models and declared schemas and consumes the
 shared mechanics of `veoveo-hub-sdk` rather than reimplementing them: the
-task runtime adapter, resource subscriptions, URI conventions, Work Context
-propagation, and the forwarded identity.
+task runtime adapter, resource subscriptions, URI conventions and the forwarded
+identity, whose groups a server reads as projects: there is no project context.
 
 - Durable operations run on the shared task runtime and the final task
   extension.
@@ -965,6 +966,44 @@ serving a body, and an independently hosted adapter may call the authorized-read
 after enforcing its own profile policy. Document indexes contain at most 32 entries per
 page. Unknown cursors, duplicate
 IDs and unsupported document query parameters fail admission.
+
+## Skills
+
+A server serves guidance for using it as skills (MCP Skills, SEP-2640), the one channel
+an agent loads them through: a skill is loaded only when a task needs it, so a server's
+`instructions` say only what it is and which skills it serves, and a prompt states its
+task and names the skill it follows.
+
+- **Embedding.** The server's `skills/` directory holds one directory per skill, named
+  by the skill, with its `SKILL.md`. Its build script runs core's
+  `veoveo_skills::build::embed_skills("skills")`, which validates every skill at build
+  time (Agent Skills names equal to the directory, frontmatter with `name` and a
+  description, at most 512 files and 16 MiB per skill, no links), parses each
+  frontmatter into JSON and hashes every file. `server_skills!` builds `ServerSkills`
+  from that table, and `McpServerContract::skills` returns it; a contract that does not
+  override it serves no skills. Nothing is read or hashed at run time, so every host
+  reads the same bytes and digests.
+- **Addresses.** A skill file is `skill://{slug}/{name}/{path}`, `SkillUri`: the slug
+  keeps the originating server visible behind the one MCP server a host sees, as
+  `ui://{slug}/` does for Apps, so the Hub passes entries and bytes through unchanged and
+  digests hold. One set per server: every runner of a linked server serves the same
+  skills. `skill://veoveo/` is the Hub's own and no server's; `ServerSkills` refuses it.
+- **Protocol.** Setup declares the skills extension, without `directoryRead`, exactly
+  when the server embeds a skill. `Hosted` answers `skills/list` with every skill in one
+  page, `skills/get` with one skill or `-32602`, and `resources/read` of a skill file with
+  its text, `text/markdown` for `.md`, or its bytes in base64 when they are not UTF-8,
+  before any domain code; a missing file of the server's skills is not found.
+- **Authorization.** Skills are read as the server's documents are: each request needs
+  the Hub's forwarded identity and the routes' document policy. Every skill file is a
+  resource requirement of the registration under that policy, so the Hub can offer a
+  skill only to a caller who may read all of its files, and registration admits
+  requirements on `skill://` only under the server's own slug.
+- **Clients.** `HubClient::skills` lists the skills a caller sees and `HubClient::skill`
+  gets one; `HubClient::read_resource` reads a file. The CLI's `skills` and `skill <uri>`
+  do the same.
+- **Text.** Skill text names tools as callers see them through the Hub,
+  `{slug}__{tool}`, and resources by the addresses callers read; the Hub cannot rewrite
+  skill bytes without breaking their digests.
 
 ## Crate Documents
 

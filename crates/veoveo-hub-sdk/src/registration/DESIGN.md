@@ -466,7 +466,7 @@ one of the keys in `veoveo_access_tokens`:
     "profile": "default",
     "server": "time",
     "actor": { "id": "https://idp.example#alice", "kind": "user", "...": "..." },
-    "authority": { "work_context": "development", "tenant": "dev", "membership": "contributor", "...": "..." },
+    "authority": { "tenant": "dev", "policy_revision": "r1", "...": "..." },
     "request_context": { "...": "..." }
   }
 }
@@ -476,8 +476,8 @@ one of the keys in `veoveo_access_tokens`:
 Hub. The Hub is the party acting for the caller, so `act` names it by its
 issuer URL. `aud` is the target server's resource URL, its registered MCP endpoint, and
 the invocation claim names the server's slug. The invocation claim also carries the
-profile, the actor, the invocation authority with its tenant, Work Context and
-membership, and the signed request context when one exists. RFC 7519 §4.2 asks for
+profile, the actor, the invocation authority with its tenant, policy revision and
+provenance, and the signed request context when one exists. RFC 7519 §4.2 asks for
 collision-resistant names for claims outside the IANA registry, and every registered
 server reads the invocation claim, so it uses a URI in the `veoveo.ai` domain rather
 than a private name. `authorization_details` is omitted when nothing is granted. A

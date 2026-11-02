@@ -19,7 +19,16 @@ including a collection exposed as both a resource and a tool.
    access policy. The route table derives discovery, input/output schemas,
    authorization declarations and dispatch. Do not maintain a second JSON
    authorization table alongside the routes.
-4. Use the registration client and the Hub's issued `AccessTokenTrust`. Construct
+4. Serve the guidance for using the server as skills, not in `instructions` or prompts:
+   a `skills/` directory with one directory per skill and its `SKILL.md`, a build script
+   that runs `veoveo_skills::build::embed_skills("skills")` (with `veoveo-skills` and its
+   `build` feature as a build-dependency, and `veoveo-skills` as a dependency), and
+   `McpServerContract::skills` returning `server_skills!("{slug}")`. Write a skill for the
+   agent that uses the server: what a task needs, the tools by the names callers see,
+   `{slug}__{tool}`, and the resources by their addresses. Keep `instructions` to what the
+   server is and which skills it serves, and have each prompt name the skill it follows.
+   The build refuses a skill a host would refuse.
+5. Use the registration client and the Hub's issued `AccessTokenTrust`. Construct
    the Task runtime with that trust's deployment ID. Use the SDK's request/Task
    call clients for downstream calls so they retain the authenticated caller and
    captured execution context. A server that calls the Hub's own routes for its

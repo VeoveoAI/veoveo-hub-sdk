@@ -24,11 +24,11 @@ use rmcp::{
     ErrorData, RoleServer, ServerHandler,
     model::{
         CallToolRequestParams, CallToolResponse, CancelTaskParams, CompleteRequestParams,
-        CompleteResult, CreateTaskResult, GetPromptRequestParams, GetPromptResponse, GetTaskParams,
-        GetTaskResult, ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult,
-        ListToolsResult, PaginatedRequestParams, ProtocolVersion, ReadResourceRequestParams,
-        ReadResourceResponse, ReadResourceResult, ServerConfig, SubscriptionFilter, Tool,
-        UpdateTaskParams,
+        CompleteResult, CreateTaskResult, GetPromptRequestParams, GetPromptResponse,
+        GetSkillRequestParams, GetSkillResult, GetTaskParams, GetTaskResult, ListPromptsResult,
+        ListResourceTemplatesResult, ListResourcesResult, ListSkillsResult, ListToolsResult,
+        PaginatedRequestParams, ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse,
+        ReadResourceResult, ServerConfig, SubscriptionFilter, Tool, UpdateTaskParams,
     },
     service::{RequestContext, SubscriptionContext},
 };
@@ -283,6 +283,13 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
             let _ = address;
             D::routes().authorize_documents(&context)?;
         }
+        if Self::setup().skills().addresses(&request.uri) {
+            hub_identity(&context)?;
+            D::routes().authorize_documents(&context)?;
+            if let Some(result) = Self::setup().skills().read(&request)? {
+                return Ok(result);
+            }
+        }
         if let Some(result) = Self::setup().read_documents(&request, &context)? {
             return Ok(result);
         }
@@ -292,6 +299,26 @@ impl<D: DomainServer, T: TaskSupport> ServerHandler for Hosted<D, T> {
             .read(self.domain.clone(), address, context)
             .await?;
         Ok(DomainRead { result, cache }.into_response(&request))
+    }
+
+    async fn list_skills(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListSkillsResult, ErrorData> {
+        hub_identity(&context)?;
+        D::routes().authorize_documents(&context)?;
+        Ok(Self::setup().skills().list())
+    }
+
+    async fn get_skill(
+        &self,
+        request: GetSkillRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetSkillResult, ErrorData> {
+        hub_identity(&context)?;
+        D::routes().authorize_documents(&context)?;
+        Self::setup().skills().get(&request.uri)
     }
 
     async fn complete(

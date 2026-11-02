@@ -7,7 +7,10 @@ use veoveo_types::{
     ScopeName, UriAuthority, UriSegment,
 };
 
-use crate::docs::{DOC_ID_AGENTS, DOC_ID_DESIGN, ServerDocs};
+use crate::{
+    docs::{DOC_ID_AGENTS, DOC_ID_DESIGN, ServerDocs},
+    skills::ServerSkills,
+};
 
 /// MCP associations implemented in a server's MCP feature, above its pure contract.
 /// An empty scope vocabulary is valid. This trait establishes API structure, not
@@ -20,6 +23,12 @@ pub trait McpServerContract: Sized + 'static {
     fn scheme() -> ResourceScheme;
     fn scopes() -> &'static [Self::Scope];
     fn documents() -> &'static ServerDocs;
+    /// The skills the server serves, embedded with
+    /// [`server_skills!`](crate::server_skills); none by default.
+    fn skills() -> &'static ServerSkills {
+        static NONE: ServerSkills = ServerSkills::none();
+        &NONE
+    }
     fn server_config() -> ServerConfig;
 }
 
@@ -133,6 +142,7 @@ pub struct McpServerSetup<C: McpServerContract> {
     templates: Vec<McpResourceTemplate>,
     scopes: BTreeSet<ScopeName>,
     documents: &'static ServerDocs,
+    skills: &'static ServerSkills,
     contract: PhantomData<fn() -> C>,
 }
 
@@ -142,7 +152,11 @@ impl<C: McpServerContract> McpServerSetup<C> {
         let scheme = C::scheme();
         let mut info = C::server_config();
         let documents = C::documents();
-        if info.server_info.name != slug.as_str() || documents.server() != slug.as_str() {
+        let skills = C::skills();
+        if info.server_info.name != slug.as_str()
+            || documents.server() != slug.as_str()
+            || skills.server().is_some_and(|server| *server != slug)
+        {
             return Err(McpSetupError::IdentityMismatch);
         }
         let native = rmcp::model::ServerCapabilities::builder()
@@ -191,6 +205,21 @@ impl<C: McpServerContract> McpServerSetup<C> {
             extensions.remove(crate::apps::EXTENSION_ID);
         }
         let extensions = info.capabilities.extensions.get_or_insert_default();
+        // The skills extension is declared exactly when the server embeds a skill, without
+        // `resources/directory/read`: every manifest is complete.
+        if skills.is_empty() {
+            extensions.remove(rmcp::model::SKILLS_EXTENSION_ID);
+        } else {
+            extensions.insert(
+                rmcp::model::SKILLS_EXTENSION_ID.to_owned(),
+                match serde_json::to_value(rmcp::model::SkillsCapability::new())
+                    .expect("the skills capability serializes")
+                {
+                    serde_json::Value::Object(object) => object,
+                    _ => unreachable!("the skills capability is an object"),
+                },
+            );
+        }
         extensions.remove(crate::registration::AUTHORIZATION_EXTENSION_ID);
         // The registration's surfaces derive from the routes, as its authorization does.
         if let Some(registration) =
@@ -281,6 +310,7 @@ impl<C: McpServerContract> McpServerSetup<C> {
             templates,
             scopes,
             documents,
+            skills,
             contract: PhantomData,
         })
     }
@@ -296,6 +326,9 @@ impl<C: McpServerContract> McpServerSetup<C> {
     }
     pub fn documents(&self) -> &'static ServerDocs {
         self.documents
+    }
+    pub fn skills(&self) -> &'static ServerSkills {
+        self.skills
     }
 
     /// Serves the well-known `{scheme}://docs` routes and `{scheme}://contract`.

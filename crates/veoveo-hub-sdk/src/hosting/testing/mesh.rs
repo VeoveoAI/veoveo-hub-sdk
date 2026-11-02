@@ -137,6 +137,16 @@ impl TestMesh {
             .map(|permission| permission.permission.namespace().to_owned())
             .and_then(|namespace| ServerSlug::parse(namespace).ok())
             .expect("a registered server declares at least one permission");
+        self.register_server(slug, declaration)
+    }
+
+    /// Registers a server under `slug` with `declaration`, for a server that declares no
+    /// permission, and returns the calls its handlers and Tasks make through the mesh.
+    pub fn register_server(
+        &mut self,
+        slug: ServerSlug,
+        declaration: AuthorizationDeclaration,
+    ) -> ServerCalls {
         let key = ServerKeyPair::generate().expect("a server key");
         let client = OAuthClientId::parse(format!("{slug}-mesh")).expect("a client identifier");
         let metadata = ClientMetadata::new(
@@ -293,6 +303,37 @@ impl RunningMesh {
         self.call_with(server, tool, arguments, true).await
     }
 
+    /// Sends one MCP `method` with `params` to `server` as the test user and returns the
+    /// JSON-RPC response, such as `skills/list`, `skills/get` or `resources/read`.
+    pub async fn request(
+        &self,
+        server: &str,
+        method: &str,
+        mut params: serde_json::Value,
+    ) -> serde_json::Value {
+        let server = ServerSlug::parse(server).expect("a server slug");
+        let caller = user_caller();
+        params["_meta"] = meta(false);
+        let name = params
+            .get("uri")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        let body = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": method, "params": params
+        });
+        let response = forward(
+            &self.shared,
+            &server,
+            &caller,
+            None,
+            method,
+            name.as_deref(),
+            body,
+        )
+        .await;
+        json_body(response).await
+    }
+
     /// Reads a Task of `server` as the test user.
     pub async fn task(&self, server: &str, task: &str) -> serde_json::Value {
         let server = ServerSlug::parse(server).expect("a server slug");
@@ -402,7 +443,6 @@ fn user_caller() -> DelegatedCaller {
                 session_family: None,
                 audience: crate::ProtectedResourceId::parse(super::TEST_RESOURCE)
                     .expect("the test resource"),
-                work_context: authority.work_context.clone(),
                 invocation_mode: authority.provenance.mode(),
                 initiator: Some(actor.id.clone()),
                 delegation_id: None,

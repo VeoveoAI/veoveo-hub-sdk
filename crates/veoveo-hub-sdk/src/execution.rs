@@ -72,7 +72,7 @@ impl ResolvedComponent {
 }
 
 /// Complete resolved routing of one request, from logical slug to deployment. No labels,
-/// source selectors, mutable health, secrets or business WorkContext belong in the
+/// source selectors, mutable health, secrets or project grouping belong in the
 /// hashed record. Owners retain the record and its deployment bindings for the lifetime
 /// of captured operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -14,7 +14,7 @@ use rmcp::{
 use veoveo_skills::{EmbeddedFile, EmbeddedSkill};
 use veoveo_types::ServerSlug;
 
-use super::{HUB_AUTHORITY, SKILL_MD, SkillUri};
+use super::{HUB_AUTHORITY, SKILL_MD, SkillUri, media_type};
 
 /// The skills a server serves: each as its `skills/list` entry, the frontmatter its
 /// author wrote and every file with its digest and size, and the files by address.
@@ -160,18 +160,6 @@ impl ServerSkills {
             .with_mime_type("application/octet-stream"),
         };
         Ok(Some(ReadResourceResult::new(vec![contents]).into()))
-    }
-}
-
-/// The media type of a text file of a skill, by its extension.
-fn media_type(path: &str) -> &'static str {
-    match path.rsplit_once('.').map(|(_, extension)| extension) {
-        Some("md") => "text/markdown",
-        Some("json") => "application/json",
-        Some("yaml" | "yml") => "application/yaml",
-        Some("html") => "text/html",
-        Some("csv") => "text/csv",
-        _ => "text/plain",
     }
 }
 

@@ -138,6 +138,19 @@ impl ResourceAddress for SkillUri {
     }
 }
 
+/// The media type of a text file of a skill, by its extension: `text/markdown` for
+/// `.md`, and `text/plain` for an extension without its own.
+pub fn media_type(path: &str) -> &'static str {
+    match path.rsplit_once('.').map(|(_, extension)| extension) {
+        Some("md") => "text/markdown",
+        Some("json") => "application/json",
+        Some("yaml" | "yml") => "application/yaml",
+        Some("html") => "text/html",
+        Some("csv") => "text/csv",
+        _ => "text/plain",
+    }
+}
+
 /// Whether `uri` is a skill file of `server`: `skill://{server}/…`, never the Hub's.
 pub fn owned_by(uri: &str, server: &ServerSlug) -> bool {
     server.as_str() != HUB_AUTHORITY

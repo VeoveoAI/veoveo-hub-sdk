@@ -27,6 +27,7 @@ pub enum DiscoveryKind {
     Resources,
     ResourceTemplates,
     Prompts,
+    Skills,
 }
 
 /// How a tool call ended.
@@ -47,6 +48,8 @@ pub enum McpReadMethod {
     PromptGet,
     Completion,
     Subscription,
+    /// `skills/get`: one skill's frontmatter and manifest.
+    SkillGet,
 }
 
 /// The facts of a caller's invocation beside the envelope's actor: the OAuth client it
@@ -296,6 +299,13 @@ mod tests {
                 collection: DiscoveryKind::ResourceTemplates,
             }),
             "veoveo://catalog/resource_templates"
+        );
+        assert_eq!(
+            target(McpTarget::Discovery {
+                server: None,
+                collection: DiscoveryKind::Skills,
+            }),
+            "veoveo://catalog/skills"
         );
         assert_eq!(
             target(McpTarget::Discovery {

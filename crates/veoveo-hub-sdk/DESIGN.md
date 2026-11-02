@@ -352,7 +352,11 @@ A failed fetch becomes eligible on the next explicit
 list call.
 
 Prompt discovery contacts only registered servers that declare prompts. A server that fails prompt discovery is left out and named in
-the same discovery failures under the `prompts` surface.
+the same discovery failures under the `prompts` surface. Skill discovery likewise
+contacts only servers whose registration requires `skill://{slug}/` files, and names a
+failed one under the `skills` surface. Its audit record's collection is `skills`, and a
+`skills/get` records `mcp.read` with the method `skill_get` and the skill's `SKILL.md`
+address as its target.
 
 A profile whose work requires a complete tool catalog sets
 `discovery_failure_mode` to `fail_closed`; its tool and prompt lists fail until

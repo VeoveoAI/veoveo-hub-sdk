@@ -14,6 +14,7 @@ pub enum HubDiscoverySurface {
     ResourceTemplates,
     Tools,
     Prompts,
+    Skills,
 }
 
 #[derive(

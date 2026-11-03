@@ -56,8 +56,9 @@ obligations remain open; this detail contract does not replace them.
 
 Use Lean 4.35.0 with pinned Aeneas `fdebf20`. The existing qualified private dependency
 contains the recorded [instance-name
-patch](https://github.com/VeoveoAI/veoveo-hub/blob/main/proofs/request_composition/tooling/qualified-discriminant-instance.patch).
-No new tool patch is introduced. Whether this graph requires that existing patch and
+patch](https://github.com/VeoveoAI/veoveo-hub/blob/b5c08321d752c9e42a817b076fe82b2d53900619/proofs/request_composition/tooling/qualified-discriminant-instance.patch).
+Reproduction retrieves the exact patch from that immutable history link; its
+former Hub package was retired. No new tool patch is introduced. Whether this graph requires that existing patch and
 clean-upstream reproduction are unmeasured; builder dependency identity must be recorded
 explicitly. No CI/default target or native runtime integration is added.
 

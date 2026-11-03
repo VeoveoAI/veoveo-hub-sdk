@@ -25,6 +25,13 @@ The previous conformance crate, certification commands and per-rule owner profil
 have been removed. Dynamic authorization, transport and database behavior remain
 ordinary implementation tests.
 
+Manual proof assets remain for [resource authorization](proofs/authorization/README.md)
+and [repository details](proofs/repository_grants/README.md), within their recorded
+source/refinement boundaries. The stale `internal_auth` proof package was removed
+with the Work Context cleanup; its [pinned history](https://github.com/VeoveoAI/veoveo-hub-sdk/tree/a85b72d37bb8e8a90c5c46ed6f1984aae7da9250/proofs/internal_auth)
+remains available. No current complete issuer/verifier or Skills proof is claimed,
+and the broad verification campaign remains paused.
+
 ## Features
 
 | Feature of `veoveo-hub-sdk` | Gives | Pulls in |

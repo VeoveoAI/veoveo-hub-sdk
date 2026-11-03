@@ -52,9 +52,10 @@ struct Config {
 }
 
 impl Config {
-    fn new(port: u16) -> Self {
+    /// A configuration whose redirect [`Fake::start`] binds and keeps for the test.
+    fn new() -> Self {
         Self {
-            redirect_uri: format!("http://127.0.0.1:{port}/callback"),
+            redirect_uri: String::new(),
             code_lifetime: 900,
             refresh_lifetime: 900,
             refresh_delay: Duration::ZERO,
@@ -99,10 +100,22 @@ struct Fake {
     base: Url,
     shared: Arc<Shared>,
     server: tokio::task::JoinHandle<()>,
+    /// The sign-ins' redirect listener, bound to a port the kernel assigned and kept for
+    /// the whole test, so no other socket takes the port between sign-ins.
+    redirect: Option<tokio::net::TcpListener>,
 }
 
 impl Fake {
-    async fn start(config: Config) -> Self {
+    /// Starts the fake. A configuration without a redirect gets one on a port the fake
+    /// binds now and keeps.
+    async fn start(mut config: Config) -> Self {
+        let redirect = if config.redirect_uri.is_empty() {
+            let redirect = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            config.redirect_uri = format!("http://{}/callback", redirect.local_addr().unwrap());
+            Some(redirect)
+        } else {
+            None
+        };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
         let shared = Arc::new(Shared {
@@ -130,6 +143,7 @@ impl Fake {
             base,
             shared,
             server,
+            redirect,
         }
     }
 
@@ -345,12 +359,18 @@ impl Drop for Scratch {
     }
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+/// A free loopback port below every platform's ephemeral range (from 32768 on Linux and
+/// 49152 on macOS), for the redirect the CLI binary binds in its own process: the kernel
+/// gives no socket such a port, so it stays free from this check until the binary listens.
+/// Only that one test chooses a port this way.
+fn unassigned_port() -> u16 {
+    loop {
+        let offset = u16::try_from(uuid::Uuid::new_v4().as_u128() % 12_000).unwrap();
+        let port = 20_000 + offset;
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return port;
+        }
+    }
 }
 
 fn profile() -> HubProfileId {
@@ -416,7 +436,10 @@ async fn login_after(
         }
         browse(address).await
     });
-    let signed_in = sign_in::sign_in(
+    let signed_in = sign_in::sign_in_on(
+        fake.redirect
+            .as_ref()
+            .expect("the fake holds the redirect listener"),
         &access(fake, grants),
         grants,
         &request(fake),
@@ -463,7 +486,7 @@ fn mode(path: &Path) -> u32 {
 
 #[tokio::test]
 async fn a_browser_sign_in_stores_a_private_grant() {
-    let fake = Fake::start(Config::new(free_port())).await;
+    let fake = Fake::start(Config::new()).await;
     let scratch = Scratch::new();
     let grants = scratch.grants();
     let (signed_in, (status, page)) = login_after(&fake, &grants, Vec::new()).await;
@@ -515,9 +538,8 @@ async fn a_browser_sign_in_stores_a_private_grant() {
 
 #[tokio::test]
 async fn a_stray_callback_neither_ends_nor_hijacks_the_sign_in() {
-    let config = Config::new(free_port());
-    let callback = config.redirect_uri.clone();
-    let fake = Fake::start(config).await;
+    let fake = Fake::start(Config::new()).await;
+    let callback = fake.shared.config.redirect_uri.clone();
     let scratch = Scratch::new();
     let grants = scratch.grants();
     let stray = vec![
@@ -540,7 +562,7 @@ async fn a_stray_callback_neither_ends_nor_hijacks_the_sign_in() {
 
 #[tokio::test]
 async fn a_refused_sign_in_reports_the_hubs_error() {
-    let mut config = Config::new(free_port());
+    let mut config = Config::new();
     config.authorize_error = Some("access_denied");
     let fake = Fake::start(config).await;
     let scratch = Scratch::new();
@@ -555,7 +577,7 @@ async fn a_refused_sign_in_reports_the_hubs_error() {
 
 #[tokio::test]
 async fn a_stale_access_token_rotates_once_into_a_replaced_grant() {
-    let mut config = Config::new(free_port());
+    let mut config = Config::new();
     config.code_lifetime = 0;
     let fake = Fake::start(config).await;
     let scratch = Scratch::new();
@@ -598,7 +620,7 @@ async fn a_stale_access_token_rotates_once_into_a_replaced_grant() {
 
 #[tokio::test]
 async fn concurrent_renewals_in_two_processes_send_each_refresh_token_once() {
-    let mut config = Config::new(free_port());
+    let mut config = Config::new();
     config.code_lifetime = 0;
     config.refresh_delay = Duration::from_millis(300);
     let fake = Fake::start(config).await;
@@ -621,7 +643,7 @@ async fn concurrent_renewals_in_two_processes_send_each_refresh_token_once() {
 
 #[tokio::test]
 async fn a_bearer_holding_a_spent_refresh_token_takes_the_renewed_grant() {
-    let mut config = Config::new(free_port());
+    let mut config = Config::new();
     config.code_lifetime = 0;
     let fake = Fake::start(config).await;
     let scratch = Scratch::new();
@@ -643,7 +665,7 @@ async fn a_bearer_holding_a_spent_refresh_token_takes_the_renewed_grant() {
 
 #[tokio::test]
 async fn an_unanswered_renewal_never_resends_its_refresh_token() {
-    let mut config = Config::new(free_port());
+    let mut config = Config::new();
     config.code_lifetime = 0;
     config.refresh_mode = RefreshMode::ConsumeWithoutAnswer;
     let fake = Fake::start(config).await;
@@ -674,7 +696,7 @@ async fn an_unanswered_renewal_never_resends_its_refresh_token() {
 
 #[tokio::test]
 async fn a_refused_renewal_names_login() {
-    let mut config = Config::new(free_port());
+    let mut config = Config::new();
     config.code_lifetime = 0;
     config.refresh_mode = RefreshMode::Refuse;
     let fake = Fake::start(config).await;
@@ -693,7 +715,7 @@ async fn a_refused_renewal_names_login() {
 
 #[tokio::test]
 async fn an_unreachable_token_endpoint_keeps_the_unsent_refresh_token() {
-    let mut config = Config::new(free_port());
+    let mut config = Config::new();
     config.code_lifetime = 0;
     let fake = Fake::start(config).await;
     let scratch = Scratch::new();
@@ -714,7 +736,7 @@ async fn an_unreachable_token_endpoint_keeps_the_unsent_refresh_token() {
 
 #[tokio::test]
 async fn logout_revokes_the_refresh_token_and_deletes_the_grant() {
-    let fake = Fake::start(Config::new(free_port())).await;
+    let fake = Fake::start(Config::new()).await;
     let scratch = Scratch::new();
     let grants = scratch.grants();
     login(&fake, &grants).await;
@@ -765,7 +787,7 @@ async fn a_missing_grant_names_login_before_contacting_the_hub() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_grant_other_users_can_read_is_refused() {
-    let fake = Fake::start(Config::new(free_port())).await;
+    let fake = Fake::start(Config::new()).await;
     let scratch = Scratch::new();
     let grants = scratch.grants();
     let signed_in = login(&fake, &grants).await;
@@ -778,7 +800,8 @@ async fn a_grant_other_users_can_read_is_refused() {
 /// standard error as a person would copy it.
 #[tokio::test]
 async fn the_cli_signs_in_and_out() {
-    let config = Config::new(free_port());
+    let mut config = Config::new();
+    config.redirect_uri = format!("http://127.0.0.1:{}/callback", unassigned_port());
     let redirect = config.redirect_uri.clone();
     let fake = Fake::start(config).await;
     let scratch = Scratch::new();

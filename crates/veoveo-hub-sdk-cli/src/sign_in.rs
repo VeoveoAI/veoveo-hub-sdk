@@ -62,13 +62,33 @@ pub async fn sign_in(
     open: impl FnOnce(&Url),
 ) -> Result<SignedIn> {
     let listen = loopback_address(&request.redirect_uri)?;
-    let http = access.oauth_http()?;
-    let server = oauth::discover(&http, &access.hub, &access.endpoint()?).await?;
     let listener = TcpListener::bind(listen).await.with_context(|| {
         format!(
             "cannot listen on {listen} for the sign-in's redirect; another sign-in may be waiting there"
         )
     })?;
+    sign_in_on(&listener, access, grants, request, open).await
+}
+
+/// [`sign_in`] on a listener the caller already bound to the redirect URI's address and
+/// keeps, so the port stays the sign-in's from the moment it was bound.
+pub async fn sign_in_on(
+    listener: &TcpListener,
+    access: &HubAccess,
+    grants: &GrantStore,
+    request: &SignIn,
+    open: impl FnOnce(&Url),
+) -> Result<SignedIn> {
+    let listen = loopback_address(&request.redirect_uri)?;
+    let bound = listener
+        .local_addr()
+        .context("the sign-in's redirect listener has no address")?;
+    ensure!(
+        bound == listen,
+        "the sign-in's redirect listener is bound to {bound}, not to the redirect's {listen}"
+    );
+    let http = access.oauth_http()?;
+    let server = oauth::discover(&http, &access.hub, &access.endpoint()?).await?;
     let verifier = oauth::random_value()?;
     let state = oauth::random_value()?;
     let mut authorization = server.authorization_endpoint.clone();
@@ -227,7 +247,7 @@ enum Outcome {
 /// Answers each connection to the listener until one carries this sign-in's response.
 /// Requests for other paths or with another `state` are answered and ignored, so a stale
 /// tab or a stray request cannot end or hijack the sign-in.
-async fn callback(listener: TcpListener, path: &str, state: &str) -> Result<String> {
+async fn callback(listener: &TcpListener, path: &str, state: &str) -> Result<String> {
     let expected = Arc::new((path.to_owned(), state.to_owned()));
     let (outcomes, mut received) = mpsc::channel(4);
     loop {

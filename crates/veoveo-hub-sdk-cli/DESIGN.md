@@ -126,9 +126,12 @@ redirect. `--client` (default `veoveo-hub-sdk-cli`) and `--redirect-uri` (defaul
 own registration in the installation template, for the person's `local` profile; an
 installation that registers another client names it with these flags. Hub matches a
 redirect URI exactly, port included, so the port is fixed, and 3211 stays clear of
-OpenCode's 3210. The CLI listens on the redirect's
-address before it opens the authorization endpoint with the platform's opener (`open`
-on macOS, `xdg-open` elsewhere). `--no-browser` prints the address instead, which a
+OpenCode's 3210, below every platform's ephemeral range, so no other socket is given it.
+The CLI listens on the redirect's address first, before it reads the Hub's metadata,
+and only then opens the authorization endpoint with the platform's opener (`open` on
+macOS, `xdg-open` elsewhere). `sign_in::sign_in_on` runs a sign-in on a listener its
+caller already bound to the redirect's address and keeps, as the sign-in tests do, so
+a port the kernel assigned is never released before the sign-in listens on it. `--no-browser` prints the address instead, which a
 person opens in a browser that reaches the Hub and the listener. The listener answers
 every request: one for another path or with another `state` gets an error page and is
 ignored, so a stale tab or a stray request can neither end nor take over the sign-in.

@@ -7,7 +7,7 @@ use serde_json::Value;
 use url::Url;
 use veoveo_hub_sdk::{
     HubProfileId,
-    client::{CatalogListing, HubClient},
+    client::{CallError, CatalogListing, HubClient},
     hub::HubToolName,
     skills::SkillUri,
 };
@@ -119,6 +119,18 @@ enum HubCommand {
     },
     /// Let a chat model work on a request with the caller's tools.
     Ask(AskArgs),
+    /// Read or cancel a Task by its identifier.
+    #[command(subcommand)]
+    Tasks(TasksCommand),
+}
+
+/// A Task the caller reaches by its identifier, as the Hub decides.
+#[derive(Subcommand)]
+enum TasksCommand {
+    /// Print the Task's status, its status message and, once it ended, its result or error.
+    Get { task: String },
+    /// Request the Task's cancellation, then print its status.
+    Cancel { task: String },
 }
 
 #[derive(Args)]
@@ -439,6 +451,54 @@ async fn run(client: &HubClient, command: HubCommand, json: bool) -> Result<()> 
             Ok(())
         }
         HubCommand::Ask(args) => ask(client, args, json).await,
+        HubCommand::Tasks(command) => tasks(client, command, json).await,
+    }
+}
+
+/// Reads, or cancels and then reads, one Task; a refused identifier fails the command
+/// after printing the Hub's JSON-RPC error.
+async fn tasks(client: &HubClient, command: TasksCommand, json: bool) -> Result<()> {
+    let (task, cancel) = match command {
+        TasksCommand::Get { task } => (task, false),
+        TasksCommand::Cancel { task } => (task, true),
+    };
+    let answer = async {
+        if cancel {
+            client.cancel_task(&task).await?;
+        }
+        client.get_task(&task).await
+    }
+    .await;
+    match answer {
+        Ok(status) if json => print_json(&status),
+        Ok(status) => {
+            let status = serde_json::to_value(&status)?;
+            println!(
+                "{} {}",
+                task,
+                status["status"].as_str().unwrap_or("unknown")
+            );
+            if let Some(message) = status["statusMessage"].as_str() {
+                println!("  {message}");
+            }
+            for ended in ["result", "error"] {
+                if let Some(value) = status.get(ended) {
+                    println!("  {ended}: {value}");
+                }
+            }
+            Ok(())
+        }
+        Err(CallError::Rejected { code, message }) => {
+            if json {
+                print_json(&serde_json::json!({
+                    "refused": { "code": code, "message": message }
+                }))?;
+            }
+            Err(anyhow!(
+                "the Hub refused Task `{task}` with JSON-RPC error {code}: {message}"
+            ))
+        }
+        Err(error) => Err(error.into()),
     }
 }
 

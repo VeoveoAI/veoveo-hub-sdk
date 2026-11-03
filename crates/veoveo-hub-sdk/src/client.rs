@@ -55,8 +55,8 @@ use rmcp::{
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams,
         ClientCapabilities, ClientConfig, ClientJsonRpcMessage, DetailedTask,
-        GetSkillRequestParams, GetTaskParams, Implementation, JsonObject, Prompt, ProtocolVersion,
-        ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
+        GetSkillRequestParams, GetTaskParams, GetTaskResult, Implementation, JsonObject, Prompt,
+        ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
         ResourceTemplate, ServerNotification, Skill, SubscriptionFilter, TaskPayload, Tool,
     },
     service::{RunningService, ServiceError, Subscription},
@@ -373,6 +373,34 @@ impl HubClient {
             .connection(&Route::Provider(R::Provider::slug()))
             .await?;
         Ok(TaskHandle::started(connection, task.into()))
+    }
+
+    /// Reads a Task by its identifier in the caller's own name and returns the whole
+    /// `tasks/get` answer: its status, status message and, once it ended, its result or
+    /// error. The Hub decides which Tasks the caller reaches; an identifier it refuses
+    /// ends the call with [`CallError::Rejected`].
+    pub async fn get_task(&self, task: &str) -> Result<GetTaskResult, CallError> {
+        let params = GetTaskParams::new(task);
+        let (_, answer) = self
+            .request(&Route::Caller, |connection| {
+                let params = params.clone();
+                async move { connection.service.get_task(params).await }
+            })
+            .await?;
+        Ok(answer)
+    }
+
+    /// Requests cancellation of a Task by its identifier in the caller's own name.
+    /// Cancellation is cooperative: [`HubClient::get_task`] tells when it ended. An
+    /// identifier the Hub refuses ends the call with [`CallError::Rejected`].
+    pub async fn cancel_task(&self, task: &str) -> Result<(), CallError> {
+        let params = CancelTaskParams::new(task);
+        self.request(&Route::Caller, |connection| {
+            let params = params.clone();
+            async move { connection.service.cancel_task(params).await }
+        })
+        .await?;
+        Ok(())
     }
 
     /// Calls a tool by its Hub name, `{server}__{tool}`, with JSON arguments and

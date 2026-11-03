@@ -20,6 +20,8 @@ use tokio::sync::mpsc;
 use veoveo_types::ResourceAddress;
 
 const URI: &str = "observation://value";
+/// The one Task the fixture's server runs; every other identifier is refused.
+const FIXTURE_TASK: &str = "fixture-task";
 
 struct Provider;
 impl ProviderContract for Provider {
@@ -108,7 +110,7 @@ impl Source {
         };
         DetailedTask::new(
             Task::new(
-                "fixture-task",
+                FIXTURE_TASK,
                 TaskStatus::Working,
                 "2026-07-28T00:00:00Z",
                 "2026-07-28T00:00:00Z",
@@ -137,11 +139,24 @@ impl ServerHandler for Source {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(CreateTaskResult::new(self.detailed().task).into())
     }
+    async fn get_task(
+        &self,
+        request: GetTaskParams,
+        _: RequestContext<RoleServer>,
+    ) -> Result<GetTaskResult, ErrorData> {
+        if request.task_id != FIXTURE_TASK {
+            return Err(ErrorData::invalid_params("no such Task", None));
+        }
+        Ok(GetTaskResult::new(self.detailed()))
+    }
     async fn cancel_task(
         &self,
-        _: CancelTaskParams,
+        request: CancelTaskParams,
         _: RequestContext<RoleServer>,
     ) -> Result<(), ErrorData> {
+        if request.task_id != FIXTURE_TASK {
+            return Err(ErrorData::invalid_params("no such Task", None));
+        }
         self.cancellations.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -454,6 +469,32 @@ async fn rapid_http_closures_are_rate_limited_until_deadline_and_stream_drop_sto
         let count = fixture.source.listens.load(Ordering::SeqCst);
         tokio::time::sleep(Duration::from_millis(200)).await;
         assert_eq!(fixture.source.listens.load(Ordering::SeqCst), count);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_task_is_read_and_cancelled_by_its_identifier_and_an_unknown_one_is_refused() {
+    bounded(async {
+        let fixture = Fixture::new(Fault::None).await;
+        let started = fixture.client.start(Run {}).await.unwrap();
+        let task = started.id().unwrap();
+
+        // The caller's own Task: read whole, then cancelled, both by identifier alone.
+        let read = fixture.client.get_task(task).await.unwrap();
+        assert_eq!(read.task.task.task_id, task);
+        assert!(matches!(read.task.payload, TaskPayload::Working));
+        fixture.client.cancel_task(task).await.unwrap();
+        assert_eq!(fixture.source.cancellations.load(Ordering::SeqCst), 1);
+
+        // An identifier the server refuses is the JSON-RPC error, and cancels nothing.
+        let refused = |error: CallError| {
+            matches!(error, CallError::Rejected { code: -32602, ref message } if message == "no such Task")
+        };
+        assert!(refused(fixture.client.get_task("unknown").await.unwrap_err()));
+        assert!(refused(fixture.client.cancel_task("unknown").await.unwrap_err()));
+        assert_eq!(fixture.source.cancellations.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.source.calls.load(Ordering::SeqCst), 1);
     })
     .await;
 }

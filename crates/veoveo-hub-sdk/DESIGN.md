@@ -701,7 +701,12 @@ started a Task, waits for that Task. `HubClient::start` resolves with a
 `TaskHandle` once the Task has started; the handle resolves when the Task completes,
 from the Task status subscription of the rmcp fork, which first delivers the Task's
 current status. `TaskHandle::state` reads it once, `cancel` requests cancellation, and
-`HubClient::task` restores a handle from a recorded Task identifier. `Call::timeout`
+`HubClient::task` restores a handle from a recorded Task identifier. A caller that holds
+only an identifier, such as the CLI, reads a Task with `HubClient::get_task`, which
+answers `tasks/get` whole, and cancels it with `HubClient::cancel_task`, both in the
+caller's own name on its profile-wide connection. The Hub decides which Tasks a caller
+reaches; an identifier it refuses ends the call with `CallError::Rejected`, carrying the
+JSON-RPC error. `Call::timeout`
 and `TaskHandle::timeout` bound the wait. A call that times out, or is dropped, before
 its `tools/call` is answered is abandoned: rmcp sends `notifications/cancelled` for it,
 so the provider stops working on a result no one reads. A Task the call already started

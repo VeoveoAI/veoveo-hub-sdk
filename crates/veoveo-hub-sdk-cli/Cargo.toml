@@ -33,6 +33,9 @@ url.workspace = true
 [dev-dependencies]
 axum.workspace = true
 uuid.workspace = true
+# A real MCP Streamable HTTP server that answers the CLI's Task requests.
+rmcp = { workspace = true, features = ["server", "transport-streamable-http-server"] }
+veoveo-hub-sdk = { workspace = true, features = ["server"] }
 
 [lints]
 workspace = true

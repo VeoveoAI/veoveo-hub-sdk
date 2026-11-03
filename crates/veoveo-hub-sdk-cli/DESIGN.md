@@ -13,7 +13,7 @@ tests drive the same modules against a running installation.
 
 | Standard or protocol | Supported profile |
 |---|---|
-| Model Context Protocol | version `2026-07-28` with the Discover lifecycle, through the SDK's `HubClient`; `tools/list`, `resources/list`, `resources/templates/list` and `prompts/list` read every page within the SDK catalog's bounds; `skills/list` and `skills/get` of the MCP Skills extension; `resources/read` and `tools/call`; a Task-backed call waits for the Task's status through `subscriptions/listen`; the client answers no `input_required`, elicitation or sampling request |
+| Model Context Protocol | version `2026-07-28` with the Discover lifecycle, through the SDK's `HubClient`; `tools/list`, `resources/list`, `resources/templates/list` and `prompts/list` read every page within the SDK catalog's bounds; `skills/list` and `skills/get` of the MCP Skills extension; `resources/read` and `tools/call`; a Task-backed call waits for the Task's status through `subscriptions/listen`; `tasks/get` and `tasks/cancel` of a Task by its identifier; the client answers no `input_required`, elicitation or sampling request |
 | MCP Streamable HTTP | the rmcp 3.8.0 client transport, from the `VeoveoAI/rust-sdk` fork the workspace pins, with the caller's access token as a Bearer credential |
 | OAuth 2.0 client credentials, RFC 6749 section 4.4 | the SDK's `ClientCredentialsBearer`: the caller's token for the profile's MCP endpoint, requested with `resource`, RFC 8707, set to that endpoint and the configured scope |
 | Protected resource metadata, RFC 9728, and authorization server metadata, RFC 8414 | the bearer finds the authorization server in the profile endpoint's metadata and the token endpoint in that server's metadata; `login` also reads the authorization and revocation endpoints and requires `S256` in `code_challenge_methods_supported` |
@@ -41,6 +41,8 @@ tests drive the same modules against a running installation.
 | `read <uri>` | Reads one resource and prints the result |
 | `call <tool> [arguments]` | Calls one tool with a JSON object of arguments and prints its result; a Task-backed tool runs to its end within `--timeout-seconds`; an error result exits with a failure status |
 | `ask <request>` | Lets a chat model work on the request with the caller's tools and prints each step and the answer |
+| `tasks get <task-id>` | Reads a Task by its identifier through `tasks/get` and prints its status, its status message and, once it ended, its result or error; an identifier the Hub refuses, such as another person's Task or an unknown one, prints the refusal and exits with a failure status |
+| `tasks cancel <task-id>` | Requests the Task's cancellation through `tasks/cancel`, then prints its status as `tasks get` does; a refused identifier is printed and fails the same way |
 
 Global flags name the Hub and the caller. `--hub` is the Hub's public origin
 (default `http://vv-hub.internal:8080`), which tokens and assertions name. `--keys`
@@ -80,7 +82,9 @@ veoveo-hub-sdk-cli --hub https://veoveo.example.com tools
 veoveo-hub-sdk-cli --hub https://veoveo.example.com logout
 ```
 
-`--json` prints JSON: the listing, the call result or the whole `ask` transcript. Every
+`--json` prints JSON: the listing, the call result, a Task's `tasks/get` answer or its
+refusal, `{"refused": {"code", "message"}}` with the JSON-RPC error, or the whole `ask`
+transcript. Every
 global flag but `--scope` and `--json` also reads a `VEOVEO_CLI_*` environment
 variable (`VEOVEO_CLI_HUB`, `VEOVEO_CLI_CONNECT`, `VEOVEO_CLI_KEY_DIRECTORY`,
 `VEOVEO_CLI_GRANT_DIRECTORY`, `VEOVEO_CLI_BEARER_ENV`, `VEOVEO_CLI_CALLER` and
@@ -93,7 +97,7 @@ Every Computer mounts the CLI and runs it as its owner, exactly as OpenCode reac
 Hub. The installation's Computer template sets `VEOVEO_CLI_HUB` to the Hub's public
 origin, `VEOVEO_CLI_PROFILE=computer` and
 `VEOVEO_CLI_BEARER_ENV=COMPUTER_HUB_REFERENCE`, so `tools`, `resources`, `prompts`,
-`skills`, `skill`, `read` and `call` need no flag: each request goes to `{hub}/mcp/computer` with the
+`skills`, `skill`, `read`, `call` and `tasks` need no flag: each request goes to `{hub}/mcp/computer` with the
 `COMPUTER_HUB_REFERENCE` placeholder as its bearer, which the sandbox's proxy replaces
 with the owner's Hub token. The Computer's policy admits that endpoint, with that
 credential, for the CLI's mounted binary as it does for OpenCode, and never the model
@@ -108,8 +112,8 @@ one `HubClient` with a `ClientCredentialsBearer`; with the stored grant, the bea
 grant's own (see [Sign-In And Stored Grant](#sign-in-and-stored-grant)). Every request carries the bearer's
 current token, and the bearer requests a new one once a third of the token's lifetime
 remains or the Hub stops admitting it. Calls by tool name use a connection per
-server the name namespaces; listings and reads use one connection for the caller's
-profile-wide requests. A listing that misses a server's surface still prints what the
+server the name namespaces; listings, reads and Task reads and cancellations by
+identifier use one connection for the caller's profile-wide requests. A listing that misses a server's surface still prints what the
 Hub returned and names each missing surface on standard error. Token and assertion
 values never reach output or `Debug` formatting.
 

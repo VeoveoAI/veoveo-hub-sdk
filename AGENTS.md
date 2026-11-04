@@ -20,10 +20,11 @@ These rules apply to veoveo-hub-sdk.
 - The `contract` feature carries declarations and wire types only.
   `tests/contract_boundary.rs` fails when it pulls in rmcp, tokio, axum, reqwest or sqlx;
   gate the dependencies themselves, not only the modules.
-- `crates/veoveo-hub-sdk/src/hosting` and `crates/veoveo-hub-sdk/src/durable_tasks` are
-  protected: changes to them need the repository owner's review.
-- The SDK owns no queries. Tests that need a database run on a private cluster from
-  core's store fixture, with PostgreSQL 18.6 from the dev image.
+- The SDK owns no schema and no queries on core's tables. Its one query is the
+  knowledge module's ready-made search, which runs over a table the server names, in
+  the server's own schema, under the server's own read rule. Tests that need a database
+  run on a private cluster from core's store fixture, with PostgreSQL 18.6 from the dev
+  image.
 - A server reaches core state only through this SDK and core's runtime API, never in its
   own SQL. Every server runs `testing::assert_sql_confined` in its tests. When a server
   needs something the API lacks, add it to core or the SDK for every server instead of

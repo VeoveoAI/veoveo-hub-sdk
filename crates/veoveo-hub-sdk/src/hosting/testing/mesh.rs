@@ -400,7 +400,7 @@ impl RunningMesh {
         )
         .await;
         let answer = json_body(response).await;
-        if let Some(task) = answer["result"]["taskId"].as_str() {
+        if let Some(task) = started_task(&answer) {
             self.shared.routes.lock().insert(
                 task.to_owned(),
                 Route {
@@ -412,6 +412,14 @@ impl RunningMesh {
         }
         answer
     }
+}
+
+/// The Task a `tools/call` answer started, as the Hub records it: the Task a Task tool
+/// created, or the one an ordinary call names as its related task.
+fn started_task(answer: &serde_json::Value) -> Option<&str> {
+    answer["result"]["taskId"]
+        .as_str()
+        .or_else(|| answer["result"]["_meta"][crate::RELATED_TASK_META_KEY]["taskId"].as_str())
 }
 
 fn meta(tasks: bool) -> serde_json::Value {
@@ -953,7 +961,7 @@ async fn mcp(
         .find_map(|line| line.strip_prefix("data:"))
         .unwrap_or(&text);
     if let Ok(answer) = serde_json::from_str::<serde_json::Value>(json.trim())
-        && let Some(task) = answer["result"]["taskId"].as_str()
+        && let Some(task) = started_task(&answer)
     {
         shared.routes.lock().insert(
             task.to_owned(),

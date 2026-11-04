@@ -62,6 +62,17 @@ serves one search tool, `search_knowledge`, which callers see as
 `<slug>__search_knowledge`. Skill text names the tool so, and the collections by their
 names.
 
+A collection the SDK's PostgreSQL search ranks keeps, in its table in the server's
+schema, a key column of type `uuid` or `text` and three columns of fixed names:
+`knowledge_text`, a stored generated `tsvector` with a GIN index; `knowledge_vector`,
+`_extensions.vector(768)` with an HNSW index over `_extensions.vector_cosine_ops`; and
+`knowledge_model`, `text`, the checkpoint of the model that made the vector. Its read rule
+is a function in the same schema, `(r <table>, caller jsonb) RETURNS boolean`, `STABLE`,
+whose `caller` is the `KnowledgeCaller` JSON: `tenantId`, `tenantKey`, `principalId`,
+`principalKey`, `groups` of `{"group", "role"}`, `dataLabels` and `asOf`. pgvector is
+in the installation's `_extensions` schema, the one schema outside its own a server's SQL
+names.
+
 ## Errors
 
 JSON-RPC errors use MCP's codes, plus Veoveo codes from `-31999` to `-31000`, outside the

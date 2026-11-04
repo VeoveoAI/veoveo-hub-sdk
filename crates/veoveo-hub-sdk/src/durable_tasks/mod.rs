@@ -1,11 +1,14 @@
 //! The MCP Tasks adapter over core's durable Task runtime: it projects Task snapshots
 //! onto MCP Task results, serves `tasks/*` requests for the caller's own Tasks and lets a
 //! hosted server run a tool as a durable Task.
+mod call;
 mod hosting;
 mod mcp;
 mod service;
 mod work;
 
+pub(crate) use call::CallTasks;
+pub use call::{CallTask, start_call_task, task_owner};
 pub use hosting::{DurableListener, DurableTasks, TasksOnly, WithResources};
 pub use mcp::{mcp_task_completion, project_snapshot, task_seed};
 pub use service::{

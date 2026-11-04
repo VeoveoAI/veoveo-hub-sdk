@@ -35,6 +35,11 @@ use syn::{
 /// built-in types, and the session's temporary schema.
 const SYSTEM_SCHEMAS: [&str; 2] = ["pg_catalog", "pg_temp"];
 
+/// The installation's extension schema, which its bootstrap creates and owns and every
+/// login may use but not create in: pgvector's `vector` type, its operators and
+/// operator classes, which the knowledge search's columns and indexes name.
+const EXTENSION_SCHEMA: &str = "_extensions";
+
 /// Core functions a server may name, and only as the function a trigger executes.
 /// `kernel.notify_change` wakes the listeners of the table's schema channel.
 const TRIGGER_FUNCTIONS: [(&str, &str); 1] = [("kernel", "notify_change")];
@@ -276,7 +281,7 @@ impl Checker<'_> {
     }
 
     fn allowed(&self, schema: &str) -> bool {
-        schema == self.own || SYSTEM_SCHEMAS.contains(&schema)
+        schema == self.own || SYSTEM_SCHEMAS.contains(&schema) || schema == EXTENSION_SCHEMA
     }
 
     /// The SQL of one Rust source: its query macros and calls, and the files its
@@ -1329,6 +1334,52 @@ DROP POLICY prediction_owner ON media.prediction;
         assert_eq!(
             schemas,
             BTreeSet::from(["artifact".into(), "public".into(), "usage".into()])
+        );
+    }
+
+    #[test]
+    fn the_installations_extension_schema_and_no_other_is_admitted() {
+        // The knowledge columns, indexes and read rule, as the authoring guide gives them.
+        let fixture = Fixture::new(&[
+            (
+                "migrations/0002_knowledge.sql",
+                "ALTER TABLE media.prediction
+                 ADD COLUMN knowledge_text tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(name, ''))) STORED,
+                 ADD COLUMN knowledge_vector _extensions.vector(768),
+                 ADD COLUMN knowledge_model text;
+                 CREATE INDEX prediction_knowledge_text ON media.prediction USING gin (knowledge_text);
+                 CREATE INDEX prediction_knowledge_vector ON media.prediction USING hnsw (knowledge_vector _extensions.vector_cosine_ops);
+                 CREATE FUNCTION media.knowledge_readable(r media.prediction, caller jsonb) RETURNS boolean
+                 LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp
+                 RETURN r.tenant = (caller->>'tenantId')::uuid;
+",
+            ),
+            (
+                "src/store/nearest.sql",
+                "SELECT p.id FROM media.prediction AS p
+                 ORDER BY p.knowledge_vector OPERATOR(_extensions.<=>) $1::_extensions.vector LIMIT 4
+",
+            ),
+        ]);
+        assert_eq!(fixture.findings(), Vec::new());
+        let fixture = Fixture::new(&[(
+            "src/store/lookalike.sql",
+            "SELECT '[1]'::extensions.vector
+UNION ALL SELECT '[1]'::public.vector
+UNION ALL SELECT '[1]'::_extensions_more.vector
+",
+        )]);
+        let schemas = foreign(&fixture.findings())
+            .into_iter()
+            .map(|(_, _, schema)| schema)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            schemas,
+            BTreeSet::from([
+                "_extensions_more".into(),
+                "extensions".into(),
+                "public".into()
+            ])
         );
     }
 

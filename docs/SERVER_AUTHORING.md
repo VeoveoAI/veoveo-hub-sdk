@@ -42,12 +42,201 @@ with its search.
    named. Answer a query in any modality; a signed media part is a credential, so never
    echo its URL or headers. Test it with `veoveo_hub_sdk::testing::knowledge(&hub, text)`
    over the server's fixture, with `text` matching a fixture record, and say in the
-   server's skill what its collections hold.
+   server's skill what its collections hold. A server whose records live in PostgreSQL
+   uses the ready-made search, [below](#searching-records-kept-in-postgresql).
 6. Use the registration client and the Hub's issued `AccessTokenTrust`. Construct
    the Task runtime with that trust's deployment ID. Use the SDK's request/Task
    call clients for downstream calls so they retain the authenticated caller and
    captured execution context. A server that calls the Hub's own routes for its
    caller declares `.calls_hub()` and sends `HubClient::hub_bearer`.
+
+## Searching records kept in PostgreSQL
+
+`knowledge::PgKnowledge` ranks a collection's rows by their words and their vectors under
+the server's own read rule, and keeps their vectors current as they are written. A server
+gives it, per collection, three columns and two indexes, a read-rule function and a
+`PgKnowledgeSource`; the rest is one call in each write handler and one line in the Task
+worker.
+
+**The migration.** In the server's own migration, add to the collection's table the text
+PostgreSQL ranks, the vector and the model that made it, and their indexes. pgvector
+lives in the installation's `_extensions` schema, which the server's login may use and
+nothing else outside its own schema:
+
+```sql
+ALTER TABLE artifact.artifact
+    ADD COLUMN knowledge_text tsvector GENERATED ALWAYS AS
+        (to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(description, ''))) STORED,
+    ADD COLUMN knowledge_vector _extensions.vector(768),
+    ADD COLUMN knowledge_model text;
+CREATE INDEX artifact_knowledge_text ON artifact.artifact USING gin (knowledge_text);
+CREATE INDEX artifact_knowledge_vector ON artifact.artifact
+    USING hnsw (knowledge_vector _extensions.vector_cosine_ops);
+```
+
+The key column is `uuid` or `text`. PostgreSQL keeps `knowledge_text` current with the
+row; the SDK fills `knowledge_vector` and `knowledge_model`, the embedding model's
+checkpoint, and compares a query only with vectors of its own model.
+
+**The read rule.** A function in the server's schema, `(r <table>, caller jsonb) RETURNS
+boolean`, `STABLE`, says whether the caller may read one row. The search applies it
+before ranking and before the limit, so a page is never short for rows the caller may
+not read. `caller` is the verified caller, a `KnowledgeCaller`:
+
+```json
+{"tenantId": "1b3c6f0e-…", "tenantKey": "tenant-a",
+ "principalId": "8d2e41a7-…", "principalKey": "https://idp.example.com#user-1",
+ "groups": [{"group": "engineering", "role": "read"}],
+ "dataLabels": ["pii"], "asOf": "2026-11-03T10:00:00.123456Z"}
+```
+
+`tenantId` and `principalId` are the UUIDs core keeps, which the server's own rows name;
+`tenantKey` and `principalKey` are the same as tokens name them, which a grant names.
+A rule written for the search alone:
+
+```sql
+CREATE FUNCTION shop.item_readable(r shop.item, caller jsonb) RETURNS boolean
+LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog, pg_temp
+RETURN r.tenant = (caller->>'tenantId')::uuid
+    AND (r.public OR r.owner = (caller->>'principalId')::uuid);
+```
+
+Keep one rule for listings and search: a server whose rule is already a function wraps
+it, reading its arguments from `caller`:
+
+```sql
+CREATE FUNCTION artifact.knowledge_readable(a artifact.artifact, caller jsonb) RETURNS boolean
+LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog, pg_temp
+RETURN a.state = 'available'
+    AND artifact.effective_level(
+        a,
+        (caller->>'tenantId')::uuid,
+        (caller->>'principalId')::uuid,
+        caller->>'principalKey',
+        ARRAY(SELECT e.g->>'group' FROM jsonb_array_elements(caller->'groups')
+            WITH ORDINALITY AS e (g, n) ORDER BY e.n),
+        ARRAY(SELECT e.g->>'role' FROM jsonb_array_elements(caller->'groups')
+            WITH ORDINALITY AS e (g, n) ORDER BY e.n),
+        ARRAY(SELECT jsonb_array_elements_text(caller->'dataLabels')),
+        (caller->>'asOf')::timestamptz
+    ) >= 1;
+```
+
+**The source.** A `PgKnowledgeSource` names the collection, the table, its key column and
+the function, all in the server's schema, and declares the key's type: `Uuid` for a
+`uuid` column, `String` for a `text` one. It loads the hits of ranked keys through the
+server's own code, in their order, and gives the content to embed for one record: its
+text and its media as signed URLs.
+
+```rust
+pub struct Artifacts;
+
+impl PgKnowledgeSource<ArtifactDomain> for Artifacts {
+    type Key = Uuid;
+    type Error = ContentError;
+    fn collection(&self) -> KnowledgeCollection {
+        KnowledgeCollection::parse("artifact.artifacts").unwrap()
+    }
+    fn table(&self) -> PgKnowledgeTable {
+        PgKnowledgeTable::new("artifact", "artifact_id", "knowledge_readable").unwrap()
+    }
+    fn pool<'a>(&self, domain: &'a ArtifactDomain) -> &'a PgPool {
+        domain.pool()
+    }
+    async fn hits(
+        &self,
+        domain: &ArtifactDomain,
+        request: &RequestContext<RoleServer>,
+        keys: &[Uuid],
+    ) -> Result<Vec<Option<KnowledgeHit>>, ToolError> {
+        domain.hits(request, keys).await // one per key, in order; None for one gone
+    }
+    async fn content(
+        &self,
+        domain: &ArtifactDomain,
+        client: &HubClient,
+        key: Uuid,
+    ) -> Result<Option<ContentParts>, ContentError> {
+        domain.content(client, key).await // None when there is nothing to embed
+    }
+}
+
+pub static KNOWLEDGE: LazyLock<PgKnowledge<ArtifactDomain, EmbeddingClient>> =
+    LazyLock::new(|| PgKnowledge::new(EmbeddingClient).source(Artifacts));
+```
+
+`EmbeddingClient` is the Embedding server's `Embedder`, from its `client` feature. Register
+the search and declare what the writes need: the use of Embedding's permission, since
+the server embeds as its caller, and `starts_tasks()`, since a direct write starts a Task.
+Mark the template as for any search. Check the tables before serving; `check` refuses a
+missing column, index or function, a key of another type and a rule that is not `STABLE`:
+
+```rust
+Routes::builder(RoutePolicy::Authenticated)
+    .template::<ReadArtifact, _, _>(ResourceBuilder::new("Artifact").knowledge(collection()) /* … */)
+    .knowledge(read_policy(), KNOWLEDGE.clone())
+    .uses(PermissionName::parse("embedding.embeddings.create")?)
+    .starts_tasks()
+    // …
+    .build();
+
+KNOWLEDGE.check(&pool).await?;
+```
+
+**Writes.** After a write commits, the handler calls `index_written` once for the records
+it wrote, last:
+
+```rust
+let indexing = KNOWLEDGE
+    .index_written(&domain.runtime, &context, &domain, &Artifacts, &[artifact_id])
+    .await?;
+match indexing {
+    // The caller wrote directly: an index Task embeds as the caller, and the routes name
+    // it in the result as its related task.
+    WriteIndexing::Task(task) => { /* say the record is being indexed */ }
+    // Another server wrote for the caller: embedded in this call, each record's outcome.
+    WriteIndexing::Indexed(outcomes) => { /* IndexedRecord::of(&key, &outcome) for each */ }
+}
+```
+
+A record that was not embedded is still found by its words, until its next write embeds
+it. Two runs for one record never leave the older content's vector: the SDK reads the
+row's version, `xmin`, before `content` and writes the vector only over that version,
+reading a record written meanwhile again, at most 3 times in all, before it reports that
+the record kept changing. `content` therefore reads the record's current row. The index Task fails, naming the records and why, when one could not be embedded, so
+the person sees it among their Tasks.
+
+**Tasks.** The server serves `tasks/*` for its callers' index Tasks with a
+`DurableTaskService` over its Task runtime, whose `start_tool_task` returns `None` when it
+has no Task tool and whose other methods are the SDK's `get_durable_task`,
+`update_durable_task`, `cancel_durable_task` and `subscribe_durable_tasks` for
+`runtime.for_owner(&task_owner(caller)?)`, hosted with
+`Hosted::new(domain).with_tasks(DurableTasks::tasks_only(tasks))`. Its worker carries the
+server's calls, so an index Task calls Embedding as its caller, and runs index Tasks:
+
+```rust
+let worker = TaskWorker::new(runtime.clone()).calls(calls);
+worker
+    .run(
+        move |ctx| {
+            let domain = domain.clone();
+            async move {
+                if KNOWLEDGE.runs(ctx.task()) {
+                    return Ok::<_, TaskError>(KNOWLEDGE.run_index(&domain, &ctx).await);
+                }
+                // … the server's other Task types
+            }
+        },
+        stop,
+    )
+    .await?;
+```
+
+**Tests.** Test on core's store fixture with PostgreSQL 18.6 and pgvector 0.8.7 on `PATH`,
+which the development image installs: `TestDb::create_extensions(&["vector"])` creates the
+`_extensions` schema and pgvector as the installation's bootstrap does, before the
+server's migrations. A test whose Task worker runs while its fixture drops uses a
+multi-thread runtime. The SDK's own tests do this with synthetic embeddings. See [`tests/pg_knowledge.rs`](../crates/veoveo-hub-sdk/tests/pg_knowledge.rs).
 
 ## Traits enforce associations; attributes generate implementations
 

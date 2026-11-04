@@ -12,16 +12,16 @@ publish = false
 
 [workspace.dependencies]
 # veoveo-core, pinned to one revision for every core crate.
-veoveo-audit-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-fixtures = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-oauth = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-skills = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-store = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-task = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-task-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-types = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-usage = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
-veoveo-usage-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "05b6c47540680e085cc5356ed4ba8742ecc78bff" }
+veoveo-audit-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-fixtures = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-oauth = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-skills = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-store = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-task = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-task-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-types = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-usage = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
+veoveo-usage-contract = { git = "https://github.com/VeoveoAI/veoveo-core", rev = "97e85e054924d6db999da2d3d93ba3e383910e2d" }
 
 veoveo-hub-sdk = { path = "crates/veoveo-hub-sdk", default-features = false }
 veoveo-hub-sdk-fixture = { path = "crates/veoveo-hub-sdk-fixture" }
@@ -74,6 +74,9 @@ serde_json = "=1.0.151"
 sha2 = "=0.11.0"
 # The 0.2 line, whose `Sse` type rmcp 3.8.0's transport exposes.
 sse-stream = "=0.2.6"
+# PostgreSQL through the exact sqlx release veoveo-core pins, for the knowledge module's
+# ready-made search; core's store already brings it into the graph.
+sqlx = { version = "=0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "uuid", "chrono", "json"] }
 thiserror = "=2.0.21"
 tokio = "1.53.1"
 tokio-util = "0.7.19"

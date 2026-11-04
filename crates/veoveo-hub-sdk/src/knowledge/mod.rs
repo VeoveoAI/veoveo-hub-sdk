@@ -27,21 +27,38 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use veoveo_types::{Check, Checked, IdentifierError, PageSize, ResourceUri, ServerSlug};
 
+#[cfg(feature = "server")]
+mod caller;
 mod embedding;
+#[cfg(feature = "server")]
+mod fusion;
 mod media;
+#[cfg(feature = "server")]
+mod pg;
 #[cfg(feature = "server")]
 mod search;
 
+#[cfg(feature = "server")]
+pub use caller::{KnowledgeCaller, KnowledgeCallerError};
 #[cfg(feature = "client")]
 pub use embedding::Embedder;
 pub use embedding::{
     EmbeddingDimensions, EmbeddingModel, EmbeddingPurpose, Embeddings, EmbeddingsError,
     MAX_CHECKPOINT_BYTES, ModelCheckpoint,
 };
+#[cfg(feature = "server")]
+pub use fusion::{RRF_K, fuse};
 pub use media::{
     ContentPart, ContentParts, HeaderName, HeaderValue, KnowledgeValueError, MAX_HEADER_NAME_BYTES,
     MAX_HEADER_VALUE_BYTES, MAX_MEDIA_BYTES, MAX_MEDIA_HEADERS, MAX_PARTS, MAX_SIGNED_URL_BYTES,
     MediaHeaders, MediaSize, MediaType, Modality, SignedMedia, SignedUrl,
+};
+#[cfg(feature = "server")]
+pub use pg::{
+    INDEX_ATTEMPTS, INDEX_BATCH, INDEX_TASK, INDEX_TASK_TTL_MS, Indexed, IndexedRecord,
+    MODEL_COLUMN, NotEmbedded, PgIdentifier, PgKnowledge, PgKnowledgeError, PgKnowledgeKey,
+    PgKnowledgeSource, PgKnowledgeTable, QueryEmbedding, QueryEmbeddingError, RANK_DEPTH,
+    TEXT_COLUMN, VECTOR_COLUMN, VECTOR_DIMENSIONS, WriteIndexing, embed_query,
 };
 #[cfg(feature = "server")]
 pub use search::{

@@ -353,7 +353,7 @@ impl<D: DomainServer> Routes<D> {
         (route.invoke)(domain, request, context).await
     }
     pub(crate) fn has_tasks(&self) -> bool {
-        self.inner.tools.values().any(|route| route.task)
+        self.inner.starts_tasks || self.inner.tools.values().any(|route| route.task)
     }
     pub(crate) fn has_tools(&self) -> bool {
         !self.inner.tools.is_empty()
@@ -497,6 +497,7 @@ pub struct RoutesBuilder<D: DomainServer> {
     documents: RoutePolicy,
     uses: Vec<PermissionName>,
     calls_hub: bool,
+    starts_tasks: bool,
     descriptions: Option<super::ToolDescriptions>,
     apps: BTreeSet<AppUri>,
     app_links: Vec<AppLink>,
@@ -513,6 +514,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             documents,
             uses: vec![],
             calls_hub: false,
+            starts_tasks: false,
             descriptions: None,
             apps: BTreeSet::new(),
             app_links: vec![],
@@ -628,6 +630,16 @@ impl<D: DomainServer> RoutesBuilder<D> {
     /// The server then registers the token exchange grant.
     pub fn calls_hub(mut self) -> Self {
         self.calls_hub = true;
+        self
+    }
+    /// Declare that tool handlers start durable Tasks for their callers with
+    /// [`start_call_task`](crate::durable_tasks::start_call_task), such as the index Task
+    /// of [`PgKnowledge::index_written`](crate::knowledge::PgKnowledge::index_written).
+    /// The server then declares the Tasks extension and serves `tasks/*` through its Task
+    /// support, and each tool call's result names the Task it started as its related
+    /// task. Without this declaration `start_call_task` fails.
+    pub fn starts_tasks(mut self) -> Self {
+        self.starts_tasks = true;
         self
     }
     /// Declare a public route prefix: `path` under the mount, ending with `/`, such as
@@ -1268,13 +1280,19 @@ impl<D: DomainServer> RoutesBuilder<D> {
         &self,
         domain: D,
         request: CallToolRequestParams,
-        context: RequestContext<RoleServer>,
+        mut context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let route = self
             .tools
             .get(request.name.as_ref())
             .ok_or_else(|| ErrorData::invalid_params("unknown typed tool", None))?;
-        (route.invoke)(domain, request, context).await
+        if !self.starts_tasks {
+            return (route.invoke)(domain, request, context).await;
+        }
+        // A slot for the Task the call may start, which its result then names.
+        let calls = crate::durable_tasks::CallTasks::default();
+        context.extensions.insert(calls.clone());
+        named((route.invoke)(domain, request, context).await, &calls)
     }
     pub(crate) async fn read(
         &self,
@@ -1290,6 +1308,28 @@ impl<D: DomainServer> RoutesBuilder<D> {
             }
         }
         Err(ErrorData::invalid_params("unknown typed resource", None))
+    }
+}
+
+/// A call's result, naming the Task the call started as its related task.
+fn named(
+    answer: Result<CallToolResult, ErrorData>,
+    calls: &crate::durable_tasks::CallTasks,
+) -> Result<CallToolResult, ErrorData> {
+    let Some(task) = calls.started() else {
+        return answer;
+    };
+    match answer {
+        Ok(mut result) => {
+            crate::set_related_task_meta(&mut result.meta, task.to_string());
+            Ok(result)
+        }
+        Err(error) => {
+            // No result names the Task, so no caller follows it and it cannot act for
+            // one; it fails when it tries.
+            tracing::warn!(%task, "a tool call failed after it started a Task");
+            Err(error)
+        }
     }
 }
 

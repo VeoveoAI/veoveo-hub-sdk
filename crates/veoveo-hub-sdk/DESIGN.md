@@ -870,6 +870,22 @@ checkpoint, so the wait carries a cancellation to the provider.
 names the Task in the records its work writes. A Task the store reports waiting is
 `working` over MCP unless it holds outstanding input requests.
 
+An ordinary tool's handler may start one durable Task for its verified caller with
+`start_call_task(runtime, context, CallTask)`, when the work outlives the call, such as
+embedding the records a write wrote. The Task is owned exactly as a Task tool's Task:
+`task_owner(identity)` gives the actor, the profile as its surface, the tenant, the data
+labels and the invocation authority. The call's result carries
+`_meta["io.modelcontextprotocol/related-task"] = {"taskId": …}`, which the routes add,
+and the Hub records the Task among the caller's own, with the same route a Task tool's
+Task gets, so the caller follows and cancels it with `tasks/*` and the server's worker
+runs it like any other. A call starts at most one; a second start fails. The routes
+declare `RoutesBuilder::starts_tasks()`, which declares the Tasks extension, and the
+server serves `tasks/*` through its `DurableTasks` support. The Task's `ctx.client()`
+calls other servers for the caller only when the server declares uses and the call came
+from the caller directly: a Task another server's call created gets no delegation, as a
+delegated child Task acquires none. A handler starts the Task as its last step, since a
+call that fails after starting it names it in no result.
+
 `hosting::operations::operation_callbacks` serves the callback route on a server's
 public routes, and `provider_events` serves `POST /providers/{provider}/events` for a
 provider that sends every event to one fixed URL and names its own job. The server's
@@ -1082,9 +1098,71 @@ one's search themselves.
   the caller is the one who embeds; `EmbeddingPurpose` is `Document` or `Query`. The SDK
   names no server, so the Embedding server's `client` feature implements `Embedder`, and
   tests pass their own.
+- **The ready-made PostgreSQL search.** `PgKnowledge` is a `KnowledgeSearch` for records a
+  server keeps in PostgreSQL. A server opts into it per collection with a
+  `PgKnowledgeSource`; one that wants something else implements `KnowledgeSearch`
+  itself and may reuse the public pieces, `fuse` (reciprocal rank fusion, k = 60) and the
+  query embedding.
+  - **Columns.** The server's own migration adds to the collection's table, with SQL this
+    section's authoring guide gives: `knowledge_text tsvector GENERATED ALWAYS AS
+    (to_tsvector('simple', …)) STORED` over the record's text, `knowledge_vector
+    _extensions.vector(768)`, `knowledge_model text`, a GIN index on `knowledge_text` and
+    an HNSW index on `knowledge_vector` with `_extensions.vector_cosine_ops`. PostgreSQL
+    keeps the text column current with the row; `index` fills the other two.
+  - **Read rule.** The server's own schema holds a function `(r table, caller jsonb)
+    RETURNS boolean`, STABLE, that applies the server's read rule to one row; the SDK
+    binds the verified caller as one `KnowledgeCaller` JSON value built from the
+    forwarded identity: `tenantId` and `principalId`, the UUIDs core keeps for the tenant
+    and the principal; `tenantKey` and `principalKey`, the same as tokens name them;
+    `groups`, each `{"group", "role"}`; `dataLabels`; and `asOf`, the request time. The
+    server keeps one rule for listings and search, and a server whose rule is already a
+    function wraps it.
+  - **`PgKnowledgeSource`** names the collection, its table, its key column and its
+    read-rule function, all in the server's schema, and declares the key's type as its
+    `Key`: `Uuid` for a `uuid` column or `String` for a `text` one. It loads the hits for
+    ranked keys, in their order, through the server's own code, and gives the
+    `ContentParts` to embed for one record: its text and its media as signed URLs; both
+    take keys of that type. `PgKnowledge::check(pool)` verifies at startup that the key
+    column has the declared type and that the columns, both indexes and the function
+    exist with theirs, the function STABLE.
+  - **Search.** `PgKnowledge` embeds the query once as the caller with purpose `Query`; a
+    query whose embedding fails fails with that cause. For each source it runs one
+    statement in a transaction with `SET LOCAL hnsw.iterative_scan = relaxed_order`: a
+    full-text ranking when the query holds text and a cosine ranking over vectors of the
+    query's model, each over rows the read rule admits and each to a depth of four times
+    the limit, fused by reciprocal rank. It fuses the sources' lists the same way, keeps
+    the limit and asks each source for its hits.
+  - **Writes.** After a write commits, its handler makes one call,
+    `index_written(runtime, context, domain, source, keys)`, and chooses nothing; the
+    request decides the path:
+    - A write the caller made directly starts an index Task for the caller with
+      `start_call_task`, which the write's result names as its related task. The
+      server's Task worker runs it with `run_index(domain, ctx)`, embedding as the caller
+      through `ctx.client()`, and the person follows it among their Tasks. It succeeds
+      with each record's outcome, and fails with `knowledge_index`, naming each record
+      and why, when a record could not be embedded or written.
+    - A write another server made for the caller embeds in the call, before it returns,
+      with the request's client, continuing its chain of servers, since a Task another
+      server's call created gets no delegation; no Task is started.
+      `index_written` returns each record's outcome for the write's answer.
+
+    Both paths run `index(domain, client, source, keys)`: it gets each record's content,
+    embeds at most 8 records per Embedding call with purpose `Document`, and sets
+    `knowledge_vector` and `knowledge_model`. It reads each record's row version,
+    `xmin`, before its content and writes the vector only over that version, so two runs
+    for one record never leave the older content's vector: a record written meanwhile is
+    read, embedded and written again, at most 3 attempts in all, and then reports
+    `Changed`, which an index Task counts as a failure; one deleted meanwhile reports
+    `Gone`. Records read again share a later Embedding call. A record whose content
+    cannot be read, whose Embedding call fails or whose vector cannot be written reports
+    why without failing the others; the records of one failing Embedding call all report
+    it, and no failed call is retried. A record with nothing to embed, or gone, is no failure. A record not
+    embedded is found by words only until its next write. The routes declare
+    `starts_tasks()` and the use of Embedding's permission, and the worker runs index
+    Tasks, which `runs(task)` recognizes.
 - **Types.** The query, hit, part, marker and `Embeddings` types are in the `contract`
   feature, with schemas generated by Schemars; `Embedder` is in `client`, beside
-  `HubClient`; `KnowledgeSearch` and the checks are in `server`.
+  `HubClient`; `KnowledgeSearch`, the checks and `PgKnowledge` are in `server`.
 
 ## Crate Documents
 

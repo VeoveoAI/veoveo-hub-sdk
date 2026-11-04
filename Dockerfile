@@ -5,7 +5,8 @@
 FROM rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS dev
 # clang and cmake build aws-lc-sys, which jsonwebtoken's AWS-LC backend links. PostgreSQL
 # 18.6 from the PGDG repository, whose signing key Debian's postgresql-common ships, runs
-# the private clusters of the operations and usage tests; the packages create none.
+# the private clusters of the operations, usage and knowledge tests; the packages create
+# none. pgvector is the installation's exact pin, for the knowledge search's tests.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates clang cmake git pkg-config procps postgresql-common \
     && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
@@ -13,6 +14,7 @@ RUN apt-get update \
     && printf 'create_main_cluster = false\n' > /etc/postgresql-common/createcluster.d/veoveo.conf \
     && apt-get install -y --no-install-recommends \
         postgresql-18=18.6-1.pgdg13+2 postgresql-client-18=18.6-1.pgdg13+2 libpq5=18.6-1.pgdg13+2 \
+        postgresql-18-pgvector=0.8.7-1.pgdg13+1 \
     && rm -rf /var/lib/apt/lists/* /var/log/apt /var/log/dpkg.log \
     && rustup component add clippy rustfmt
 ENV PATH=/usr/lib/postgresql/18/bin:${PATH}

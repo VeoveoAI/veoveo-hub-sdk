@@ -57,6 +57,7 @@ server = [
     "dep:tracing",
     "dep:tracing-opentelemetry",
     "dep:tracing-subscriber",
+    "dep:sqlx",
     "dep:veoveo-store",
     "dep:veoveo-task",
     "dep:veoveo-usage",
@@ -100,6 +101,7 @@ proc-macro2 = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true, features = ["blocking", "rustls-no-provider"] }
 rmcp = { workspace = true, optional = true }
 sse-stream = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
 syn = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["full"] }
 tokio-util = { workspace = true, optional = true, features = ["rt"] }
@@ -123,6 +125,7 @@ syn.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 tower.workspace = true
 uuid.workspace = true
+veoveo-fixtures = { workspace = true, features = ["store"] }
 
 [[test]]
 name = "apps"
@@ -142,6 +145,10 @@ required-features = ["server"]
 
 [[test]]
 name = "knowledge"
+required-features = ["testing"]
+
+[[test]]
+name = "pg_knowledge"
 required-features = ["testing"]
 
 [[test]]

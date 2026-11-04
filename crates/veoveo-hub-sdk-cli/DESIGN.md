@@ -39,7 +39,7 @@ tests drive the same modules against a running installation.
 | `skills` | Lists the caller's skills (MCP Skills, SEP-2640) by the address of each skill's `SKILL.md`, with its description |
 | `skill <uri>` | Prints one skill's entry: its frontmatter and the manifest of its files with their digests and sizes; `read` reads each file |
 | `read <uri>` | Reads one resource and prints the result |
-| `call <tool> [arguments]` | Calls one tool with a JSON object of arguments and prints its result; a Task-backed tool runs to its end within `--timeout-seconds`; an error result exits with a failure status |
+| `call <tool> [arguments]` | Calls one tool with a JSON object of arguments and prints its result with the result's `_meta`, such as the Task a write started for its caller (`io.modelcontextprotocol/related-task`), which `tasks get` follows; a Task-backed tool runs to its end within `--timeout-seconds`; an error result exits with a failure status |
 | `ask <request>` | Lets a chat model work on the request with the caller's tools and prints each step and the answer |
 | `tasks get <task-id>` | Reads a Task by its identifier through `tasks/get` and prints its status, its status message and, once it ended, its result or error; an identifier the Hub refuses, such as another person's Task or an unknown one, prints the refusal and exits with a failure status |
 | `tasks cancel <task-id>` | Requests the Task's cancellation through `tasks/cancel`, then prints its status as `tasks get` does; a refused identifier is printed and fails the same way |

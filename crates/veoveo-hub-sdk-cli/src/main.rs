@@ -443,7 +443,12 @@ async fn run(client: &HubClient, command: HubCommand, json: bool) -> Result<()> 
                 .call_tool(HubToolName::parse(tool.as_str())?, arguments)
                 .timeout(Duration::from_secs(timeout_seconds))
                 .await?;
-            let value = agent::result_value(&result);
+            let mut value = agent::result_value(&result);
+            // The result's `_meta`, such as the Task a write started for its caller,
+            // which `tasks get` follows.
+            if let Some(meta) = &result.meta {
+                value["_meta"] = serde_json::to_value(meta)?;
+            }
             print_json(&value)?;
             if result.is_error == Some(true) {
                 return Err(anyhow!("`{tool}` returned an error result"));

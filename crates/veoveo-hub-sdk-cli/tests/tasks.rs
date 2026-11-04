@@ -1,6 +1,7 @@
 //! `tasks get` and `tasks cancel` as a Computer runs them, against a real MCP server that
 //! runs one Task of the caller's and refuses every other identifier, as the Hub refuses
-//! a Task the caller does not reach.
+//! a Task the caller does not reach. Its one tool is a write that names that Task in its
+//! result, as a write whose follow-up work runs as the caller's Task does.
 
 use std::sync::{
     Arc,
@@ -11,8 +12,9 @@ use axum::Router;
 use rmcp::{
     ServerHandler,
     model::{
-        CancelTaskParams, DetailedTask, ErrorData, GetTaskParams, GetTaskResult,
-        ServerCapabilities, ServerConfig, Task, TaskPayload, TaskStatus,
+        CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams, ContentBlock,
+        DetailedTask, ErrorData, GetTaskParams, GetTaskResult, MetaObject, ServerCapabilities,
+        ServerConfig, Task, TaskPayload, TaskStatus,
     },
     service::{RequestContext, RoleServer},
     transport::streamable_http_server::StreamableHttpService,
@@ -48,7 +50,26 @@ impl OneTask {
 
 impl ServerHandler for OneTask {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tasks().build())
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tasks()
+                .build(),
+        )
+    }
+    async fn call_tool(
+        &self,
+        _: CallToolRequestParams,
+        _: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        let mut result = CallToolResult::success(vec![ContentBlock::text("written")]);
+        let mut meta = MetaObject::default();
+        meta.0.insert(
+            veoveo_hub_sdk::RELATED_TASK_META_KEY.to_owned(),
+            json!({"taskId": OWN_TASK}),
+        );
+        result.meta = Some(meta);
+        Ok(CallToolResponse::Complete(result))
     }
     async fn get_task(
         &self,
@@ -127,13 +148,21 @@ async fn cli(origin: &str, arguments: &[&str]) -> (bool, Value) {
 }
 
 #[tokio::test]
-async fn a_computer_reads_and_cancels_its_own_task_and_an_unknown_one_is_refused() {
+async fn a_computer_follows_the_task_a_write_names_and_an_unknown_one_is_refused() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let server = OneTask::default();
     let origin = hub(server.clone()).await;
 
+    // A write names the caller's Task in its result's `_meta`, which `call` prints.
+    let (ok, written) = cli(&origin, &["--json", "call", "probe__write", "{}"]).await;
+    assert!(ok, "{written}");
+    let task = written["_meta"][veoveo_hub_sdk::RELATED_TASK_META_KEY]["taskId"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the call printed no related Task: {written}"));
+    assert_eq!(task, OWN_TASK);
+
     // The caller's own Task: its status, then its cancellation and the status after.
-    let (ok, read) = cli(&origin, &["--json", "tasks", "get", OWN_TASK]).await;
+    let (ok, read) = cli(&origin, &["--json", "tasks", "get", task]).await;
     assert!(ok, "{read}");
     assert_eq!(read["taskId"], OWN_TASK);
     assert_eq!(read["status"], "working");

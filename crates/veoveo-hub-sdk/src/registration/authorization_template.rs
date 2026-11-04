@@ -104,7 +104,7 @@ impl<'a> AuthorizationTemplate<'a> {
         self.authority
     }
 
-    pub(super) fn matches(&self, uri: &ResourceUri) -> bool {
+    pub(crate) fn matches(&self, uri: &ResourceUri) -> bool {
         let Ok(parts) = uri.components() else {
             return false;
         };

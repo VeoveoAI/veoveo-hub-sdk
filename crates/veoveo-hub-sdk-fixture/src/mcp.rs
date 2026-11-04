@@ -1,7 +1,7 @@
 //! Observatory uses the same typed resource and list-tool declarations as clients.
 use crate::contract::{
     ObservatoryScope, ReadReading, ReadReadings, Reading, ReadingCollection, ReadingId,
-    ReadingsTool,
+    ReadingsTool, reading_knowledge,
 };
 use rmcp::{
     ErrorData, RoleServer,
@@ -10,9 +10,14 @@ use rmcp::{
 };
 use std::sync::LazyLock;
 use veoveo_hub_sdk::{
+    calls::ResourceRead,
     definition::{CollectionRequest, List, ReadCollection},
     hosting::{
-        DomainServer, Hosted, ReadCache, ResourceBuilder, RoutePolicy, Routes, hub_identity,
+        DomainServer, Hosted, ReadCache, ResourceBuilder, RoutePolicy, Routes, ToolError,
+        hub_identity,
+    },
+    knowledge::{
+        ContentPart, KnowledgeHit, KnowledgeQuery, KnowledgeSearch, SearchContext, Snippet,
     },
     server_contract::{McpServerContract, McpServerSetup},
 };
@@ -94,14 +99,67 @@ async fn list_readings(
     let identity = hub_identity(&context)?;
     page(request.into_selection(), identity.authority.tenant)
 }
+/// Observatory's knowledge search, over the same synthetic readings, in memory. A query
+/// with text finds the readings whose identifier holds one of its words; a query of media
+/// alone, which a real server embeds, answers every reading. No media is fetched.
+pub struct ReadingSearch;
+impl KnowledgeSearch<ObservatoryMcp> for ReadingSearch {
+    async fn search(
+        &self,
+        context: SearchContext<ObservatoryMcp>,
+        query: KnowledgeQuery,
+    ) -> Result<Vec<KnowledgeHit>, ToolError> {
+        hub_identity(&context.request)?;
+        let words: Vec<String> = query
+            .parts
+            .iter()
+            .filter_map(|part| match part {
+                ContentPart::Text { text } => Some(text.to_lowercase()),
+                _ => None,
+            })
+            .flat_map(|text| {
+                text.split_whitespace()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        readings()
+            .into_iter()
+            .filter(|reading| {
+                words.is_empty() || words.iter().any(|word| reading.id.as_str().contains(word))
+            })
+            .take(query.limit.get() as usize)
+            .map(|reading| {
+                let uri = ReadReading {
+                    id: reading.id.clone(),
+                }
+                .uri()
+                .map_err(|_| ErrorData::internal_error("a reading's address", None))?;
+                Ok(KnowledgeHit {
+                    uri,
+                    collection: reading_knowledge(),
+                    title: format!("Reading {}", reading.id.as_str()),
+                    snippet: Snippet::new(format!(
+                        "{} reads {}",
+                        reading.id.as_str(),
+                        reading.value
+                    )),
+                    modified_at: None,
+                })
+            })
+            .collect()
+    }
+}
 static ROUTES: LazyLock<Routes<ObservatoryMcp>> = LazyLock::new(|| {
     Routes::builder(RoutePolicy::Authenticated)
         .template::<ReadReading, _, _>(
             ResourceBuilder::new("Reading")
                 .reader(read_reading)
                 .policy(RoutePolicy::Authenticated)
-                .cache(ReadCache::Private),
+                .cache(ReadCache::Private)
+                .knowledge(reading_knowledge()),
         )
+        .knowledge(RoutePolicy::Authenticated, ReadingSearch)
         .collection_resource::<ReadReadings, _, _>(
             Some(ReadReadings {}),
             ResourceBuilder::new("Readings")

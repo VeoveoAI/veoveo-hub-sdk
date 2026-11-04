@@ -44,7 +44,10 @@ fn validator<D: 'static>(tool: &Tool) -> Option<Arc<jsonschema::Validator>> {
 
 /// The violations of `tool`'s published input schema by `arguments`, or `None` when the
 /// schema admits them.
-fn violations<D: 'static>(tool: &Tool, arguments: Option<&JsonObject>) -> Option<String> {
+pub(super) fn violations<D: 'static>(
+    tool: &Tool,
+    arguments: Option<&JsonObject>,
+) -> Option<String> {
     let validator = validator::<D>(tool)?;
     let instance = Value::Object(arguments.cloned().unwrap_or_default());
     let mut violations: Vec<String> = Vec::new();

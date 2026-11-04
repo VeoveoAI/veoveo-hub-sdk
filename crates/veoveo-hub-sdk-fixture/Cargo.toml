@@ -83,6 +83,10 @@ name = "skills"
 required-features = ["server"]
 
 [[test]]
+name = "knowledge"
+required-features = ["server"]
+
+[[test]]
 name = "operations"
 required-features = ["server"]
 

@@ -205,6 +205,16 @@ impl<C: McpServerContract> McpServerSetup<C> {
             extensions.remove(crate::apps::EXTENSION_ID);
         }
         let extensions = info.capabilities.extensions.get_or_insert_default();
+        // The knowledge extension is declared exactly when the routes search the
+        // collections they mark, each its own and marked once.
+        if knowledge::<C>(&slug)? {
+            extensions.insert(
+                crate::knowledge::EXTENSION_ID.to_owned(),
+                rmcp::model::JsonObject::new(),
+            );
+        } else {
+            extensions.remove(crate::knowledge::EXTENSION_ID);
+        }
         // The skills extension is declared exactly when the server embeds a skill, without
         // `resources/directory/read`: every manifest is complete.
         if skills.is_empty() {
@@ -397,6 +407,28 @@ impl<C: McpServerContract> McpServerSetup<C> {
     }
 }
 
+/// Whether `C`'s routes express the knowledge contract: they register a search and mark
+/// at least one template. One without the other, a collection outside `slug` and a
+/// collection marked twice are refused.
+fn knowledge<C: McpServerContract>(slug: &veoveo_types::ServerSlug) -> Result<bool, McpSetupError> {
+    use crate::hosting::DomainServer;
+    let routes = C::Server::routes();
+    let mut collections = BTreeSet::new();
+    for marked in routes.marked_templates() {
+        if !marked.collection().is_owned_by(slug) {
+            return Err(McpSetupError::ForeignKnowledgeCollection);
+        }
+        if !collections.insert(marked.collection()) {
+            return Err(McpSetupError::DuplicateKnowledgeCollection);
+        }
+    }
+    match (routes.has_knowledge(), collections.is_empty()) {
+        (true, true) => Err(McpSetupError::KnowledgeSearchWithoutCollection),
+        (false, false) => Err(McpSetupError::KnowledgeCollectionWithoutSearch),
+        (searches, _) => Ok(searches),
+    }
+}
+
 fn well_known_builder(
     scheme: &ResourceScheme,
     authority: &str,
@@ -423,6 +455,10 @@ pub enum McpSetupError {
     InvalidTemplate,
     DescriptorTemplateMismatch,
     DuplicateTemplate,
+    KnowledgeSearchWithoutCollection,
+    KnowledgeCollectionWithoutSearch,
+    ForeignKnowledgeCollection,
+    DuplicateKnowledgeCollection,
 }
 
 impl fmt::Display for McpSetupError {
@@ -452,6 +488,18 @@ impl fmt::Display for McpSetupError {
                 "resource metadata builder changed the typed template"
             }
             Self::DuplicateTemplate => "resource discovery contains a duplicate template",
+            Self::KnowledgeSearchWithoutCollection => {
+                "a knowledge search requires a template marked as a knowledge collection"
+            }
+            Self::KnowledgeCollectionWithoutSearch => {
+                "a template marked as a knowledge collection requires the routes' knowledge search"
+            }
+            Self::ForeignKnowledgeCollection => {
+                "a knowledge collection is named {slug}.{plural} under the server's own slug"
+            }
+            Self::DuplicateKnowledgeCollection => {
+                "a knowledge collection marks exactly one template"
+            }
         })
     }
 }

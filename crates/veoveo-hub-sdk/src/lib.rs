@@ -2,12 +2,12 @@
 //!
 //! The `contract` feature holds the declarations and wire types a server and its
 //! consumers share: the forwarded identity, registration and authorization declarations,
-//! the Hub's client-visible metadata, the embedded document contract and the MCP
-//! audit vocabulary. The `client` feature sends typed calls to servers through a Hub
-//! profile. The default `server` feature adds hosting over rmcp, the Streamable HTTP
-//! transport profile, forwarded-token verification, the registration client, MCP Apps,
-//! the MCP Tasks adapter over core's durable Task runtime and calls to other servers for
-//! the current caller.
+//! the Hub's client-visible metadata, the embedded document contract, the MCP audit
+//! vocabulary and the knowledge contract. The `client` feature sends typed calls to
+//! servers through a Hub profile. The default `server` feature adds hosting over rmcp, the
+//! Streamable HTTP transport profile, forwarded-token verification, the registration
+//! client, MCP Apps, the MCP Tasks adapter over core's durable Task runtime and calls to
+//! other servers for the current caller.
 
 /// The Veoveo hosted MCP server contract identifier.
 pub const HOSTED_MCP_CONTRACT: &str = "https://veoveo.ai/contracts/hosted-mcp";
@@ -23,6 +23,7 @@ pub use veoveo_hub_sdk_macros::{
 pub mod hub;
 pub mod identity;
 pub mod jsonrpc_codes;
+pub mod knowledge;
 pub mod registration;
 pub mod skills;
 pub mod usage;

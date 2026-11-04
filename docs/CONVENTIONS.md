@@ -42,6 +42,7 @@ A concept has one noun across every surface, and each surface spells it in its o
 | Resource URI | `<slug>://<plural>/{id}` | `time://events/{event_id}` |
 | Resource type | `<slug>.<singular>` | `time.event` |
 | Permission | `<slug>.<plural>.<verb>` | `time.events.write` |
+| Knowledge collection | `<slug>.<plural>` | `time.events` |
 
 A server's URI scheme equals its slug. The Hub projects a tool as `<slug>__<tool>`
 when it lists tools from several servers, and a tool of a server served by the runners
@@ -49,6 +50,17 @@ of linked repositories as `<slug>__<link>__<tool>`, where the link is a lowercas
 label; a slug holds no `__`, so a name splits at its first `__`
 (`HubToolName::projection`). Resource templates use RFC 6570 simple
 expansion, and lists page through MCP cursors.
+
+## Knowledge
+
+A server whose records people search names each searchable collection
+`<slug>.<plural>`, a `KnowledgeCollection`: its slug and the plural noun of its records,
+such as `artifact.artifacts`. The plural starts with a lowercase ASCII letter and holds
+lowercase ASCII letters, digits, `-` or `_`. The records' template carries
+`_meta["ai.veoveo/knowledge"]`, `{"collection": "<slug>.<plural>"}`, and the server
+serves one search tool, `search_knowledge`, which callers see as
+`<slug>__search_knowledge`. Skill text names the tool so, and the collections by their
+names.
 
 ## Errors
 

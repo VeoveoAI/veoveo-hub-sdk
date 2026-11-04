@@ -7,6 +7,7 @@ use crate::{
     definition::{
         CollectionRequest, CollectionResource, CollectionTool, List, ReadCollection, SingleOutput,
     },
+    knowledge::{KnowledgeCollection, KnowledgeQuery, KnowledgeSearch, MarkedTemplate},
     registration::{
         BodyLimit, PermissionDeclaration, PermissionDefinition, PublicRouteDeclaration,
         PublicRoutePrefix, RequestRate, SurfacesDeclaration,
@@ -150,6 +151,7 @@ pub struct Ready<T>(T);
 /// cache policy. A partial builder cannot be registered or served.
 pub struct ResourceBuilder<R, H = Missing, P = Missing, K = Missing> {
     name: &'static str,
+    knowledge: Option<KnowledgeCollection>,
     reader: H,
     policy: P,
     cache: K,
@@ -159,6 +161,7 @@ impl<R: ResourceRead> ResourceBuilder<R> {
     pub fn new(name: &'static str) -> Self {
         Self {
             name,
+            knowledge: None,
             reader: Missing,
             policy: Missing,
             cache: Missing,
@@ -170,6 +173,7 @@ impl<R, H, P, K> ResourceBuilder<R, H, P, K> {
     pub fn reader<F>(self, reader: F) -> ResourceBuilder<R, Ready<F>, P, K> {
         ResourceBuilder {
             name: self.name,
+            knowledge: self.knowledge,
             reader: Ready(reader),
             policy: self.policy,
             cache: self.cache,
@@ -179,6 +183,7 @@ impl<R, H, P, K> ResourceBuilder<R, H, P, K> {
     pub fn policy(self, policy: RoutePolicy) -> ResourceBuilder<R, H, Ready<RoutePolicy>, K> {
         ResourceBuilder {
             name: self.name,
+            knowledge: self.knowledge,
             reader: self.reader,
             policy: Ready(policy),
             cache: self.cache,
@@ -188,11 +193,22 @@ impl<R, H, P, K> ResourceBuilder<R, H, P, K> {
     pub fn cache(self, cache: ReadCache) -> ResourceBuilder<R, H, P, Ready<ReadCache>> {
         ResourceBuilder {
             name: self.name,
+            knowledge: self.knowledge,
             reader: self.reader,
             policy: self.policy,
             cache: Ready(cache),
             read: PhantomData,
         }
+    }
+}
+impl<R: TemplateRead, H, P, K> ResourceBuilder<R, H, P, K> {
+    /// Mark the template's records as the knowledge collection `collection`, which the
+    /// routes' [`knowledge`](RoutesBuilder::knowledge) search answers from: the template
+    /// carries `_meta["ai.veoveo/knowledge"]` naming it. Setup refuses a collection
+    /// outside the server's slug, one marked twice and a mark without a search.
+    pub fn knowledge(mut self, collection: KnowledgeCollection) -> Self {
+        self.knowledge = Some(collection);
+        self
     }
 }
 
@@ -304,6 +320,7 @@ struct ResourceRoute<D: DomainServer> {
     template: Option<McpResourceTemplate>,
     policy: RoutePolicy,
     invoke: ReadHandler<D>,
+    knowledge: Option<MarkedTemplate>,
 }
 
 pub struct Routes<D: DomainServer> {
@@ -343,6 +360,17 @@ impl<D: DomainServer> Routes<D> {
     }
     pub(crate) fn has_apps(&self) -> bool {
         !self.inner.apps.is_empty()
+    }
+    /// Whether the routes register a knowledge search.
+    pub(crate) fn has_knowledge(&self) -> bool {
+        self.inner.knowledge
+    }
+    /// The templates the routes mark as knowledge collections.
+    pub(crate) fn marked_templates(&self) -> impl Iterator<Item = &MarkedTemplate> {
+        self.inner
+            .resources
+            .iter()
+            .filter_map(|route| route.knowledge.as_ref())
     }
     /// The descriptions the server changes while it runs, when it has them.
     pub(crate) fn descriptions(&self) -> Option<&super::ToolDescriptions> {
@@ -474,6 +502,7 @@ pub struct RoutesBuilder<D: DomainServer> {
     app_links: Vec<AppLink>,
     public_routes: Vec<PublicRouteDeclaration>,
     app_origin: Option<RoutePolicy>,
+    knowledge: bool,
 }
 impl<D: DomainServer> RoutesBuilder<D> {
     fn new(documents: RoutePolicy) -> Self {
@@ -489,6 +518,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             app_links: vec![],
             public_routes: vec![],
             app_origin: None,
+            knowledge: false,
         }
     }
     pub fn build(mut self) -> Routes<D> {
@@ -753,6 +783,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             template: None,
             policy,
             invoke,
+            knowledge: None,
         });
         self
     }
@@ -975,6 +1006,58 @@ impl<D: DomainServer> RoutesBuilder<D> {
         );
         self
     }
+    /// Register the server's knowledge search as `search_knowledge`, with the contract's
+    /// schemas and description, behind `policy`, the server's read permission for the
+    /// records it searches. Arguments that are not a [`KnowledgeQuery`] are invalid
+    /// params; [`crate::knowledge::KnowledgeSearch`] says what the result must pass.
+    pub fn knowledge<S: KnowledgeSearch<D>>(mut self, policy: RoutePolicy, search: S) -> Self {
+        assert!(
+            !matches!(&policy, RoutePolicy::Permission(permission)
+                if permission.access != crate::registration::Access::Read),
+            "the knowledge search requires a read permission"
+        );
+        let descriptor = crate::knowledge::descriptor();
+        let tool = descriptor.clone();
+        let search = Arc::new(search);
+        let access = policy.clone();
+        let invoke: ToolHandler<D> = Arc::new(move |domain, request, context| {
+            let search = search.clone();
+            let access = access.clone();
+            let tool = tool.clone();
+            Box::pin(async move {
+                access.check(&context)?;
+                let arguments = request.arguments.unwrap_or_default();
+                let query: KnowledgeQuery =
+                    serde_json::from_value(serde_json::Value::Object(arguments.clone())).map_err(
+                        // The decoder's message can quote an argument, such as a signed URL.
+                        |_| {
+                            ErrorData::invalid_params(
+                                super::arguments::violations::<D>(&tool, Some(&arguments))
+                                    .unwrap_or_else(|| crate::knowledge::INVALID_QUERY.into()),
+                                None,
+                            )
+                        },
+                    )?;
+                crate::knowledge::answer(&*search, domain, query, context).await
+            })
+        });
+        assert!(
+            self.tools
+                .insert(
+                    crate::knowledge::TOOL.into(),
+                    ToolRoute {
+                        descriptor,
+                        policy,
+                        invoke,
+                        task: false,
+                    }
+                )
+                .is_none(),
+            "duplicate typed tool route"
+        );
+        self.knowledge = true;
+        self
+    }
     pub fn singleton<R, H, F>(
         mut self,
         read: R,
@@ -990,6 +1073,10 @@ impl<D: DomainServer> RoutesBuilder<D> {
         H: Fn(D, R, RequestContext<RoleServer>) -> F + Send + Sync + 'static,
         F: Future<Output = Result<R::Content, ErrorData>> + Send + 'static,
     {
+        assert!(
+            builder.knowledge.is_none(),
+            "a knowledge collection marks a member template, not a fixed resource"
+        );
         let address = read.address();
         let uri = read.uri().expect("typed singleton address");
         let descriptor = McpResource::new(address.clone(), |uri| {
@@ -1023,6 +1110,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             template: None,
             policy,
             invoke,
+            knowledge: None,
         });
         self
     }
@@ -1091,6 +1179,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             template: Some(template),
             policy,
             invoke,
+            knowledge: None,
         });
         self
     }
@@ -1107,9 +1196,25 @@ impl<D: DomainServer> RoutesBuilder<D> {
     {
         let template = McpResourceTemplate::new(
             ResourceTemplateUri::new(template).expect("typed route template"),
-            |uri| ResourceTemplate::new(uri, builder.name).with_mime_type("application/json"),
+            |uri| {
+                let descriptor =
+                    ResourceTemplate::new(uri, builder.name).with_mime_type("application/json");
+                match &builder.knowledge {
+                    Some(collection) => crate::knowledge::mark(descriptor, collection),
+                    None => descriptor,
+                }
+            },
         )
         .expect("typed template descriptor");
+        // A marked template recognizes a hit's address as its route does.
+        let knowledge = builder.knowledge.map(|collection| {
+            MarkedTemplate::new(collection, template.template().clone(), move |uri| {
+                R::Address::parse(uri)
+                    .ok()
+                    .and_then(|address| parse(&address))
+                    .is_some()
+            })
+        });
         let access = builder.policy.0.clone();
         let policy = access.clone();
         let cache = builder.cache.0;
@@ -1131,6 +1236,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             template: Some(template),
             policy,
             invoke,
+            knowledge,
         });
         self
     }

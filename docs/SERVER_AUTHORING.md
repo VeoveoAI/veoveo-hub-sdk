@@ -4,7 +4,8 @@ Implement the domain contract and handlers; let the SDK own the MCP host. Start
 from [veoveo-template-mcp-rust](https://github.com/VeoveoAI/veoveo-template-mcp-rust).
 The [Observatory contract](../crates/veoveo-hub-sdk-fixture/src/contract.rs) and
 [host](../crates/veoveo-hub-sdk-fixture/src/mcp.rs) are a compact working example,
-including a collection exposed as both a resource and a tool.
+including a collection exposed as both a resource and a tool, and a knowledge collection
+with its search.
 
 ## What authors implement
 
@@ -28,7 +29,21 @@ including a collection exposed as both a resource and a tool.
    `{slug}__{tool}`, and the resources by their addresses. Keep `instructions` to what the
    server is and which skills it serves, and have each prompt name the skill it follows.
    The build refuses a skill a host would refuse.
-5. Use the registration client and the Hub's issued `AccessTokenTrust`. Construct
+5. When people search the server's records, express the knowledge contract, the MCP
+   extension `ai.veoveo/knowledge`. Mark each searchable template with
+   `ResourceBuilder::knowledge(collection)`, a `KnowledgeCollection` named
+   `{slug}.{plural}` after the plural noun of its records, implement `KnowledgeSearch`
+   over the server's own records under its own read rule, and register it with
+   `RoutesBuilder::knowledge(policy, search)`, where `policy` is the server's read
+   permission for those records. The SDK publishes `search_knowledge` with the contract's
+   schemas, declares the extension, refuses a search without a marked template and the
+   reverse, and checks every result before it leaves the server: at most the query's
+   limit, each hit an address of its collection's template and of a collection the query
+   named. Answer a query in any modality; a signed media part is a credential, so never
+   echo its URL or headers. Test it with `veoveo_hub_sdk::testing::knowledge(&hub, text)`
+   over the server's fixture, with `text` matching a fixture record, and say in the
+   server's skill what its collections hold.
+6. Use the registration client and the Hub's issued `AccessTokenTrust`. Construct
    the Task runtime with that trust's deployment ID. Use the SDK's request/Task
    call clients for downstream calls so they retain the authenticated caller and
    captured execution context. A server that calls the Hub's own routes for its
@@ -166,6 +181,9 @@ and the SDK's [registration wire mapping](../crates/veoveo-hub-sdk/src/registrat
 - `ai.veoveo/task` is a call's Task metadata, `TaskMeta`, such as its retention pin.
 - `ai.veoveo/hub` is the Hub's result metadata, `HubMeta`, such as the servers a
   federated list lacks.
+- `ai.veoveo/knowledge` is the knowledge contract: a capabilities extension a server
+  declares when it searches its records, and each searchable template's `_meta`
+  `CollectionMarker`.
 - OAuth registration and registration management follow RFC 7591/7592. Our
   `veoveo_*` client metadata members use OAuth's extension mechanism. Forwarded
   JWT invocation claims and RFC 8693 delegation have their own typed SDK models.

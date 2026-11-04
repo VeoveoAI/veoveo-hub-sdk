@@ -99,11 +99,11 @@ declaration consistency; ordinary implementation tests establish dynamic behavio
 
 | Feature | Contains | Excludes |
 |---|---|---|
-| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Hub's client-visible metadata, the document and contract declarations, the MCP audit vocabulary and the usage kinds and Task cost types | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
-| `client` | `HubClient`: typed calls, Task handles and typed resource reads and waits through a Hub profile over MCP Streamable HTTP, with rmcp's client and Streamable HTTP client transport | rmcp's server, server transport and macros, axum, jsonwebtoken, OpenTelemetry, sqlx and core's Task runtime; `tests/contract_boundary.rs` fails when the resolved graph or rmcp's features contain them |
+| `contract` | the forwarded identity types, registration and authorization declarations, the typed tool calls and resource reads a provider publishes, the token exchange wire types, the Hub's client-visible metadata, the document and contract declarations, the MCP audit vocabulary, the usage kinds and Task cost types, and the [knowledge](#knowledge) contract's types | rmcp, tokio, axum, reqwest and sqlx; `tests/contract_boundary.rs` fails when the resolved graph contains them |
+| `client` | `HubClient`: typed calls, Task handles and typed resource reads and waits through a Hub profile over MCP Streamable HTTP, with rmcp's client and Streamable HTTP client transport, and the knowledge contract's `Embedder` | rmcp's server, server transport and macros, axum, jsonwebtoken, OpenTelemetry, sqlx and core's Task runtime; `tests/contract_boundary.rs` fails when the resolved graph or rmcp's features contain them |
 | `client-credentials` | `client` plus `ClientCredentialsBearer`, a caller's own RFC 6749 client-credentials token for a profile, requested with an RFC 7523 assertion that core's OAuth client signs with the caller's key, and `caller_signer`, which reads an installation's caller key files | rmcp's server, server transport and macros, axum, OpenTelemetry, sqlx and core's Task runtime |
 | `server` (default) | hosting, the Streamable HTTP profile, forwarded-token verification, the registration client, calls to other servers for the current caller, MCP Apps, telemetry, the MCP Tasks adapter over core's durable Task runtime, [Task work](#task-work) with its provider event routes, and the usage ledger | |
-| `testing` | `server` plus the in-process Hub in `hosting::testing` for server tests and `TestMesh` for calls between servers, whose origin also delivers requests under a served server's mount to its public routes, as an ingress would, and `testing::assert_sql_confined`, the check that a server's SQL names only its own schema | |
+| `testing` | `server` plus the in-process Hub in `hosting::testing` for server tests and `TestMesh` for calls between servers, whose origin also delivers requests under a served server's mount to its public routes, as an ingress would, `testing::assert_sql_confined`, the check that a server's SQL names only its own schema, and `testing::knowledge`, the knowledge contract's test over a server's fixture | |
 
 The Hub attaches `_meta["ai.veoveo/hub"]` to federated lists. Its DTO, `HubMeta`,
 lives in the `hub` module, and `HubDiscoveryMetadata` converts a `HubDiscovery` to and
@@ -1016,6 +1016,75 @@ task and names the skill it follows.
 - **Text.** Skill text names tools as callers see them through the Hub,
   `{slug}__{tool}`, and resources by the addresses callers read; the Hub cannot rewrite
   skill bytes without breaking their digests.
+
+## Knowledge
+
+A server whose records people search expresses the knowledge contract, the MCP extension
+`ai.veoveo/knowledge`. Every server expresses it the same way and every client uses it
+the same way; how a server finds its records is the server's own. Each server searches
+only its own records, under its own read rule, so nothing is copied out of its owner and
+no identity searches on everyone's behalf. Clients that want several servers call each
+one's search themselves.
+
+- **Collections.** A resource template whose records can be searched carries
+  `_meta["ai.veoveo/knowledge"]`, `CollectionMarker`, whose one member names its
+  collection: `{"collection": "{slug}.{plural}"}`, a `KnowledgeCollection` whose second
+  part is the plural noun of its records, such as `artifact.artifacts`; setup checks the
+  slug, not the noun. The template's own name says what the records are; the marker adds
+  nothing else.
+- **Search.** One tool, `search_knowledge`, which callers see as
+  `{slug}__search_knowledge`:
+  - Input, `KnowledgeQuery`: `parts`, 1 to 16 ordered `ContentPart`s, each `text` with its
+    text or `image`, `audio` or `video` with a `SignedMedia`: `url`, optional `headers`,
+    `mediaType` and `size` in bytes; optional `collections`, at most 16 and each once,
+    each a marked collection of this server; optional `limit`, 1 to 20, default 10. A media part carries its
+    `SignedMedia` members beside its `type`, and its media type is of its type: an image
+    `image/*`, a video `video/*`, and audio `audio/*` or a video's soundtrack, `video/*`.
+    The URL is an absolute `https` or `http` URL of at most 8,192 bytes, at most 32
+    headers bind it, and the size is 1 byte to 5 TiB. An empty `collections` names none.
+  - Output, `KnowledgeResults`: `hits` in rank order, each `KnowledgeHit` with `uri`,
+    `collection`, `title`, a `snippet` of at most 320 characters and, when the record
+    keeps one, `modifiedAt`; the result content holds one `resource_link` per hit. A
+    caller reads a hit through its server for the record itself.
+  - The searcher chooses the modality, never the server: every collection lives in one
+    multimodal embedding space, so a server answers a query in any modality and declares
+    none.
+  - A signed URL is a credential for its few minutes of life: the SDK never echoes it in
+    a result, an error, a log or `Debug` output.
+- **Wiring.** A Rust server implements `KnowledgeSearch`, whose one method,
+  `search(context, query)`, returns its hits, and registers it with
+  `RoutesBuilder::knowledge(policy, search)`. The context, a `SearchContext`, holds the
+  server's domain, with its state, and the request, with the verified caller.
+  `ResourceBuilder::knowledge(collection)` marks a member template, one `.template`
+  registers. The policy is the server's own read permission for its records, declared
+  through `ai.veoveo/authorization` like any other; the routes refuse a write
+  permission. Inside `search` a server may do anything.
+- **Checks.** Setup declares the extension in `server/discover` exactly when the routes
+  register a search and mark at least one template, and refuses one without the other, a
+  collection outside the server's slug or one marked twice. Before a result leaves the
+  server, the SDK checks it: at most the limit; each hit's URI addressed by a template
+  marked with the hit's collection, one the query named when it named any. It trims
+  snippets to 320 characters and adds the resource links. A hit that fails a check makes
+  the call fail; it is never dropped to shorten the page. The extension's payload is an
+  empty object. Arguments that are not a query, and a query naming a collection the
+  server does not mark, are invalid params, `-32602`, explained by the published schema's
+  violations without the caller's values; a result that fails a check is an internal
+  error, `-32603`. There is no runtime inspector: `testing::knowledge(hub, text)` gives a
+  server one test over its own fixture, in which a query in each modality is answered
+  rather than refused and each hit reads back through the server for the same caller.
+  `text` finds a fixture record; the media are synthetic and never fetched. It also
+  checks the declaration, the published schemas and the query within each collection and
+  with a limit of one.
+- **Embedding.** `Embedder::embed(client, items, purpose)` turns items of ordered
+  `ContentPart`s into `Embeddings`: one vector per item and the model that made them,
+  its checkpoint and dimensions, so vectors from different models are never compared.
+  It uses the caller-bound `HubClient` that a handler or a Task worker already holds, so
+  the caller is the one who embeds; `EmbeddingPurpose` is `Document` or `Query`. The SDK
+  names no server, so the Embedding server's `client` feature implements `Embedder`, and
+  tests pass their own.
+- **Types.** The query, hit, part, marker and `Embeddings` types are in the `contract`
+  feature, with schemas generated by Schemars; `Embedder` is in `client`, beside
+  `HubClient`; `KnowledgeSearch` and the checks are in `server`.
 
 ## Crate Documents
 

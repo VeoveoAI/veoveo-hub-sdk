@@ -31,6 +31,15 @@ owner data and Hub identities are synthetic. Hosted integration tests follow bot
 pages through native transport; they do not establish production authorization or
 storage behavior. No provider inference or external media encoding is involved.
 
+Observatory also expresses the SDK's knowledge contract: its reading template,
+`observatory://reading/{reading_id}`, is the knowledge collection `observatory.readings`,
+and `ReadingSearch` answers `search_knowledge` in memory. A query with text finds the
+readings whose identifier holds one of its words; a query of media alone answers every
+reading, without fetching or embedding the media. Its test runs the SDK's
+`testing::knowledge` over the hosted fixture: a synthetic query in each modality is
+answered and each hit reads back for the same caller. It establishes the contract's
+wiring and checks, not retrieval quality or real embedding.
+
 ## Calls Fixture
 
 Ledger and Relay are two more hosted servers for calls between servers. Ledger's

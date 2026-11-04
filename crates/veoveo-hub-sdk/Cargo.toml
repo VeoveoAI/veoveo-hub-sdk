@@ -141,6 +141,10 @@ name = "server_contract"
 required-features = ["server"]
 
 [[test]]
+name = "knowledge"
+required-features = ["testing"]
+
+[[test]]
 name = "surfaces"
 required-features = ["testing"]
 

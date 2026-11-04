@@ -162,3 +162,11 @@ pub struct ReadReading {
 pub struct ReadReadings {}
 #[veoveo_hub_sdk::collection_tool(provider=Observatory,collection=ReadingCollection,name="readings",default_limit=2)]
 pub struct ReadingsTool;
+
+/// The knowledge collection of Observatory's readings, `observatory.readings`, which
+/// marks the `observatory://reading/{reading_id}` template.
+pub fn reading_knowledge() -> veoveo_hub_sdk::knowledge::KnowledgeCollection {
+    use veoveo_types::Collection;
+    veoveo_hub_sdk::knowledge::KnowledgeCollection::parse(ReadingCollection::NAME)
+        .expect("the readings' collection name")
+}

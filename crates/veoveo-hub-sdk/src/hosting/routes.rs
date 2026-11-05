@@ -9,8 +9,9 @@ use crate::{
     },
     knowledge::{KnowledgeCollection, KnowledgeQuery, KnowledgeSearch, MarkedTemplate},
     registration::{
-        BodyLimit, PermissionDeclaration, PermissionDefinition, PublicRouteDeclaration,
-        PublicRoutePrefix, RequestRate, SurfacesDeclaration,
+        BodyLimit, FileExtension, PermissionDeclaration, PermissionDefinition,
+        PublicRouteDeclaration, PublicRoutePrefix, RequestRate, SurfacesDeclaration,
+        ViewerDeclaration,
     },
     server_contract::{McpResource, McpResourceTemplate, McpServerContract},
 };
@@ -503,6 +504,7 @@ pub struct RoutesBuilder<D: DomainServer> {
     app_links: Vec<AppLink>,
     public_routes: Vec<PublicRouteDeclaration>,
     app_origin: Option<RoutePolicy>,
+    viewer: Option<ViewerDeclaration>,
     knowledge: bool,
 }
 impl<D: DomainServer> RoutesBuilder<D> {
@@ -520,6 +522,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             app_links: vec![],
             public_routes: vec![],
             app_origin: None,
+            viewer: None,
             knowledge: false,
         }
     }
@@ -691,12 +694,29 @@ impl<D: DomainServer> RoutesBuilder<D> {
         self.app_origin = Some(policy);
         self
     }
+    /// Declare the server's viewer: the Hub opens a file of one of `extensions` on the
+    /// content domain with the page at `path`, one of the server's public routes, and
+    /// hands it the file's path in the query parameter `file`. Building the routes fails
+    /// for a declaration the
+    /// [surfaces](crate::registration::SurfacesDeclaration::check) rules refuse.
+    pub fn viewer(mut self, extensions: &[&str], path: &str) -> Self {
+        let slug = crate::server_contract::provider_slug::<D::Contract>();
+        self.viewer = Some(ViewerDeclaration {
+            extensions: extensions
+                .iter()
+                .map(|extension| FileExtension::new(*extension).expect("valid viewer extension"))
+                .collect(),
+            route: PublicRoutePrefix::under(&slug, path).expect("valid viewer route"),
+        });
+        self
+    }
     /// The HTTP the routes serve besides MCP, as the registration and Discover declare
     /// it; `None` when they serve none.
     pub fn surfaces(&self) -> Option<SurfacesDeclaration> {
         let surfaces = SurfacesDeclaration {
             public_routes: self.public_routes.clone(),
             app_origin: self.app_origin.is_some(),
+            viewer: self.viewer.clone(),
         };
         (!surfaces.is_empty()).then_some(surfaces)
     }

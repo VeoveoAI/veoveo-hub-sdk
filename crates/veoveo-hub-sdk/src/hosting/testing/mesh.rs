@@ -166,6 +166,7 @@ impl TestMesh {
                     crate::registration::SurfacesDeclaration {
                         public_routes: Vec::new(),
                         app_origin: true,
+                        viewer: None,
                     }
                 }),
             },

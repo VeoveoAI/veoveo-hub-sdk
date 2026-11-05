@@ -122,6 +122,32 @@ fn registration() -> RegistrationDeclaration {
 }
 
 #[test]
+fn the_routes_declare_a_viewer_at_a_public_route() {
+    let surfaces = builder()
+        .public_route("viewer/", 1, 6000)
+        .viewer(&["usda", "usdz"], "viewer/")
+        .build()
+        .surfaces()
+        .unwrap();
+    let viewer = surfaces.viewer.unwrap();
+    assert_eq!(viewer.route.as_str(), "/studio/viewer/");
+    assert_eq!(
+        viewer
+            .extensions
+            .iter()
+            .map(|extension| extension.as_str())
+            .collect::<Vec<_>>(),
+        ["usda", "usdz"]
+    );
+}
+
+#[test]
+#[should_panic(expected = "invalid typed route surfaces")]
+fn a_viewer_outside_the_public_routes_is_refused() {
+    let _ = builder().viewer(&["usda"], "nowhere/").build();
+}
+
+#[test]
 fn the_routes_declare_their_surfaces_and_the_app_origin_requirement() {
     let surfaces = Domain::routes().surfaces().unwrap();
     assert_eq!(

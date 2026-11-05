@@ -118,15 +118,23 @@ route them:
   person's sign-in. A server declares that it has one; the permission that admits a
   person is the `app_origin` requirement of its authorization declaration, of the same
   kinds as a tool's requirement.
+- **A viewer**: a page under one of its public routes that opens files of the extensions it
+  takes. When a person opens such a file on the installation's content domain, the Hub
+  serves that route at `/_veoveo/viewers/{slug}/` on the file's origin and hands the page
+  the file's path in the query parameter `file`, so the page reads the file from its own
+  origin with nothing but relative requests. The Hub answers GET and HEAD there, without
+  cookies, and names no server: another viewer needs no Hub change.
 
 The registration member `veoveo_surfaces` spells the declaration in snake_case:
 
 ```json
 {
   "public_routes": [
-    { "prefix": "/ledger/hooks/", "max_body_bytes": 1048576, "requests_per_minute": 600 }
+    { "prefix": "/ledger/hooks/", "max_body_bytes": 1048576, "requests_per_minute": 600 },
+    { "prefix": "/ledger/viewer/", "max_body_bytes": 1, "requests_per_minute": 6000 }
   ],
-  "app_origin": true
+  "app_origin": true,
+  "viewer": { "extensions": ["ledger"], "route": "/ledger/viewer/" }
 }
 ```
 
@@ -136,12 +144,14 @@ characters. It starts with the mount, has a segment below it, ends with `/`, cov
 neither `{mount}/mcp` nor `{mount}/admin` nor lies under them, and overlaps no other
 prefix. A body limit is 1 byte to 16 MiB and a rate 1 to 6000 requests a minute. A
 server that declares `app_origin` declares the `app_origin` requirement, and a server
-that does not declares none. A server with neither public routes nor an app origin omits
-the member, in both spellings. `SurfacesDeclaration` is the type, carried as
+that does not declares none. A viewer takes at least one extension, each once, each 1 to 32
+lowercase ASCII letters and digits without its dot, and its route is one of the server's
+public route prefixes. A server with no public route, app origin or viewer omits the member,
+in both spellings. `SurfacesDeclaration` is the type, carried as
 `RegistrationDeclaration::surfaces`, and `SurfacesDeclaration::check` applies these
 rules for `ClientMetadata::check`.
 
-A hosted server declares both in its typed routes, from which `Routes::surfaces` derives
+A hosted server declares these in its typed routes, from which `Routes::surfaces` derives
 the member and the setup advertises it, as the authorization declaration derives: the
 SDK's callback routes take their prefixes, body limit and rate from the SDK, and a hosted
 server serves no public route outside a declared prefix.

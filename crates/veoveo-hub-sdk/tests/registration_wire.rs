@@ -1103,6 +1103,7 @@ fn surfaces() -> SurfacesDeclaration {
             route("/clock/operations/", 1_048_576, 600),
         ],
         app_origin: true,
+        viewer: None,
     }
 }
 fn surfaced_registration() -> RegistrationDeclaration {
@@ -1167,6 +1168,7 @@ fn surfaces_wire_format_in_discover_and_registration() {
     let origin_only = SurfacesDeclaration {
         public_routes: Vec::new(),
         app_origin: true,
+        viewer: None,
     };
     assert_eq!(
         serde_json::to_value(&origin_only).unwrap(),
@@ -1231,6 +1233,7 @@ fn surfaces_are_checked_against_the_mount_limits_and_requirement() {
             })
             .collect(),
         app_origin: false,
+        viewer: None,
     };
     for (prefixes, expected) in [
         (
@@ -1377,6 +1380,45 @@ fn surfaced_information() -> serde_json::Value {
     wire["veoveo_public_base"] = json!("https://veoveo.example.com/b/0199d4a1/clock");
     wire["veoveo_app_origin"] = json!("https://clock.apps.veoveo.example.com");
     wire
+}
+
+#[test]
+fn a_viewer_declares_extensions_at_one_of_the_public_routes() {
+    use veoveo_hub_sdk::registration::{FileExtension, ViewerDeclaration};
+    let viewer = |extensions: &[&str], route: &str| ViewerDeclaration {
+        extensions: extensions
+            .iter()
+            .map(|extension| FileExtension::new(*extension).unwrap())
+            .collect(),
+        route: PublicRoutePrefix::new(route).unwrap(),
+    };
+    let with = |viewer| SurfacesDeclaration {
+        viewer: Some(viewer),
+        ..surfaces()
+    };
+    let check =
+        |declared: SurfacesDeclaration| declared.check(&ServerSlug::parse("clock").unwrap(), true);
+    let declared = with(viewer(&["usda", "usdz"], "/clock/hooks/"));
+    check(declared.clone()).unwrap();
+    // Both spellings say the same, and a server without a viewer says nothing of one.
+    let camel = serde_json::to_value(&declared).unwrap();
+    assert_eq!(
+        camel["viewer"],
+        json!({"extensions": ["usda", "usdz"], "route": "/clock/hooks/"})
+    );
+    assert!(
+        serde_json::to_value(surfaces())
+            .unwrap()
+            .get("viewer")
+            .is_none()
+    );
+    // A viewer serves at a route the server declares, and takes something, once.
+    assert!(check(with(viewer(&["usda"], "/clock/other/"))).is_err());
+    assert!(check(with(viewer(&[], "/clock/hooks/"))).is_err());
+    assert!(check(with(viewer(&["usda", "usda"], "/clock/hooks/"))).is_err());
+    for refused in ["", ".usda", "USDA", "us da", &"x".repeat(33)] {
+        assert!(FileExtension::new(refused).is_err(), "{refused}");
+    }
 }
 
 #[test]

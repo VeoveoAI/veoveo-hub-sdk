@@ -638,6 +638,7 @@ async fn the_registration_names_where_the_hub_serves_the_declared_surfaces() {
             requests_per_minute: RequestRate::per_minute(60).unwrap(),
         }],
         app_origin: true,
+        viewer: None,
     };
     let editor = PermissionDeclaration {
         permission: veoveo_types::PermissionName::parse("clock.editor").unwrap(),

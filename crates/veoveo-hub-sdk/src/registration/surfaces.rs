@@ -1,8 +1,9 @@
 //! `veoveo_surfaces`: the HTTP a server serves besides MCP, which it declares so that the
 //! Hub can route it. Public routes carry no Hub authentication and serve only callers
 //! that verify themselves; the app origin carries a full web application on the
-//! server's own origin. MCP Discover advertises the same declaration as `surfaces` in
-//! `ai.veoveo/registration`.
+//! server's own origin; a viewer is a page under a public route that opens files of the
+//! extensions it takes on the content domain. MCP Discover advertises the same declaration
+//! as `surfaces` in `ai.veoveo/registration`.
 use std::fmt;
 
 use schemars::JsonSchema;
@@ -16,8 +17,8 @@ pub const MAX_PUBLIC_BODY_BYTES: u64 = 16 * 1024 * 1024;
 /// The highest request rate a public route may declare: 6000 requests a minute.
 pub const MAX_PUBLIC_REQUESTS_PER_MINUTE: u32 = 6000;
 
-/// What a server serves besides MCP. A server with neither public routes nor an app
-/// origin omits the declaration.
+/// What a server serves besides MCP. A server with no public route, app origin or viewer
+/// omits the declaration.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SurfacesDeclaration {
@@ -27,6 +28,19 @@ pub struct SurfacesDeclaration {
     /// behind the `app_origin` requirement of its authorization declaration.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub app_origin: bool,
+    /// The viewer the server offers for files on the content domain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer: Option<ViewerDeclaration>,
+}
+
+/// A viewer: the Hub opens a file of one of `extensions` on the content domain with the
+/// page this server serves at `route`, one of its public routes, handing it the file's
+/// path in the query parameter `file`. The page reads the file from its own origin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ViewerDeclaration {
+    pub extensions: Vec<FileExtension>,
+    pub route: PublicRoutePrefix,
 }
 
 /// One public route prefix with the largest request body it admits and its rate.
@@ -41,13 +55,14 @@ pub struct PublicRouteDeclaration {
 impl SurfacesDeclaration {
     /// Whether the declaration declares nothing, so the member is omitted.
     pub fn is_empty(&self) -> bool {
-        self.public_routes.is_empty() && !self.app_origin
+        self.public_routes.is_empty() && !self.app_origin && self.viewer.is_none()
     }
 
     /// Check the declaration of `server`, whose authorization declares the `app_origin`
     /// requirement when `app_origin_requirement` holds: every prefix lies under the
     /// mount `/{server}`, covers neither `{mount}/mcp` nor `{mount}/admin` and overlaps
-    /// no other, and an app origin is declared exactly with its requirement.
+    /// no other, an app origin is declared exactly with its requirement, and a viewer takes
+    /// at least one extension, each once, at one of the public routes.
     pub fn check(
         &self,
         server: &ServerSlug,
@@ -56,7 +71,7 @@ impl SurfacesDeclaration {
         if self.is_empty() {
             return Err(DeclarationError::invalid(
                 "veoveo_surfaces",
-                "a server with neither public routes nor an app origin omits the member",
+                "a server with no public route, app origin or viewer omits the member",
             ));
         }
         for (index, route) in self.public_routes.iter().enumerate() {
@@ -89,7 +104,76 @@ impl SurfacesDeclaration {
                 "a server declares the app_origin requirement exactly when it declares an app origin",
             ));
         }
+        if let Some(viewer) = &self.viewer {
+            if viewer.extensions.is_empty() {
+                return Err(DeclarationError::invalid(
+                    "viewer",
+                    "a viewer takes at least one extension",
+                ));
+            }
+            let distinct = viewer
+                .extensions
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>();
+            if distinct.len() != viewer.extensions.len() {
+                return Err(DeclarationError::invalid(
+                    "viewer",
+                    "a viewer names each extension once",
+                ));
+            }
+            if !self
+                .public_routes
+                .iter()
+                .any(|route| route.prefix == viewer.route)
+            {
+                return Err(DeclarationError::invalid(
+                    "viewer",
+                    "a viewer's route is one of the server's public routes",
+                ));
+            }
+        }
         Ok(())
+    }
+}
+
+/// A file extension a viewer takes: 1 to 32 lowercase ASCII letters and digits, without its
+/// dot, such as `usdz`.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(try_from = "String", into = "String")]
+#[schemars(extend("pattern" = r"^[a-z0-9]{1,32}$"))]
+pub struct FileExtension(String);
+
+impl FileExtension {
+    pub fn new(value: impl Into<String>) -> Result<Self, DeclarationError> {
+        let value = value.into();
+        if !(1..=32).contains(&value.len())
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        {
+            return Err(DeclarationError::invalid(
+                "extensions",
+                "an extension is 1 to 32 lowercase ASCII letters and digits, without its dot",
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+impl TryFrom<String> for FileExtension {
+    type Error = DeclarationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+impl From<FileExtension> for String {
+    fn from(value: FileExtension) -> Self {
+        value.0
     }
 }
 
@@ -248,6 +332,16 @@ pub(crate) struct SurfacesDocument {
     public_routes: Vec<PublicRouteDocument>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     app_origin: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    viewer: Option<ViewerDocument>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(rename = "ViewerDocument")]
+struct ViewerDocument {
+    extensions: Vec<FileExtension>,
+    route: PublicRoutePrefix,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -272,6 +366,10 @@ impl From<SurfacesDocument> for SurfacesDeclaration {
                 })
                 .collect(),
             app_origin: document.app_origin,
+            viewer: document.viewer.map(|viewer| ViewerDeclaration {
+                extensions: viewer.extensions,
+                route: viewer.route,
+            }),
         }
     }
 }
@@ -288,6 +386,10 @@ impl From<SurfacesDeclaration> for SurfacesDocument {
                 })
                 .collect(),
             app_origin: declaration.app_origin,
+            viewer: declaration.viewer.map(|viewer| ViewerDocument {
+                extensions: viewer.extensions,
+                route: viewer.route,
+            }),
         }
     }
 }

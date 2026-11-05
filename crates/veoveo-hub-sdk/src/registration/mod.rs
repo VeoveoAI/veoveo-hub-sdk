@@ -48,8 +48,8 @@ pub use oauth::{
     TokenEndpointAuthMethod, issuer_url,
 };
 pub use surfaces::{
-    BodyLimit, MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_REQUESTS_PER_MINUTE, PublicRouteDeclaration,
-    PublicRoutePrefix, RequestRate, SurfacesDeclaration,
+    BodyLimit, FileExtension, MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_REQUESTS_PER_MINUTE,
+    PublicRouteDeclaration, PublicRoutePrefix, RequestRate, SurfacesDeclaration, ViewerDeclaration,
 };
 
 /// MCP extension advertising [`RegistrationDeclaration`].

@@ -80,7 +80,7 @@ The lower-level helpers (`extend_capabilities`, `app_resource`, `app_html_conten
 
 ### Packaged App Assets
 
-`AppHtml` reads an image-owned HTML file into an immutable startup snapshot. It requires
+`AppHtml` reads an image-owned HTML file, or takes a document the server assembled at startup, into an immutable startup snapshot. It requires
 a regular, nonempty UTF-8 file within the host's 2 MiB limit. Missing or invalid assets
 fail startup. The server applies the same resource authorization to these bytes as to an
 embedded document; the loader creates no route or permission.

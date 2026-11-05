@@ -1,4 +1,4 @@
-//! Startup snapshots of image-owned MCP App HTML.
+//! Startup snapshots of MCP App HTML, from an image-owned file or assembled by the server.
 
 use std::{
     fs,
@@ -18,6 +18,12 @@ pub const MAX_APP_HTML_BYTES: u64 = 2 * 1024 * 1024;
 pub struct AppHtml(Arc<str>);
 
 impl AppHtml {
+    /// A document a server assembled itself, under the same limits as a file.
+    pub fn new(html: impl Into<String>) -> io::Result<Self> {
+        let html = html.into();
+        Self::read(html.as_bytes())
+    }
+
     pub fn load(path: &Path) -> io::Result<Self> {
         let load = || {
             if !fs::metadata(path)?.is_file() {
@@ -58,6 +64,16 @@ impl AppHtml {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_document_a_server_assembled_has_a_files_limits() {
+        assert_eq!(
+            AppHtml::new("<!doctype html>").unwrap().as_str(),
+            "<!doctype html>"
+        );
+        assert!(AppHtml::new("  \n").is_err());
+        assert!(AppHtml::new("x".repeat(MAX_APP_HTML_BYTES as usize + 1)).is_err());
+    }
 
     #[test]
     fn retains_exact_bytes_in_an_immutable_snapshot() {

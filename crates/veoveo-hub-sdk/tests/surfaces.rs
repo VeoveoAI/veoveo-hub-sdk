@@ -142,6 +142,25 @@ fn the_routes_declare_a_viewer_at_a_public_route() {
 }
 
 #[test]
+fn the_routes_declare_content_under_the_mount_with_links_at_a_public_route() {
+    let surfaces = builder()
+        .public_route("content-links/", 1, 6000)
+        .content("content/", Some("content-links/"))
+        .build()
+        .surfaces()
+        .unwrap();
+    let content = surfaces.content.unwrap();
+    assert_eq!(content.route.as_str(), "/studio/content/");
+    assert_eq!(content.links.unwrap().as_str(), "/studio/content-links/");
+}
+
+#[test]
+#[should_panic(expected = "invalid typed route surfaces")]
+fn content_links_outside_the_public_routes_are_refused() {
+    let _ = builder().content("content/", Some("nowhere/")).build();
+}
+
+#[test]
 #[should_panic(expected = "invalid typed route surfaces")]
 fn a_viewer_outside_the_public_routes_is_refused() {
     let _ = builder().viewer(&["usda"], "nowhere/").build();

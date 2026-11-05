@@ -134,6 +134,7 @@ fn information(
         app_origin: surfaces
             .is_some_and(|surfaces| surfaces.app_origin)
             .then(|| AppOrigin::parse(&format!("https://{slug}.apps.hub.example")).unwrap()),
+        content_origin: None,
         access_tokens: AccessTokenTrust {
             deployment: metadata.registration.deployment,
             issuer: TokenIssuer::parse("https://hub.example").unwrap(),
@@ -639,6 +640,7 @@ async fn the_registration_names_where_the_hub_serves_the_declared_surfaces() {
         }],
         app_origin: true,
         viewer: None,
+        content: None,
     };
     let editor = PermissionDeclaration {
         permission: veoveo_types::PermissionName::parse("clock.editor").unwrap(),

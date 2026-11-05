@@ -104,7 +104,7 @@ credentials, query or fragment.
 
 ### Surfaces
 
-Besides MCP, a server may serve two kinds of HTTP, which it declares so that the Hub can
+Besides MCP, a server may serve these kinds of HTTP, which it declares so that the Hub can
 route them:
 
 - **Public routes** carry no Hub authentication and serve only callers that verify
@@ -124,6 +124,18 @@ route them:
   the file's path in the query parameter `file`, so the page reads the file from its own
   origin with nothing but relative requests. The Hub answers GET and HEAD there, without
   cookies, and names no server: another viewer needs no Hub change.
+- **Content**: the items the server owns on the content domain, each on an origin of its own.
+  `route`, under the mount and outside every public route, is among its
+  `authenticated_routes`. The Hub reads it as the person, with a forwarded token: `HEAD
+  {route}{item}` on every request on the item's origin, which answers 2xx when they may read
+  it, `POST {route}{item}` when they open it, which does the same and may record the visit, and
+  `GET` or `HEAD {route}{item}/{path}` for the bytes, with the `Range` and validators the
+  browser sent. `{route}{item}/` opens the item, so a server that names its file there redirects
+  to it. `links`, optional and one of its public routes, is the same for whoever holds a link's
+  origin, without a token: `HEAD {links}{token}` and `GET` or `HEAD {links}{token}/{path}`. A link's
+  origin is `{slug}-{token}.{content domain}`, one DNS label (`ContentLinkLabel`), so the server
+  checks the link on every request and the Hub holds nothing about it. The Hub does not serve
+  `links` under `/instances/`, because a file there would run on its own origin.
 
 The registration member `veoveo_surfaces` spells the declaration in snake_case:
 
@@ -131,10 +143,12 @@ The registration member `veoveo_surfaces` spells the declaration in snake_case:
 {
   "public_routes": [
     { "prefix": "/ledger/hooks/", "max_body_bytes": 1048576, "requests_per_minute": 600 },
-    { "prefix": "/ledger/viewer/", "max_body_bytes": 1, "requests_per_minute": 6000 }
+    { "prefix": "/ledger/viewer/", "max_body_bytes": 1, "requests_per_minute": 6000 },
+    { "prefix": "/ledger/content-links/", "max_body_bytes": 1, "requests_per_minute": 6000 }
   ],
   "app_origin": true,
-  "viewer": { "extensions": ["ledger"], "route": "/ledger/viewer/" }
+  "viewer": { "extensions": ["ledger"], "route": "/ledger/viewer/" },
+  "content": { "route": "/ledger/content/", "links": "/ledger/content-links/" }
 }
 ```
 
@@ -146,8 +160,9 @@ prefix. A body limit is 1 byte to 16 MiB and a rate 1 to 6000 requests a minute.
 server that declares `app_origin` declares the `app_origin` requirement, and a server
 that does not declares none. A viewer takes at least one extension, each once, each 1 to 32
 lowercase ASCII letters and digits without its dot, and its route is one of the server's
-public route prefixes. A server with no public route, app origin or viewer omits the member,
-in both spellings. `SurfacesDeclaration` is the type, carried as
+public route prefixes. Content's route has a prefix's form, lies under the mount, is neither
+reserved nor a public route, and its links are one of the public route prefixes. A server with no
+public route, app origin, viewer or content omits the member, in both spellings. `SurfacesDeclaration` is the type, carried as
 `RegistrationDeclaration::surfaces`, and `SurfacesDeclaration::check` applies these
 rules for `ClientMetadata::check`.
 
@@ -157,7 +172,9 @@ SDK's callback routes take their prefixes, body limit and rate from the SDK, and
 server serves no public route outside a declared prefix.
 
 The registration response names where the Hub serves them: `veoveo_public_base` when the
-server declares a public route, and `veoveo_app_origin` when it declares an app origin.
+server declares a public route, `veoveo_app_origin` when it declares an app origin, and
+`veoveo_content_origin`, the installation's content domain, when it declares content links and
+the installation has one.
 The server builds every public URL it hands out under these values and never constructs a
 Hub URL itself.
 

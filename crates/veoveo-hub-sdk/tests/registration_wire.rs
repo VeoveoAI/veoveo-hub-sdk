@@ -1104,6 +1104,7 @@ fn surfaces() -> SurfacesDeclaration {
         ],
         app_origin: true,
         viewer: None,
+        content: None,
     }
 }
 fn surfaced_registration() -> RegistrationDeclaration {
@@ -1169,6 +1170,7 @@ fn surfaces_wire_format_in_discover_and_registration() {
         public_routes: Vec::new(),
         app_origin: true,
         viewer: None,
+        content: None,
     };
     assert_eq!(
         serde_json::to_value(&origin_only).unwrap(),
@@ -1234,6 +1236,7 @@ fn surfaces_are_checked_against_the_mount_limits_and_requirement() {
             .collect(),
         app_origin: false,
         viewer: None,
+        content: None,
     };
     for (prefixes, expected) in [
         (
@@ -1418,6 +1421,83 @@ fn a_viewer_declares_extensions_at_one_of_the_public_routes() {
     assert!(check(with(viewer(&["usda", "usda"], "/clock/hooks/"))).is_err());
     for refused in ["", ".usda", "USDA", "us da", &"x".repeat(33)] {
         assert!(FileExtension::new(refused).is_err(), "{refused}");
+    }
+}
+
+#[test]
+fn content_lies_under_the_mount_outside_the_public_routes_with_its_links_at_one() {
+    use veoveo_hub_sdk::registration::ContentDeclaration;
+    let content = |route: &str, links: Option<&str>| ContentDeclaration {
+        route: PublicRoutePrefix::new(route).unwrap(),
+        links: links.map(|links| PublicRoutePrefix::new(links).unwrap()),
+    };
+    let with = |content| SurfacesDeclaration {
+        content: Some(content),
+        ..surfaces()
+    };
+    let check =
+        |declared: SurfacesDeclaration| declared.check(&ServerSlug::parse("clock").unwrap(), true);
+    let declared = with(content("/clock/content/", Some("/clock/hooks/")));
+    check(declared.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&declared).unwrap()["content"],
+        json!({"route": "/clock/content/", "links": "/clock/hooks/"})
+    );
+    check(with(content("/clock/content/", None))).unwrap();
+    assert!(
+        serde_json::to_value(surfaces())
+            .unwrap()
+            .get("content")
+            .is_none()
+    );
+    for (route, links) in [
+        ("/other/content/", None),
+        ("/clock/mcp/content/", None),
+        ("/clock/admin/content/", None),
+        // A public route carries no Hub authentication, so it is no place for a person's read.
+        ("/clock/hooks/", None),
+        ("/clock/hooks/content/", None),
+        ("/clock/content/", Some("/clock/other/")),
+    ] {
+        assert!(check(with(content(route, links))).is_err(), "{route}");
+    }
+}
+
+#[test]
+fn a_links_origin_is_one_dns_label_that_names_its_server() {
+    use veoveo_hub_sdk::registration::{ContentLinkLabel, ContentLinkToken, ContentOrigin};
+    let token = ContentLinkToken::from_bytes([0xa1; 20]);
+    assert_eq!(token.as_str(), "a1".repeat(20));
+    assert_eq!(format!("{token:?}"), "ContentLinkToken(..)");
+    let label =
+        ContentLinkLabel::new(ServerSlug::parse("ledger-two").unwrap(), token.clone()).unwrap();
+    let spelled = label.to_string();
+    assert_eq!(spelled, format!("ledger-two-{}", "a1".repeat(20)));
+    let parsed = ContentLinkLabel::parse(&spelled).unwrap();
+    assert_eq!(parsed.server().as_str(), "ledger-two");
+    assert_eq!(parsed.token(), &token);
+    let origin = ContentOrigin::parse("https://content.example").unwrap();
+    assert_eq!(
+        origin.link(&label).as_str(),
+        format!("https://{spelled}.content.example/")
+    );
+    // A person's token, and everything else, is no link.
+    for refused in [
+        "a1".repeat(20),
+        format!("ledger-{}", "a1".repeat(19)),
+        format!("ledger-{}", "A1".repeat(20)),
+        format!("-{}", "a1".repeat(20)),
+    ] {
+        assert!(ContentLinkLabel::parse(&refused).is_none(), "{refused}");
+    }
+    // A label holds 63 bytes, so a long slug names no link.
+    assert!(ContentLinkLabel::new(ServerSlug::parse("a".repeat(23)).unwrap(), token).is_none());
+    for refused in [
+        "https://content.example/",
+        "https://content.example/x",
+        "ftp://a.example",
+    ] {
+        assert!(ContentOrigin::parse(refused).is_err(), "{refused}");
     }
 }
 

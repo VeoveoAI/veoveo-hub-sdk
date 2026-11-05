@@ -23,7 +23,7 @@ use veoveo_types::OAuthClientId;
 use crate::registration::{
     AccessTokenTrust, AppOrigin, AuthorizationDeclaration, AuthorizationServerMetadata,
     ClientInformation, ClientMetadata, ClientRegistrationRequest, ClientUpdateRequest,
-    DatabaseGrant, DeclarationError, PublicBase, RegistrationDeclaration,
+    ContentOrigin, DatabaseGrant, DeclarationError, PublicBase, RegistrationDeclaration,
     RegistrationErrorResponse,
     statement::{ServerKeyPair, StatementError},
 };
@@ -239,6 +239,11 @@ impl Registration {
     /// The server's app origin, when it declares one.
     pub fn app_origin(&self) -> Option<&AppOrigin> {
         self.information.app_origin.as_ref()
+    }
+    /// The installation's content domain, when the server declares content links and the
+    /// installation has one.
+    pub fn content_origin(&self) -> Option<&ContentOrigin> {
+        self.information.content_origin.as_ref()
     }
     pub fn information(&self) -> &ClientInformation {
         &self.information

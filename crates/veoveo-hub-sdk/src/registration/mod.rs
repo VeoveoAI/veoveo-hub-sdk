@@ -42,14 +42,15 @@ pub use grants::{
 pub use jwk::{Ed25519Jwk, Ed25519JwkSet, JwkKeyId, ServerKeySet, ServerPublicKey};
 pub use oauth::{
     AccessTokenTrust, AppOrigin, AuthorizationServerMetadata, ClientInformation, ClientMetadata,
-    ClientRegistrationRequest, ClientUpdateRequest, DatabaseGrant, DatabaseIdentifier, DatabaseUrl,
-    GrantType, PublicBase, RegistrationAccessToken, RegistrationErrorCode,
-    RegistrationErrorResponse, ResponseType, SoftwareStatement, StorageBinding,
-    TokenEndpointAuthMethod, issuer_url,
+    ClientRegistrationRequest, ClientUpdateRequest, ContentOrigin, DatabaseGrant,
+    DatabaseIdentifier, DatabaseUrl, GrantType, PublicBase, RegistrationAccessToken,
+    RegistrationErrorCode, RegistrationErrorResponse, ResponseType, SoftwareStatement,
+    StorageBinding, TokenEndpointAuthMethod, issuer_url,
 };
 pub use surfaces::{
-    BodyLimit, FileExtension, MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_REQUESTS_PER_MINUTE,
-    PublicRouteDeclaration, PublicRoutePrefix, RequestRate, SurfacesDeclaration, ViewerDeclaration,
+    BodyLimit, ContentDeclaration, ContentLinkLabel, ContentLinkToken, FileExtension,
+    MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_REQUESTS_PER_MINUTE, PublicRouteDeclaration,
+    PublicRoutePrefix, RequestRate, SurfacesDeclaration, ViewerDeclaration,
 };
 
 /// MCP extension advertising [`RegistrationDeclaration`].

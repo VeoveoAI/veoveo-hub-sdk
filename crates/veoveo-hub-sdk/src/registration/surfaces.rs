@@ -2,8 +2,9 @@
 //! Hub can route it. Public routes carry no Hub authentication and serve only callers
 //! that verify themselves; the app origin carries a full web application on the
 //! server's own origin; a viewer is a page under a public route that opens files of the
-//! extensions it takes on the content domain. MCP Discover advertises the same declaration
-//! as `surfaces` in `ai.veoveo/registration`.
+//! extensions it takes on the content domain; content is the items a server owns there, which
+//! the Hub reads from it for a person or, for a link, for whoever holds its origin. MCP Discover
+//! advertises the same declaration as `surfaces` in `ai.veoveo/registration`.
 use std::fmt;
 
 use schemars::JsonSchema;
@@ -17,8 +18,8 @@ pub const MAX_PUBLIC_BODY_BYTES: u64 = 16 * 1024 * 1024;
 /// The highest request rate a public route may declare: 6000 requests a minute.
 pub const MAX_PUBLIC_REQUESTS_PER_MINUTE: u32 = 6000;
 
-/// What a server serves besides MCP. A server with no public route, app origin or viewer
-/// omits the declaration.
+/// What a server serves besides MCP. A server with no public route, app origin, viewer or
+/// content omits the declaration.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SurfacesDeclaration {
@@ -31,6 +32,21 @@ pub struct SurfacesDeclaration {
     /// The viewer the server offers for files on the content domain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer: Option<ViewerDeclaration>,
+    /// The items the server owns on the content domain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<ContentDeclaration>,
+}
+
+/// The items a server owns on the content domain, each on an origin of its own. The Hub reads
+/// `{route}{item}` and `{route}{item}/{path}` from the server as the person, behind Hub
+/// authentication, and `{links}{token}` and `{links}{token}/{path}`, one of its public routes,
+/// for whoever holds a link's origin. The Hub never serves `links` on its own origin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentDeclaration {
+    pub route: PublicRoutePrefix,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links: Option<PublicRoutePrefix>,
 }
 
 /// A viewer: the Hub opens a file of one of `extensions` on the content domain with the
@@ -55,14 +71,18 @@ pub struct PublicRouteDeclaration {
 impl SurfacesDeclaration {
     /// Whether the declaration declares nothing, so the member is omitted.
     pub fn is_empty(&self) -> bool {
-        self.public_routes.is_empty() && !self.app_origin && self.viewer.is_none()
+        self.public_routes.is_empty()
+            && !self.app_origin
+            && self.viewer.is_none()
+            && self.content.is_none()
     }
 
     /// Check the declaration of `server`, whose authorization declares the `app_origin`
     /// requirement when `app_origin_requirement` holds: every prefix lies under the
     /// mount `/{server}`, covers neither `{mount}/mcp` nor `{mount}/admin` and overlaps
-    /// no other, an app origin is declared exactly with its requirement, and a viewer takes
-    /// at least one extension, each once, at one of the public routes.
+    /// no other, an app origin is declared exactly with its requirement, a viewer takes at
+    /// least one extension, each once, at one of the public routes, and content's route lies
+    /// under the mount outside every public route, with its links at one of them.
     pub fn check(
         &self,
         server: &ServerSlug,
@@ -71,7 +91,7 @@ impl SurfacesDeclaration {
         if self.is_empty() {
             return Err(DeclarationError::invalid(
                 "veoveo_surfaces",
-                "a server with no public route, app origin or viewer omits the member",
+                "a server with no public route, app origin, viewer or content omits the member",
             ));
         }
         for (index, route) in self.public_routes.iter().enumerate() {
@@ -132,7 +152,114 @@ impl SurfacesDeclaration {
                 ));
             }
         }
+        if let Some(content) = &self.content {
+            let within = content.route.within_mount(server).ok_or_else(|| {
+                DeclarationError::invalid("content", "content's route lies under the mount")
+            })?;
+            if ["/mcp/", "/admin/"]
+                .iter()
+                .any(|reserved| within.starts_with(reserved))
+                || self
+                    .public_routes
+                    .iter()
+                    .any(|route| route.prefix.overlaps(&content.route))
+            {
+                return Err(DeclarationError::invalid(
+                    "content",
+                    "content's route is neither reserved nor a public route",
+                ));
+            }
+            if let Some(links) = &content.links
+                && !self
+                    .public_routes
+                    .iter()
+                    .any(|route| &route.prefix == links)
+            {
+                return Err(DeclarationError::invalid(
+                    "content",
+                    "content's links are one of the server's public routes",
+                ));
+            }
+        }
         Ok(())
+    }
+}
+
+/// What names a link's origin: 160 bits in lowercase hex. The server draws it from the link,
+/// so its holder reads the link's item and can do nothing else with the link.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct ContentLinkToken(String);
+
+impl ContentLinkToken {
+    /// The hex of 20 bytes.
+    pub fn from_bytes(bytes: [u8; 20]) -> Self {
+        Self(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        (value.len() == 40
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+        .then(|| Self(value.to_owned()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for ContentLinkToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ContentLinkToken(..)")
+    }
+}
+
+/// The DNS label of a link's origin on the content domain, `{slug}-{token}`, so that the Hub
+/// can tell which server owns a link from its name alone and holds nothing about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentLinkLabel {
+    server: ServerSlug,
+    token: ContentLinkToken,
+}
+
+impl ContentLinkLabel {
+    /// The most a DNS label holds.
+    const MAX: usize = 63;
+
+    /// The label of `token` on `server`; `None` when the slug makes it no DNS label.
+    pub fn new(server: ServerSlug, token: ContentLinkToken) -> Option<Self> {
+        let slug = server.as_str();
+        (slug.len() + 1 + token.as_str().len() <= Self::MAX
+            && !slug.starts_with('-')
+            && !slug.ends_with('-')
+            && slug
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'))
+        .then_some(Self { server, token })
+    }
+
+    /// The server and token a label names; `None` for any other label.
+    pub fn parse(label: &str) -> Option<Self> {
+        let (slug, token) = label.rsplit_once('-')?;
+        Self::new(
+            ServerSlug::parse(slug).ok()?,
+            ContentLinkToken::parse(token)?,
+        )
+    }
+
+    pub fn server(&self) -> &ServerSlug {
+        &self.server
+    }
+
+    pub fn token(&self) -> &ContentLinkToken {
+        &self.token
+    }
+}
+
+impl fmt::Display for ContentLinkLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.server, self.token.as_str())
     }
 }
 
@@ -334,6 +461,17 @@ pub(crate) struct SurfacesDocument {
     app_origin: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     viewer: Option<ViewerDocument>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    content: Option<ContentDocument>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(rename = "ContentDocument")]
+struct ContentDocument {
+    route: PublicRoutePrefix,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    links: Option<PublicRoutePrefix>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -370,6 +508,10 @@ impl From<SurfacesDocument> for SurfacesDeclaration {
                 extensions: viewer.extensions,
                 route: viewer.route,
             }),
+            content: document.content.map(|content| ContentDeclaration {
+                route: content.route,
+                links: content.links,
+            }),
         }
     }
 }
@@ -389,6 +531,10 @@ impl From<SurfacesDeclaration> for SurfacesDocument {
             viewer: declaration.viewer.map(|viewer| ViewerDocument {
                 extensions: viewer.extensions,
                 route: viewer.route,
+            }),
+            content: declaration.content.map(|content| ContentDocument {
+                route: content.route,
+                links: content.links,
             }),
         }
     }

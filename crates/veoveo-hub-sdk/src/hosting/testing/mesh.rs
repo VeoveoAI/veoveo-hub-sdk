@@ -167,6 +167,7 @@ impl TestMesh {
                         public_routes: Vec::new(),
                         app_origin: true,
                         viewer: None,
+                        content: None,
                     }
                 }),
             },

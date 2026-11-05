@@ -9,7 +9,7 @@ use crate::{
     },
     knowledge::{KnowledgeCollection, KnowledgeQuery, KnowledgeSearch, MarkedTemplate},
     registration::{
-        BodyLimit, FileExtension, PermissionDeclaration, PermissionDefinition,
+        BodyLimit, ContentDeclaration, FileExtension, PermissionDeclaration, PermissionDefinition,
         PublicRouteDeclaration, PublicRoutePrefix, RequestRate, SurfacesDeclaration,
         ViewerDeclaration,
     },
@@ -505,6 +505,7 @@ pub struct RoutesBuilder<D: DomainServer> {
     public_routes: Vec<PublicRouteDeclaration>,
     app_origin: Option<RoutePolicy>,
     viewer: Option<ViewerDeclaration>,
+    content: Option<ContentDeclaration>,
     knowledge: bool,
 }
 impl<D: DomainServer> RoutesBuilder<D> {
@@ -523,6 +524,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             public_routes: vec![],
             app_origin: None,
             viewer: None,
+            content: None,
             knowledge: false,
         }
     }
@@ -710,6 +712,21 @@ impl<D: DomainServer> RoutesBuilder<D> {
         });
         self
     }
+    /// Declare the items the server owns on the content domain: the Hub reads
+    /// `{path}{item}` and `{path}{item}/{file}` from its `authenticated_routes` as the
+    /// person, and, when `links` names one of its public routes, `{links}{token}` and
+    /// `{links}{token}/{file}` for whoever holds a link's origin. Building the routes fails
+    /// for a declaration the
+    /// [surfaces](crate::registration::SurfacesDeclaration::check) rules refuse.
+    pub fn content(mut self, path: &str, links: Option<&str>) -> Self {
+        let slug = crate::server_contract::provider_slug::<D::Contract>();
+        self.content = Some(ContentDeclaration {
+            route: PublicRoutePrefix::under(&slug, path).expect("valid content route"),
+            links: links
+                .map(|links| PublicRoutePrefix::under(&slug, links).expect("valid content links")),
+        });
+        self
+    }
     /// The HTTP the routes serve besides MCP, as the registration and Discover declare
     /// it; `None` when they serve none.
     pub fn surfaces(&self) -> Option<SurfacesDeclaration> {
@@ -717,6 +734,7 @@ impl<D: DomainServer> RoutesBuilder<D> {
             public_routes: self.public_routes.clone(),
             app_origin: self.app_origin.is_some(),
             viewer: self.viewer.clone(),
+            content: self.content.clone(),
         };
         (!surfaces.is_empty()).then_some(surfaces)
     }

@@ -297,6 +297,14 @@ pub struct ClientInformation {
         skip_serializing_if = "Option::is_none"
     )]
     pub app_origin: Option<AppOrigin>,
+    /// The installation's content domain, when the server declares content links and the
+    /// installation has one.
+    #[serde(
+        rename = "veoveo_content_origin",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub content_origin: Option<ContentOrigin>,
 }
 
 impl ClientInformation {
@@ -341,6 +349,16 @@ impl ClientInformation {
             return Err(DeclarationError::invalid(
                 "veoveo_app_origin",
                 "present exactly when the server declares an app origin",
+            ));
+        }
+        if self.content_origin.is_some()
+            && !surfaces
+                .and_then(|surfaces| surfaces.content.as_ref())
+                .is_some_and(|content| content.links.is_some())
+        {
+            return Err(DeclarationError::invalid(
+                "veoveo_content_origin",
+                "present only when the server declares content links",
             ));
         }
         self.metadata.check()
@@ -602,6 +620,57 @@ impl From<AppOrigin> for String {
     }
 }
 impl fmt::Display for AppOrigin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// `veoveo_content_origin`: the installation's content domain as an origin, which the Hub
+/// chooses, such as `https://content.example`, under which a server names a link's origin. It
+/// is an HTTPS origin, or an HTTP origin on a local host, in its RFC 6454 serialization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(try_from = "String", into = "String")]
+#[schemars(with = "url::Url")]
+pub struct ContentOrigin(url::Url);
+
+impl ContentOrigin {
+    pub fn parse(value: &str) -> Result<Self, DeclarationError> {
+        let url = url::Url::parse(value)
+            .map_err(|_| DeclarationError::invalid("veoveo_content_origin", "must be a URL"))?;
+        http_url(&url, "veoveo_content_origin")?;
+        if url.origin().ascii_serialization() != value {
+            return Err(DeclarationError::invalid(
+                "veoveo_content_origin",
+                "an origin: a scheme, a host and an optional port, without a path",
+            ));
+        }
+        Ok(Self(url))
+    }
+    /// The serialized origin, such as `https://content.example`.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str().trim_end_matches('/')
+    }
+    /// The root of the origin of `label`, `{label}.{domain}`, where a link's preview begins.
+    pub fn link(&self, label: &super::ContentLinkLabel) -> url::Url {
+        let mut url = self.0.clone();
+        let host = format!("{label}.{}", self.0.host_str().unwrap_or_default());
+        url.set_host(Some(&host))
+            .expect("a label and a domain form a host");
+        url
+    }
+}
+impl TryFrom<String> for ContentOrigin {
+    type Error = DeclarationError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(&value)
+    }
+}
+impl From<ContentOrigin> for String {
+    fn from(value: ContentOrigin) -> Self {
+        value.as_str().to_owned()
+    }
+}
+impl fmt::Display for ContentOrigin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }

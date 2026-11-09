@@ -56,16 +56,15 @@ opentelemetry_sdk = "0.32.1"
 parking_lot = "0.12.5"
 rcgen = "0.14.9"
 reqwest = { version = "=0.13.5", default-features = false }
-# rmcp 3.8.0 from the VeoveoAI fork's `veoveo/main` (D26): upstream `main` after 3.8.0,
-# with the Skills extension (SEP-2640), plus the changes its `VEOVEO_FORK.md` lists:
-# upstream #1412 (skill manifest boundaries), Task status subscriptions through `taskIds`
+# rmcp 3.9.0 from the VeoveoAI fork's `veoveo/main` (D26): upstream `main` after 3.9.0,
+# plus the changes its `VEOVEO_FORK.md` lists: Task status subscriptions through `taskIds`
 # in `subscriptions/listen`, a typed `StreamableHttpError::HttpResponse` for the HTTP
 # rejections upstream's body-free `HttpStatus` (429 and 5xx) does not cover, and two
 # debug-level logs, for a send that fails during shutdown drain and for a client worker's
 # startup failure its caller received. Remove the fork when upstream carries them.
 # Default features are off: each crate enables what it uses, so the client feature
 # compiles no server or macros.
-rmcp = { version = "=3.8.0", git = "https://github.com/VeoveoAI/rust-sdk", rev = "d45f7f5e43e910f818400ca702cc904c5682c213", default-features = false }
+rmcp = { version = "=3.9.0", git = "https://github.com/VeoveoAI/rust-sdk", rev = "e8c8868f252b22835b960942d38a4b51182e0270", default-features = false }
 rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
 schemars = "1.2.2"
 secrecy = "0.10.3"

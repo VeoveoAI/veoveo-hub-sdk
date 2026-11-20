@@ -2,7 +2,7 @@
 # Stages: dev is the development environment, check is the single gate, cli-build compiles
 # the Hub client CLI and cli is its image. The SDK itself is a library and ships no image.
 
-FROM rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181 AS dev
+FROM rust:1.100.0-trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8 AS dev
 # clang and cmake build aws-lc-sys, which jsonwebtoken's AWS-LC backend links. PostgreSQL
 # 18.6 from the PGDG repository, whose signing key Debian's postgresql-common ships, runs
 # the private clusters of the operations, usage and knowledge tests; the packages create

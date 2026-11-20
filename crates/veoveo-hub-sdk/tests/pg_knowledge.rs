@@ -135,8 +135,9 @@ async fn sources_with_uuid_and_text_keys_fuse_into_one_ranking() {
     assert_eq!(hits(&only_notes), ["shop://notes/note-lantern"]);
 }
 
-/// One column change on `shop.item`: PostgreSQL 19 refuses to retype a column while a function
-/// uses the table's row type, so the read rule is dropped and created again around it.
+/// One column change on `shop.item`: PostgreSQL 19 refuses to rewrite a table, as a column's new
+/// type does, while a function uses its row type, so the read rule is dropped and created again
+/// around it.
 macro_rules! retyped {
     ($alter:literal) => {
         concat!(

@@ -122,9 +122,11 @@ RETURN a.state = 'available'
     ) >= 1;
 ```
 
-PostgreSQL 19 refuses to change the type of a column while a function uses its table's
-row type, as a read rule does. A migration that retypes a column of a collection's table
-drops the read rule, changes the column and creates the rule again, in one transaction.
+PostgreSQL 19 refuses to rewrite a table while a function uses its row type, as a read
+rule does. A column's new type and a new stored generated column rewrite the table; adding
+a plain column or dropping one does not. A collection's table is therefore created with
+its knowledge columns, and a migration that rewrites it later drops the functions over its
+row, changes it and creates them again, in one transaction.
 
 **The source.** A `PgKnowledgeSource` names the collection, the table, its key column and
 the function, all in the server's schema, and declares the key's type: `Uuid` for a

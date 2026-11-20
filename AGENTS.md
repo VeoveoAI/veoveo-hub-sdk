@@ -24,7 +24,7 @@ These rules apply to veoveo-hub-sdk.
   knowledge module's ready-made search and the vector writes of its `index`, which run
   over a table the server names, in the server's own schema, under the server's own
   read rule. Tests that need a database
-  run on a private cluster from core's store fixture, with PostgreSQL 18.6 from the dev
+  run on a private cluster from core's store fixture, with PostgreSQL 19.0 from the dev
   image.
 - A server reaches core state only through this SDK and core's runtime API, never in its
   own SQL. Every server runs `testing::assert_sql_confined` in its tests. When a server

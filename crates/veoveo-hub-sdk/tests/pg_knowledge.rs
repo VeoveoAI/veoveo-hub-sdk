@@ -1,4 +1,4 @@
-//! The ready-made PostgreSQL knowledge search on PostgreSQL 18.6 with pgvector 0.8.7, on
+//! The ready-made PostgreSQL knowledge search on PostgreSQL 19.0 with pgvector 0.8.7, on
 //! a private cluster from core's store fixture. Every embedding here is synthetic: a
 //! fixed word-count vector, never a model's, so the tests prove ranking, filtering and
 //! writes, not retrieval quality. Writes embed through a probe server in the in-process

@@ -42,7 +42,7 @@ oauth2 = { version = "=5.0.0", default-features = false }
 opentelemetry = "0.32.0"
 # PostgreSQL's parser from libpg_query, for the SQL confinement check of the `testing`
 # feature. 6.2.1 builds libpg_query 17-6.2.5, the PostgreSQL 17 grammar; SQL only
-# PostgreSQL 18 accepts fails that check closed. The build compiles C with clang and
+# PostgreSQL 19 accepts fails that check closed. The build compiles C with clang and
 # uses the bundled protobuf bindings when protoc is absent.
 pg_query = "=6.2.1"
 # Rust source parsing for the same check. Line numbers need span locations. syn stays

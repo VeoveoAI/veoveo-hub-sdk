@@ -71,7 +71,7 @@ docker build --target check .
 
 The `check` stage runs rustfmt, clippy with warnings denied, cargo-deny, cargo-hack on
 every feature of every crate and the nextest `ci` profile. The operations tests start
-private PostgreSQL 18.7 clusters through core's store fixture, from the packages the dev
+private PostgreSQL 19.0 clusters through core's store fixture, from the packages the dev
 image installs. It runs the same way on macOS and Linux.
 
 ## Development environment

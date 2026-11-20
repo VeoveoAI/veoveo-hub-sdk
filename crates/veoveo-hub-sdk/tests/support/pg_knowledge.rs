@@ -1,5 +1,5 @@
 //! A synthetic shop server whose items (UUID keys) and notes (text keys) are knowledge
-//! sources, over a private PostgreSQL 18.6 cluster with pgvector, and a synthetic
+//! sources, over a private PostgreSQL 19.0 cluster with pgvector, and a synthetic
 //! embedder: a word-hash vector, not a model's.
 #![allow(dead_code, reason = "each test uses a subset of the fixture")]
 use std::{

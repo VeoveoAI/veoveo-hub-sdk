@@ -232,7 +232,7 @@ worker
     .await?;
 ```
 
-**Tests.** Test on core's store fixture with PostgreSQL 18.6 and pgvector 0.8.7 on `PATH`,
+**Tests.** Test on core's store fixture with PostgreSQL 19.0 and pgvector 0.8.7 on `PATH`,
 which the development image installs: `TestDb::create_extensions(&["vector"])` creates the
 `_extensions` schema and pgvector as the installation's bootstrap does, before the
 server's migrations. A test whose Task worker runs while its fixture drops uses a

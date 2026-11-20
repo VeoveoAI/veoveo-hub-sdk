@@ -135,6 +135,21 @@ async fn sources_with_uuid_and_text_keys_fuse_into_one_ranking() {
     assert_eq!(hits(&only_notes), ["shop://notes/note-lantern"]);
 }
 
+/// One column change on `shop.item`: PostgreSQL 19 refuses to retype a column while a function
+/// uses the table's row type, so the read rule is dropped and created again around it.
+macro_rules! retyped {
+    ($alter:literal) => {
+        concat!(
+            "BEGIN; DROP FUNCTION shop.item_readable(shop.item, jsonb); ",
+            $alter,
+            "; CREATE FUNCTION shop.item_readable(r shop.item, caller jsonb) RETURNS boolean \
+             LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog, pg_temp \
+             RETURN r.tenant = (caller->>'tenantId')::uuid \
+             AND (r.public OR r.owner = (caller->>'principalId')::uuid); COMMIT"
+        )
+    };
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn check_admits_a_complete_table_and_refuses_each_missing_piece() {
     let shop = Shop::start().await;
@@ -145,7 +160,9 @@ async fn check_admits_a_complete_table_and_refuses_each_missing_piece() {
             "knowledge_model",
         ),
         (
-            "ALTER TABLE shop.item ALTER COLUMN knowledge_vector TYPE _extensions.vector(3) USING NULL",
+            retyped!(
+                "ALTER TABLE shop.item ALTER COLUMN knowledge_vector TYPE _extensions.vector(3) USING NULL"
+            ),
             "knowledge_vector",
         ),
         ("DROP INDEX shop.item_knowledge_vector", "HNSW"),
@@ -171,8 +188,10 @@ async fn check_admits_a_complete_table_and_refuses_each_missing_piece() {
     }
     // A text key the source declares as a UUID is refused too.
     let shop = Shop::start().await;
-    shop.execute("ALTER TABLE shop.item ALTER COLUMN item_id TYPE text")
-        .await;
+    shop.execute(retyped!(
+        "ALTER TABLE shop.item ALTER COLUMN item_id TYPE text"
+    ))
+    .await;
     let error = shop.knowledge().check(shop.pool()).await.unwrap_err();
     assert!(error.to_string().contains("item_id is not uuid"), "{error}");
     // A volatile read rule cannot filter a ranking.
